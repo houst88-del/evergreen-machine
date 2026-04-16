@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import traceback
 from datetime import datetime, UTC
 from pathlib import Path
 
@@ -110,6 +111,7 @@ def run_forever() -> None:
                 error=str(exc),
             )
             print(f"[evergreen][autopilot] error: {exc}")
+            traceback.print_exc()
 
         time.sleep(POLL_SECONDS)
 
