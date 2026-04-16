@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.core.db import SessionLocal
+from app.models.models import ConnectedAccount
+from app.services.bluesky_import_service import import_bluesky_posts
+from app.services.x_import_service import import_x_pool_posts
+
+
+def _is_connected(account: ConnectedAccount) -> bool:
+    return str(getattr(account, "connection_status", "") or "").strip().lower() == "connected"
+
+
+def sync_connected_account(
+    db: Session,
+    *,
+    account: ConnectedAccount,
+    user_id: int = 1,
+    bluesky_limit: int = 100,
+    x_limit: int = 200,
+) -> dict[str, Any]:
+    handle = str(getattr(account, "handle", "") or "").strip().lstrip("@")
+    provider = str(getattr(account, "provider", "") or "").strip().lower()
+
+    if not _is_connected(account):
+        return {
+            "account_id": account.id,
+            "provider": provider,
+            "handle": handle,
+            "ok": False,
+            "skipped": True,
+            "error": "Account is not connected",
+        }
+
+    if not handle:
+        return {
+            "account_id": account.id,
+            "provider": provider,
+            "handle": handle,
+            "ok": False,
+            "skipped": True,
+            "error": "Missing handle",
+        }
+
+    if provider == "bluesky":
+        result = import_bluesky_posts(
+            db,
+            user_id=user_id,
+            connected_account_id=account.id,
+            handle=handle,
+            limit=bluesky_limit,
+        )
+        return {
+            "account_id": account.id,
+            "provider": provider,
+            "handle": handle,
+            "ok": True,
+            **result,
+        }
+
+    if provider == "x":
+        result = import_x_pool_posts(
+            db,
+            user_id=user_id,
+            connected_account_id=account.id,
+            handle=handle,
+            limit=x_limit,
+        )
+        return {
+            "account_id": account.id,
+            "provider": provider,
+            "handle": handle,
+            "ok": True,
+            **result,
+        }
+
+    return {
+        "account_id": account.id,
+        "provider": provider,
+        "handle": handle,
+        "ok": False,
+        "skipped": True,
+        "error": f"Unsupported provider: {provider}",
+    }
+
+
+def sync_all_connected_accounts(
+    *,
+    user_id: int = 1,
+    bluesky_limit: int = 100,
+    x_limit: int = 200,
+) -> dict[str, Any]:
+    db: Session = SessionLocal()
+    try:
+        accounts = (
+            db.query(ConnectedAccount)
+            .filter(ConnectedAccount.connection_status == "connected")
+            .order_by(ConnectedAccount.id.asc())
+            .all()
+        )
+        results: list[dict[str, Any]] = []
+
+        for account in accounts:
+            try:
+                result = sync_connected_account(
+                    db,
+                    account=account,
+                    user_id=user_id,
+                    bluesky_limit=bluesky_limit,
+                    x_limit=x_limit,
+                )
+                results.append(result)
+            except Exception as e:
+                results.append(
+                    {
+                        "account_id": getattr(account, "id", None),
+                        "provider": getattr(account, "provider", None),
+                        "handle": getattr(account, "handle", None),
+                        "ok": False,
+                        "skipped": False,
+                        "error": str(e),
+                    }
+                )
+
+        db.commit()
+
+        return {
+            "ok": True,
+            "accounts": results,
+            "connected_account_count": len(accounts),
+            "synced_count": sum(1 for r in results if r.get("ok")),
+            "error_count": sum(1 for r in results if not r.get("ok") and not r.get("skipped")),
+            "skipped_count": sum(1 for r in results if r.get("skipped")),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

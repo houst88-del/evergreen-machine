@@ -1,0 +1,16 @@
+class CreatorState:
+
+    def load_pool(user_handle):
+        ...
+
+    def save_pool(user_handle, pool_data):
+        ...
+
+    def load_config(user_handle):
+        ...
+
+    def save_config(user_handle, config):
+        ...
+
+    def append_result(user_handle, result):
+        ...

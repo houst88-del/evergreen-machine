@@ -1,0 +1,38 @@
+CSV_FILE = "tweet_refresh_pool(2).csv"
+
+
+import csv
+from datetime import datetime
+
+from app.core.db import SessionLocal
+from app.models.models import Post
+
+CSV_FILE = "tweet_refresh_pool.csv"
+CONNECTED_ACCOUNT_ID = 1   # @jockulus
+
+
+db = SessionLocal()
+
+count = 0
+
+with open(CSV_FILE, newline="", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+
+    for row in reader:
+        post = Post(
+            user_id=1,
+            connected_account_id=CONNECTED_ACCOUNT_ID,
+            provider_post_id=row.get("tweet_id") or None,
+            text=row.get("text") or "",
+            score=float(row.get("score") or 0),
+            state="active",
+            created_at=datetime.utcnow(),
+        )
+
+        db.add(post)
+        count += 1
+
+db.commit()
+
+print(f"Imported {count} posts")
+
