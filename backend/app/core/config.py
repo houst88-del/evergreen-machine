@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 10
     x_client_id: str = ""
     x_client_secret: str = ""
-    x_redirect_uri: str = "http://localhost:8000/api/providers/x/callback"
+    x_redirect_uri: str = "https://evergreen-machine-production.up.railway.app/api/providers/x/callback"
     bluesky_app_password: str = ""
     encryption_key: str = "replace-me"
 

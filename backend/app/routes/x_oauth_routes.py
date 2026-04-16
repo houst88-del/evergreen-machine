@@ -21,7 +21,7 @@ def oauth_config():
     api_secret = os.getenv("X_API_SECRET", "").strip()
     callback = os.getenv(
         "X_CALLBACK_URL",
-        "http://127.0.0.1:8000/api/providers/x/callback",
+        "https://evergreen-machine-production.up.railway.app/api/providers/x/callback",
     ).strip()
 
     if not api_key or not api_secret:
