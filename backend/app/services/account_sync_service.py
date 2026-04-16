@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -114,6 +115,8 @@ def sync_all_connected_accounts(
                 )
                 results.append(result)
             except Exception as e:
+                print("[evergreen][sync] account sync error:")
+                traceback.print_exc()
                 results.append(
                     {
                         "account_id": getattr(account, "id", None),
