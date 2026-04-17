@@ -1,9 +1,9 @@
 {
   "status": "running",
-  "timestamp": "2026-04-17T01:04:44.149077+00:00",
+  "timestamp": "2026-04-17T06:39:44.899210+00:00",
   "queued": 0,
   "processed": 0,
-  "synced_accounts": 1,
+  "synced_accounts": 0,
   "repaired_jobs": 0,
   "startup_burst_done": true,
   "error": null,

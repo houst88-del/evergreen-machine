@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { getToken, me } from "../lib/auth";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
 
@@ -60,7 +61,9 @@ type DashboardStatus = {
   metadata?: Record<string, unknown>;
 };
 
-const BACKEND = "https://evergreen-machine-production.up.railway.app";
+const BACKEND =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "https://backend-fixed-production.up.railway.app";
 
 const safeNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
@@ -218,6 +221,7 @@ const highlightOpacity = (
 };
 
 export default function GalaxyPage() {
+  const [session, setSession] = useState<any>(null);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [selected, setSelected] = useState<string>("unified");
   const [galaxy, setGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} });
@@ -238,6 +242,32 @@ export default function GalaxyPage() {
   const [cameraDriftTick, setCameraDriftTick] = useState(0);
   const [parallaxTick, setParallaxTick] = useState(0);
   const [waveTick, setWaveTick] = useState(0);
+
+
+  const userId = session?.user?.id || 1;
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadSession() {
+      try {
+        const next = await me();
+        if (mounted) setSession(next);
+      } catch {
+        if (mounted) setSession(null);
+      }
+    }
+    loadSession();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function authedFetch(path: string, init: RequestInit = {}) {
+    const token = getToken();
+    const headers = new Headers(init.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(`${BACKEND}${path}`, { ...init, headers, cache: "no-store" });
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -285,7 +315,7 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadAccounts() {
       try {
-        const res = await fetch(`${BACKEND}/api/connected-accounts?user_id=1`);
+        const res = await authedFetch(`/api/connected-accounts?user_id=${userId}`);
         const json = await res.json();
         if (!cancelled) {
           const next = Array.isArray(json.accounts) ? json.accounts : [];
@@ -304,7 +334,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected]);
+  }, [selected, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,7 +342,7 @@ export default function GalaxyPage() {
       try {
         const out: Record<number, DashboardStatus> = {};
         for (const account of accounts) {
-          const res = await fetch(`${BACKEND}/api/status?user_id=1&connected_account_id=${account.id}`, { cache: "no-store" });
+          const res = await authedFetch(`/api/status?user_id=${userId}&connected_account_id=${account.id}`);
           if (!res.ok) continue;
           out[account.id] = await res.json();
         }
@@ -325,14 +355,14 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts]);
+  }, [accounts, userId]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadGalaxy() {
       try {
         const qs = selected === "unified" ? "?unified=true" : `?connected_account_id=${encodeURIComponent(selected)}`;
-        const res = await fetch(`${BACKEND}/api/galaxy${qs}`, { cache: "no-store" });
+        const res = await authedFetch(`/api/galaxy${qs}`);
         const json: GalaxyResponse = await res.json();
         if (!cancelled) {
           setGalaxy({ nodes: Array.isArray(json.nodes) ? json.nodes : [], meta: json.meta || {} });
@@ -348,7 +378,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected]);
+  }, [selected, userId]);
 
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
 

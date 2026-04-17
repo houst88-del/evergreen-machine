@@ -400,6 +400,119 @@ export default function DashboardPage() {
     }
   }
 
+
+  async function handleConnectX() {
+    if (!session?.user) return
+    const handle = window.prompt('Enter your X handle (example: @jockulus)', session.user.handle || '@creator')
+    if (!handle) return
+
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(`/api/providers/connect?user_id=${session.user.id || 1}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: 'x',
+          handle,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not connect X')
+      }
+
+      setActionMessage(`Connected X for ${json.account_handle || handle}.`)
+      await refreshMissionControlNow()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not connect X')
+    }
+  }
+
+  async function handleConnectBluesky() {
+    if (!session?.user) return
+    const handle = window.prompt('Enter your Bluesky handle', '')
+    if (!handle) return
+    const appPassword = window.prompt('Enter your Bluesky app password', '')
+    if (!appPassword) return
+
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(`/api/providers/connect?user_id=${session.user.id || 1}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: 'bluesky',
+          handle,
+          app_password: appPassword,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not connect Bluesky')
+      }
+
+      setActionMessage(`Connected Bluesky for ${json.account_handle || handle}.`)
+      await refreshMissionControlNow()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
+    }
+  }
+
+  async function handleDisconnectAccount(accountId: number) {
+    if (!session?.user) return
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(
+        `/api/providers/disconnect?user_id=${session.user.id || 1}&connected_account_id=${accountId}`,
+        {
+          method: 'POST',
+        }
+      )
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not disconnect account')
+      }
+
+      setActionMessage(`Disconnected ${json.account_handle || 'account'}.`)
+      await refreshMissionControlNow()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not disconnect account')
+    }
+  }
+
+  async function handleToggleAutopilot(accountId: number, enabled: boolean) {
+    if (!session?.user) return
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(
+        `/api/status/toggle?user_id=${session.user.id || 1}&connected_account_id=${accountId}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled }),
+        }
+      )
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not update autopilot')
+      }
+
+      setActionMessage(`${enabled ? 'Started' : 'Paused'} autopilot for ${json.account_handle || 'account'}.`)
+      await refreshMissionControlNow()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update autopilot')
+    }
+  }
+
   if (loading) {
     return (
       <main className="page">
@@ -552,6 +665,30 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        <section className="card">
+          <h3 style={{ marginTop: 0 }}>Connect Accounts</h3>
+          <p style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
+            Use these buttons to add X and Bluesky accounts to the same Evergreen backend.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+              gap: 16,
+              marginTop: 20,
+            }}
+          >
+            <button className="btn" onClick={handleConnectX}>
+              𝕏 Connect X
+            </button>
+
+            <button className="btn" onClick={handleConnectBluesky}>
+              ☁️ Connect Bluesky
+            </button>
+          </div>
+        </section>
+
         <section
           className="card"
           style={{
@@ -681,6 +818,30 @@ export default function DashboardPage() {
                           {nextCycleText}
                         </span>
                       </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                        marginTop: 14,
+                      }}
+                    >
+                      <button
+                        className="btn"
+                        onClick={() => handleToggleAutopilot(account.id, !status?.running)}
+                      >
+                        {status?.running ? 'Pause Autopilot' : 'Start Autopilot'}
+                      </button>
+
+                      <button className="btn" onClick={() => handleDisconnectAccount(account.id)}>
+                        Disconnect
+                      </button>
+
+                      <Link className="btn" href="/galaxy">
+                        Open in Galaxy
+                      </Link>
                     </div>
                   </div>
                 )
