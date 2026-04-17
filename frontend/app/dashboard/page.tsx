@@ -22,7 +22,9 @@ export default function DashboardPage() {
     return (
       <main className="page">
         <div className="shell">
-          <section className="card">Checking session...</section>
+          <section className="card" style={{ maxWidth: 560 }}>
+            Checking session...
+          </section>
         </div>
       </main>
     )
