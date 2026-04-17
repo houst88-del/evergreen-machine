@@ -2,6 +2,7 @@ export type JobItem = {
   id?: string
   job_id?: string
   type?: string
+  job_type?: string
   state?: string
   status?: string
   created_at?: string
@@ -99,11 +100,19 @@ export function parseJobPayload(job: JobItem): JobPayload {
   }
 }
 
+export function normalizedJobType(job: JobItem) {
+  return String(job.type || job.job_type || '').trim().toLowerCase()
+}
+
+export function normalizedJobState(job: JobItem) {
+  return String(job.state || job.status || '').trim().toLowerCase()
+}
+
 export function headlineForJob(job: JobItem, payload: JobPayload) {
   const provider = providerLabel(payload.provider)
   const lowerMessage = String(payload.message || '').toLowerCase()
-  const type = String(job.type || '').toLowerCase()
-  const state = String(job.state || job.status || '').toLowerCase()
+  const type = normalizedJobType(job)
+  const state = normalizedJobState(job)
 
   if (state.includes('fail') || state.includes('error')) {
     if (type.includes('analytics')) return `${provider} analytics failed`
