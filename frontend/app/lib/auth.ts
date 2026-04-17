@@ -1,6 +1,9 @@
 'use client'
 
-const API_BASE = 'https://evergreen-machine-production.up.railway.app'
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
+  'https://backend-fixed-production.up.railway.app'
+
 const TOKEN_KEY = 'evergreen_auth_token'
 
 export type AuthUser = {
