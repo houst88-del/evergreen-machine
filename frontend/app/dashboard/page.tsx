@@ -57,7 +57,7 @@ connected_account_id?: number
 }
 
 const API_BASE =
-process.env.NEXT_PUBLIC_API_BASE_URL?.replace(//+$/, '') ||
+process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
 'https://backend-fixed-production.up.railway.app'
 
 function safeText(value: unknown): string {
