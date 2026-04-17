@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import time
 import traceback
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.services.account_sync_service import sync_all_connected_accounts
-from app.services.job_queue import repair_stale_running_jobs
-from app.services.job_runner import enqueue_due_autopilot_jobs, process_pending_jobs
-
+from app.services.job_queue import claim_next_jobs, fail_job, repair_stale_running_jobs
+from app.services.job_runner import (
+    enqueue_due_autopilot_jobs,
+    process_pending_jobs,
+    run_job,
+)
 
 POLL_SECONDS = 20
 STARTUP_BURST_X_LIMIT = 200
@@ -60,6 +63,27 @@ def run_startup_burst() -> dict:
     return result
 
 
+def process_manual_jobs(limit: int = 10) -> int:
+    claimed_jobs = claim_next_jobs(limit=limit)
+    processed = 0
+
+    for job in claimed_jobs:
+        job_id = str(job.get("id", "")).strip() or "unknown-job"
+        job_type = str(job.get("job_type", "")).strip() or "unknown"
+
+        try:
+            print(f"[evergreen][autopilot] processing manual job {job_id} ({job_type})")
+            run_job(job)
+            processed += 1
+            print(f"[evergreen][autopilot] completed manual job {job_id}")
+        except Exception as exc:
+            fail_job(job_id, str(exc))
+            print(f"[evergreen][autopilot] manual job failed {job_id}: {exc}")
+            traceback.print_exc()
+
+    return processed
+
+
 def run_forever() -> None:
     print("[evergreen][autopilot] worker started")
     write_heartbeat("starting")
@@ -82,8 +106,12 @@ def run_forever() -> None:
             sync_result = sync_all_connected_accounts()
             synced += int(sync_result.get("synced_count", 0) or 0)
 
+            manual_processed = process_manual_jobs(limit=10)
+
             created = enqueue_due_autopilot_jobs()
-            processed = process_pending_jobs()
+            autopilot_processed = process_pending_jobs()
+
+            processed = manual_processed + autopilot_processed
 
             write_heartbeat(
                 "running",
