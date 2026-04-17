@@ -9,3 +9,4 @@ atproto==0.0.65
 tweepy==4.16.0
 psycopg2-binary
 uvicorn[standard]
+uvicorn[standard]
