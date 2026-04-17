@@ -1,9 +1,11 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from app.core.config import settings
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-database_url = settings.database_url or "sqlite:///./evergreen.db"
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 connect_args = {}
 engine_kwargs = {
@@ -12,7 +14,7 @@ engine_kwargs = {
     "future": True,
 }
 
-if database_url.startswith("sqlite"):
+if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 else:
     engine_kwargs.update(
@@ -24,7 +26,7 @@ else:
     )
 
 engine = create_engine(
-    database_url,
+    DATABASE_URL,
     connect_args=connect_args,
     **engine_kwargs,
 )
