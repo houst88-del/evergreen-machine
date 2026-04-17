@@ -62,7 +62,7 @@ type SystemStatus = {
   frontend_hint?: string
 }
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = 'https://evergreen-machine-production.up.railway.app'
 const ACCOUNT_STORAGE_KEY = 'evergreen_selected_account_id'
 
 function parseServerDate(value?: string | null) {
