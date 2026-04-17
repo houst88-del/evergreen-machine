@@ -54,7 +54,6 @@ export default function DashboardPage() {
   return (
     <main className="page">
       <div className="shell">
-
         <header className="header">
           <div className="wordmark">Evergreen Mission Control</div>
 
@@ -70,25 +69,22 @@ export default function DashboardPage() {
         </header>
 
         <section className="card">
-
           <h2>Welcome back</h2>
-
           <p>Email: {user.email}</p>
           <p>Handle: {user.handle}</p>
-
         </section>
 
         <section className="card">
-
           <h3>Control Center</h3>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
-            gap: 16,
-            marginTop: 20
-          }}>
-
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+              gap: 16,
+              marginTop: 20,
+            }}
+          >
             <Link className="btn primary" href="/galaxy">
               🌌 Open Galaxy
             </Link>
@@ -100,15 +96,8 @@ export default function DashboardPage() {
             <Link className="btn" href="/analytics">
               📈 Analytics
             </Link>
-
-            <Link className="btn" href="/accounts">
-              🔗 Connected Accounts
-            </Link>
-
           </div>
-
         </section>
-
       </div>
     </main>
   )
