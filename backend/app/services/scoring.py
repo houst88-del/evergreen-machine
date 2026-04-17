@@ -74,6 +74,17 @@ def _cooldown_cutoff() -> datetime:
     return _utc_now_naive() - timedelta(days=COOLDOWN_DAYS)
 
 
+def _db_active_rotation_count(db: Session, connected_account_id: int) -> int:
+    return (
+        db.query(Post)
+        .filter(
+            Post.connected_account_id == connected_account_id,
+            Post.state == "active",
+        )
+        .count()
+    )
+
+
 def _safe_score(value: Any) -> float:
     try:
         return float(value or 0)
@@ -386,7 +397,9 @@ def record_resurfaced_post(db: Session, connected_account_id: int, post) -> None
                 else post.text
             )
             autopilot.last_action_at = now
-            autopilot.posts_in_rotation = active_rotation_count(handle)
+            autopilot.posts_in_rotation = _db_active_rotation_count(db, connected_account_id)
+            if autopilot.posts_in_rotation <= 0:
+                autopilot.posts_in_rotation = active_rotation_count(handle)
             # job_runner owns the real refresh schedule now; do not overwrite it here.
         db.commit()
         return

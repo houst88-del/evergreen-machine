@@ -80,16 +80,16 @@ def _account_pacing_mode(account: ConnectedAccount | None) -> str:
 
 
 def posts_in_rotation_for_account(db, account: ConnectedAccount) -> int:
-    provider = str(account.provider or "").strip().lower()
-    if provider == "bluesky":
-        return (
-            db.query(Post)
-            .filter(
-                Post.connected_account_id == account.id,
-                Post.state == "active",
-            )
-            .count()
+    db_active_posts = (
+        db.query(Post)
+        .filter(
+            Post.connected_account_id == account.id,
+            Post.state == "active",
         )
+        .count()
+    )
+    if db_active_posts > 0:
+        return db_active_posts
     return active_rotation_count(account.handle)
 
 
