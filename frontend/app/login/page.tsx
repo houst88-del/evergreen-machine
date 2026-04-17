@@ -2,20 +2,42 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { login } from '../lib/auth'
+import { useEffect, useState } from 'react'
+import { login, me } from '../lib/auth'
 
 export default function LoginPage() {
   const router = useRouter()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function checkSession() {
+      try {
+        const session = await me()
+        if (!mounted) return
+        if (session?.user) {
+          router.replace('/dashboard')
+          return
+        }
+      } finally {
+        if (mounted) setCheckingSession(false)
+      }
+    }
+
+    checkSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-
     setError('')
     setLoading(true)
 
@@ -27,6 +49,18 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="page">
+        <div className="shell">
+          <section className="card" style={{ maxWidth: 560 }}>
+            Checking session...
+          </section>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -50,6 +84,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@evergreen.com"
                 required
               />
             </label>
@@ -61,13 +96,14 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
                 required
               />
             </label>
 
-            {error && <div style={{ color: '#fca5a5' }}>{error}</div>}
+            {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
 
-            <button className="btn primary" disabled={loading}>
+            <button className="btn primary" type="submit" disabled={loading}>
               {loading ? 'Logging in...' : 'Log In'}
             </button>
           </form>
