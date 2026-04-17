@@ -1,6 +1,6 @@
 'use client'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = 'https://evergreen-machine-production.up.railway.app'
 const TOKEN_KEY = 'evergreen_auth_token'
 
 export type AuthUser = {
