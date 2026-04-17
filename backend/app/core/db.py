@@ -2,10 +2,17 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+raw_database_url = os.getenv("DATABASE_URL", "").strip()
 
-if not DATABASE_URL:
+if not raw_database_url:
     raise RuntimeError("DATABASE_URL environment variable is required")
+
+database_url = raw_database_url
+
+# Supabase / managed Postgres often needs sslmode=require.
+if database_url.startswith("postgresql://") and "sslmode=" not in database_url:
+    joiner = "&" if "?" in database_url else "?"
+    database_url = f"{database_url}{joiner}sslmode=require"
 
 connect_args = {}
 engine_kwargs = {
@@ -14,7 +21,7 @@ engine_kwargs = {
     "future": True,
 }
 
-if DATABASE_URL.startswith("sqlite"):
+if database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 else:
     engine_kwargs.update(
@@ -26,7 +33,7 @@ else:
     )
 
 engine = create_engine(
-    DATABASE_URL,
+    database_url,
     connect_args=connect_args,
     **engine_kwargs,
 )
