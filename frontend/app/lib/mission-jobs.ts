@@ -18,6 +18,7 @@ export type JobPayload = {
   handle?: string
   message?: string
   error?: string
+  debug_notes?: string[]
   next_step?: string
   last_action_at?: string | null
   next_cycle_at?: string | null
@@ -82,12 +83,18 @@ export function parseJobPayload(job: JobItem): JobPayload {
   const cycleEvents = Array.isArray(merged.cycle_events)
     ? merged.cycle_events.filter((item): item is string => typeof item === 'string')
     : []
+  const debugNotes = Array.isArray(merged.debug_notes)
+    ? merged.debug_notes.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : []
 
   return {
     provider: typeof merged.provider === 'string' ? merged.provider : undefined,
     handle: typeof merged.handle === 'string' ? merged.handle : undefined,
     message: typeof merged.message === 'string' ? merged.message : safeText(job.message || job.result),
     error: safeText(job.error),
+    debug_notes: debugNotes,
     next_step: typeof merged.next_step === 'string' ? merged.next_step : undefined,
     last_action_at: typeof merged.last_action_at === 'string' ? merged.last_action_at : null,
     next_cycle_at: typeof merged.next_cycle_at === 'string' ? merged.next_cycle_at : null,

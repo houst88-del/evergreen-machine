@@ -516,6 +516,7 @@ def _run_analytics_job(connected_account_id: int, payload: dict | None = None) -
             "next_step": next_step,
             "last_action_at": autopilot.last_action_at.isoformat() if autopilot.last_action_at else None,
             "cycle_events": cycle_events + ["analytics completed"],
+            "debug_notes": imported.get("debug_notes", []),
             "pacing_mode": _effective_pacing_mode(autopilot, account),
             "pacing_reason": "account-selected pacing",
             "next_delay_minutes": 0,

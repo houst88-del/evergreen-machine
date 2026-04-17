@@ -48,12 +48,14 @@ type JobItem = {
   id?: string
   job_id?: string
   type?: string
+  job_type?: string
   state?: string
   status?: string
   created_at?: string
   updated_at?: string
   message?: unknown
   result?: unknown
+  error?: unknown
   connected_account_id?: number
 }
 
@@ -61,6 +63,8 @@ type JobPayload = {
   provider?: string
   handle?: string
   message?: string
+  error?: string
+  debug_notes?: string[]
   next_step?: string
   last_action_at?: string | null
   next_cycle_at?: string | null
@@ -180,11 +184,18 @@ function parseJobPayload(job: JobItem): JobPayload {
   const result = asRecord(job.result)
   const message = asRecord(job.message)
   const merged = { ...(message || {}), ...(result || {}) }
+  const debugNotes = Array.isArray(merged.debug_notes)
+    ? merged.debug_notes.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : []
 
   return {
     provider: typeof merged.provider === 'string' ? merged.provider : undefined,
     handle: typeof merged.handle === 'string' ? merged.handle : undefined,
-    message: typeof merged.message === 'string' ? merged.message : safeText(job.message),
+    message: typeof merged.message === 'string' ? merged.message : safeText(job.message || job.result),
+    error: safeText(job.error),
+    debug_notes: debugNotes,
     next_step: typeof merged.next_step === 'string' ? merged.next_step : undefined,
     last_action_at: typeof merged.last_action_at === 'string' ? merged.last_action_at : null,
     next_cycle_at: typeof merged.next_cycle_at === 'string' ? merged.next_cycle_at : null,
@@ -214,7 +225,14 @@ function compactNumber(value: unknown) {
 function headlineForJob(job: JobItem, payload: JobPayload) {
   const provider = providerLabel(payload.provider)
   const lowerMessage = String(payload.message || '').toLowerCase()
-  const type = String(job.type || '').toLowerCase()
+  const type = String(job.type || job.job_type || '').toLowerCase()
+  const state = String(job.state || job.status || '').toLowerCase()
+
+  if (state.includes('fail') || state.includes('error')) {
+    if (type.includes('analytics')) return `${provider} analytics failed`
+    if (type.includes('refresh')) return `${provider} refresh failed`
+    return `${provider} mission failure`
+  }
 
   if (lowerMessage.includes('importer complete')) {
     return `${provider} import complete`
@@ -1179,11 +1197,11 @@ export default function DashboardPage() {
                     </div>
 
                     {(payload.message || rotationHealth.selection_reason) && (
-                      <div
-                        style={{
-                          marginTop: 14,
-                          padding: '12px 14px',
-                          borderRadius: 14,
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: '12px 14px',
+                        borderRadius: 14,
                           border: '1px solid rgba(255,255,255,0.08)',
                           background: 'rgba(255,255,255,0.03)',
                           color: 'rgba(236,253,245,0.76)',
@@ -1191,9 +1209,36 @@ export default function DashboardPage() {
                           lineHeight: 1.65,
                         }}
                       >
-                        {payload.message || rotationHealth.selection_reason}
+                        {payload.error || payload.message || rotationHealth.selection_reason}
                       </div>
                     )}
+
+                    {payload.debug_notes && payload.debug_notes.length > 0 ? (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: 'grid',
+                          gap: 8,
+                        }}
+                      >
+                        {payload.debug_notes.map((note) => (
+                          <div
+                            key={note}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: 12,
+                              border: '1px solid rgba(96,165,250,0.18)',
+                              background: 'rgba(59,130,246,0.07)',
+                              color: 'rgba(219,234,254,0.88)',
+                              fontSize: 12,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 )
               })}

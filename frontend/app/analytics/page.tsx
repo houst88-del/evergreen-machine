@@ -375,6 +375,33 @@ export default function AnalyticsPage() {
                       {payload.error || payload.message || payload.rotation_health?.selection_reason || 'No message provided.'}
                     </div>
 
+                    {payload.debug_notes && payload.debug_notes.length > 0 ? (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: 'grid',
+                          gap: 8,
+                        }}
+                      >
+                        {payload.debug_notes.map((note) => (
+                          <div
+                            key={note}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: 12,
+                              border: '1px solid rgba(96,165,250,0.18)',
+                              background: 'rgba(59,130,246,0.07)',
+                              color: 'rgba(219,234,254,0.88)',
+                              fontSize: 12,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
                     <div
                       style={{
                         display: 'grid',

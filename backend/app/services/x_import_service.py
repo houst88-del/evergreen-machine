@@ -95,6 +95,12 @@ def _parse_v1_datetime(value: Any) -> datetime | None:
     return _parse_datetime(value)
 
 
+def _meta_value(meta: Any, key: str) -> Any:
+    if isinstance(meta, dict):
+        return meta.get(key)
+    return getattr(meta, key, None)
+
+
 def _make_clients(
     db: Session,
     connected_account_id: int,
@@ -290,7 +296,7 @@ def import_x_pool_posts(
     connected_account_id: int,
     handle: str,
     limit: int = 800,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     client, api_v1, x_user_id = _make_clients(db, connected_account_id)
 
     existing_posts = (
@@ -310,6 +316,10 @@ def import_x_pool_posts(
     skipped = 0
     fetched = 0
     next_token: str | None = None
+    debug_notes: list[str] = []
+    v2_page_sizes: list[int] = []
+    v2_pages = 0
+    last_meta: dict[str, Any] = {}
 
     while fetched < limit:
         page_size = min(100, limit - fetched)
@@ -323,7 +333,21 @@ def import_x_pool_posts(
             user_auth=True,
         )
 
+        v2_pages += 1
+        meta = getattr(response, "meta", None) or {}
+        meta_result_count = _safe_int(_meta_value(meta, "result_count"), 0)
+        meta_next_token = str(_meta_value(meta, "next_token") or "").strip() or None
+        meta_oldest_id = str(_meta_value(meta, "oldest_id") or "").strip()
+        meta_newest_id = str(_meta_value(meta, "newest_id") or "").strip()
+        last_meta = {
+            "result_count": meta_result_count,
+            "has_next_token": bool(meta_next_token),
+            "oldest_id": meta_oldest_id,
+            "newest_id": meta_newest_id,
+        }
+
         tweets = list(getattr(response, "data", None) or [])
+        v2_page_sizes.append(len(tweets))
         if not tweets:
             break
 
@@ -355,12 +379,7 @@ def import_x_pool_posts(
                 updated += 1
 
         fetched += len(tweets)
-
-        meta = getattr(response, "meta", None) or {}
-        if isinstance(meta, dict):
-            next_token = meta.get("next_token")
-        else:
-            next_token = getattr(meta, "next_token", None)
+        next_token = meta_next_token
 
         if not next_token:
             break
@@ -369,7 +388,10 @@ def import_x_pool_posts(
     # When that happens, backfill through the OAuth1 timeline instead of
     # accepting an obviously incomplete pool.
     fallback_limited = False
+    fallback_error: str | None = None
+    fallback_attempted = False
     if fetched < min(limit, 25):
+        fallback_attempted = True
         try:
             fallback = _backfill_from_v1_timeline(
                 api_v1=api_v1,
@@ -385,8 +407,12 @@ def import_x_pool_posts(
             updated += fallback["updated"]
             skipped += fallback["skipped"]
             fetched = max(fetched, fallback["fetched"])
-        except tweepy.TweepyException:
+            debug_notes.append(
+                f"v1 fallback added visibility after shallow v2 fetch; total fetched now {fetched}."
+            )
+        except tweepy.TweepyException as exc:
             fallback_limited = True
+            fallback_error = str(exc).strip() or "Unknown X fallback error"
 
     db.flush()
 
@@ -405,6 +431,19 @@ def import_x_pool_posts(
         .count()
     )
 
+    page_sizes_label = ", ".join(str(size) for size in v2_page_sizes) if v2_page_sizes else "0"
+    debug_notes.insert(
+        0,
+        f"v2 timeline pages {v2_pages}; page sizes [{page_sizes_label}]; final next token {'yes' if last_meta.get('has_next_token') else 'no'}.",
+    )
+    debug_notes.append(
+        f"v2 final meta result_count {last_meta.get('result_count', 0)}; newest {last_meta.get('newest_id') or '—'}; oldest {last_meta.get('oldest_id') or '—'}."
+    )
+    if fallback_attempted and fallback_limited:
+        debug_notes.append(f"v1 fallback blocked: {fallback_error}.")
+    elif fallback_attempted and not fallback_limited:
+        debug_notes.append("v1 fallback completed successfully.")
+
     return {
         "imported": imported,
         "updated": updated,
@@ -413,6 +452,7 @@ def import_x_pool_posts(
         "total_posts": total_posts,
         "fetched": fetched,
         "fallback_limited": fallback_limited,
+        "debug_notes": debug_notes,
     }
 
 
@@ -423,7 +463,7 @@ def import_x_posts(
     connected_account_id: int,
     handle: str,
     limit: int = 200,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     return import_x_pool_posts(
         db,
         user_id=user_id,
