@@ -21,7 +21,7 @@ def sync_connected_account(
     account: ConnectedAccount,
     user_id: int = 1,
     bluesky_limit: int = 100,
-    x_limit: int = 200,
+    x_limit: int = 800,
 ) -> dict[str, Any]:
 
     handle = str(getattr(account, "handle", "") or "").strip().lstrip("@")
@@ -122,7 +122,7 @@ def sync_all_connected_accounts(
     *,
     user_id: int = 1,
     bluesky_limit: int = 100,
-    x_limit: int = 200,
+    x_limit: int = 800,
 ) -> dict[str, Any]:
 
     db: Session = SessionLocal()

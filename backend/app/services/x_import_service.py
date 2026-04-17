@@ -89,7 +89,16 @@ def _tweet_url(handle: str, tweet_id: str) -> str:
     return f"https://x.com/{clean}/status/{tweet_id}"
 
 
-def _make_client(db: Session, connected_account_id: int) -> tuple[tweepy.Client, str]:
+def _parse_v1_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    return _parse_datetime(value)
+
+
+def _make_clients(
+    db: Session,
+    connected_account_id: int,
+) -> tuple[tweepy.Client, tweepy.API, str]:
     account = (
         db.query(ConnectedAccount)
         .filter(ConnectedAccount.id == connected_account_id)
@@ -136,7 +145,137 @@ def _make_client(db: Session, connected_account_id: int) -> tuple[tweepy.Client,
         wait_on_rate_limit=True,
     )
 
-    return client, provider_account_id
+    auth = tweepy.OAuth1UserHandler(
+        api_key,
+        api_secret,
+        access_token,
+        access_token_secret,
+    )
+    api_v1 = tweepy.API(auth, wait_on_rate_limit=True)
+
+    return client, api_v1, provider_account_id
+
+
+def _upsert_post(
+    db: Session,
+    *,
+    existing_map: dict[str, Post],
+    user_id: int,
+    connected_account_id: int,
+    handle: str,
+    tweet_id: str,
+    text: str,
+    score: int,
+    created_at: datetime | None,
+) -> str:
+    existing = existing_map.get(tweet_id)
+    if existing:
+        existing.text = text or existing.text
+        existing.score = score
+        if created_at and not getattr(existing, "created_at", None):
+            existing.created_at = created_at
+        return "updated"
+
+    post = Post(
+        user_id=user_id,
+        connected_account_id=connected_account_id,
+        provider_post_id=tweet_id,
+        text=text or _tweet_url(handle, tweet_id),
+        score=score,
+        state="active",
+        last_resurfaced_at=None,
+        created_at=created_at,
+    )
+    db.add(post)
+    existing_map[tweet_id] = post
+    return "imported"
+
+
+def _backfill_from_v1_timeline(
+    *,
+    api_v1: tweepy.API,
+    x_user_id: str,
+    handle: str,
+    limit: int,
+    db: Session,
+    existing_map: dict[str, Post],
+    user_id: int,
+    connected_account_id: int,
+) -> dict[str, int]:
+    imported = 0
+    updated = 0
+    skipped = 0
+    fetched = 0
+    max_id: int | None = None
+
+    while fetched < limit:
+        page_size = min(200, limit - fetched)
+        timeline = api_v1.user_timeline(
+            user_id=x_user_id,
+            count=page_size,
+            max_id=max_id,
+            include_rts=False,
+            exclude_replies=False,
+            tweet_mode="extended",
+        )
+        tweets = list(timeline or [])
+        if not tweets:
+            break
+
+        if max_id is not None and tweets and int(getattr(tweets[0], "id", 0) or 0) == max_id:
+            tweets = tweets[1:]
+            if not tweets:
+                break
+
+        for tweet in tweets:
+            tweet_id = str(getattr(tweet, "id_str", "") or getattr(tweet, "id", "")).strip()
+            if not tweet_id:
+                skipped += 1
+                continue
+
+            text = str(
+                getattr(tweet, "full_text", None)
+                or getattr(tweet, "text", None)
+                or ""
+            ).strip()
+            favorite_count = _safe_int(getattr(tweet, "favorite_count", 0), 0)
+            retweet_count = _safe_int(getattr(tweet, "retweet_count", 0), 0)
+            reply_count = _safe_int(getattr(tweet, "reply_count", 0), 0)
+            quote_count = _safe_int(getattr(tweet, "quote_count", 0), 0)
+            score = max(
+                10,
+                int(50 + favorite_count * 3 + retweet_count * 4 + reply_count * 2 + quote_count * 3),
+            )
+            created_at = _parse_v1_datetime(getattr(tweet, "created_at", None))
+
+            result = _upsert_post(
+                db,
+                existing_map=existing_map,
+                user_id=user_id,
+                connected_account_id=connected_account_id,
+                handle=handle,
+                tweet_id=tweet_id,
+                text=text,
+                score=score,
+                created_at=created_at,
+            )
+            if result == "imported":
+                imported += 1
+            else:
+                updated += 1
+
+        fetched += len(tweets)
+        last_tweet_id = int(getattr(tweets[-1], "id", 0) or 0)
+        if not last_tweet_id:
+            break
+        max_id = last_tweet_id - 1
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "fetched": fetched,
+    }
 
 
 def import_x_pool_posts(
@@ -145,9 +284,9 @@ def import_x_pool_posts(
     user_id: int,
     connected_account_id: int,
     handle: str,
-    limit: int = 200,
+    limit: int = 800,
 ) -> dict[str, int]:
-    client, x_user_id = _make_client(db, connected_account_id)
+    client, api_v1, x_user_id = _make_clients(db, connected_account_id)
 
     existing_posts = (
         db.query(Post)
@@ -194,28 +333,21 @@ def import_x_pool_posts(
             score = _score_from_metrics(metrics)
             created_at = _tweet_created_at(tweet)
 
-            existing = existing_map.get(tweet_id)
-            if existing:
-                existing.text = text or existing.text
-                existing.score = score
-                if created_at and not getattr(existing, "created_at", None):
-                    existing.created_at = created_at
-                updated += 1
-                continue
-
-            db.add(
-                Post(
-                    user_id=user_id,
-                    connected_account_id=connected_account_id,
-                    provider_post_id=tweet_id,
-                    text=text or _tweet_url(handle, tweet_id),
-                    score=score,
-                    state="active",
-                    last_resurfaced_at=None,
-                    created_at=created_at,
-                )
+            result = _upsert_post(
+                db,
+                existing_map=existing_map,
+                user_id=user_id,
+                connected_account_id=connected_account_id,
+                handle=handle,
+                tweet_id=tweet_id,
+                text=text,
+                score=score,
+                created_at=created_at,
             )
-            imported += 1
+            if result == "imported":
+                imported += 1
+            else:
+                updated += 1
 
         fetched += len(tweets)
 
@@ -227,6 +359,25 @@ def import_x_pool_posts(
 
         if not next_token:
             break
+
+    # Some X app/user combinations return only a very shallow v2 timeline.
+    # When that happens, backfill through the OAuth1 timeline instead of
+    # accepting an obviously incomplete pool.
+    if fetched < min(limit, 25):
+        fallback = _backfill_from_v1_timeline(
+            api_v1=api_v1,
+            x_user_id=x_user_id,
+            handle=handle,
+            limit=limit,
+            db=db,
+            existing_map=existing_map,
+            user_id=user_id,
+            connected_account_id=connected_account_id,
+        )
+        imported += fallback["imported"]
+        updated += fallback["updated"]
+        skipped += fallback["skipped"]
+        fetched = max(fetched, fallback["fetched"])
 
     db.flush()
 
@@ -251,6 +402,7 @@ def import_x_pool_posts(
         "skipped": skipped,
         "active_posts": active_posts,
         "total_posts": total_posts,
+        "fetched": fetched,
     }
 
 
