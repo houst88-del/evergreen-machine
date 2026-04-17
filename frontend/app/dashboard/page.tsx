@@ -313,6 +313,20 @@ export default function DashboardPage() {
     }
   }, [session])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('provider') === 'x' && params.get('connected') === '1') {
+      setActionMessage('X account connected.')
+      refreshMissionControlNow()
+      scheduleFollowupRefreshes()
+      params.delete('provider')
+      params.delete('connected')
+      const next = params.toString()
+      const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
+      window.history.replaceState({}, '', url)
+    }
+  }, [session])
+
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
     const accountStatuses = Object.values(statusMap)
@@ -419,37 +433,23 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleConnectX() {
-    if (!session?.user) return
-    const handle = window.prompt(
-      'Enter your X handle (example: @jockulus)',
-      session.user.handle || '@creator'
-    )
-    if (!handle) return
-
+  async function handleConnectXOAuth() {
     setActionMessage('')
     setError('')
+    setBusyAction('connect-x')
 
     try {
-      const res = await apiFetch(`/api/providers/connect?user_id=${session.user.id || 1}`, {
-        method: 'POST',
-        body: JSON.stringify({
-          provider: 'x',
-          handle,
-        }),
-      })
-
+      const res = await apiFetch('/api/providers/x/start')
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(json.detail || json.message || 'Could not connect X')
+
+      if (!res.ok || !json.authorization_url) {
+        throw new Error(json.detail || json.message || 'Could not start X OAuth')
       }
 
-      setActionMessage(`Connected X for ${json.account_handle || handle}.`)
-      await refreshMissionControlNow()
-      window.setTimeout(refreshMissionControlNow, 2000)
-      window.setTimeout(refreshMissionControlNow, 5000)
+      window.location.href = String(json.authorization_url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect X')
+      setError(err instanceof Error ? err.message : 'Could not start X OAuth')
+      setBusyAction(null)
     }
   }
 
@@ -462,6 +462,7 @@ export default function DashboardPage() {
 
     setActionMessage('')
     setError('')
+    setBusyAction('connect-bluesky')
 
     try {
       const res = await apiFetch(`/api/providers/connect?user_id=${session.user.id || 1}`, {
@@ -484,6 +485,8 @@ export default function DashboardPage() {
       window.setTimeout(refreshMissionControlNow, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
+    } finally {
+      setBusyAction(null)
     }
   }
 
@@ -682,7 +685,7 @@ export default function DashboardPage() {
         <section className="card">
           <h3 style={{ marginTop: 0 }}>Connect Accounts</h3>
           <p style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
-            Use these buttons to add X and Bluesky accounts to the same Evergreen backend.
+            X uses real OAuth. Bluesky uses your handle and app password.
           </p>
 
           <div
@@ -693,12 +696,20 @@ export default function DashboardPage() {
               marginTop: 20,
             }}
           >
-            <button className="btn" onClick={handleConnectX}>
-              𝕏 Connect X
+            <button
+              className="btn"
+              onClick={handleConnectXOAuth}
+              disabled={busyAction === 'connect-x'}
+            >
+              {busyAction === 'connect-x' ? 'Starting X OAuth...' : '𝕏 Connect X with OAuth'}
             </button>
 
-            <button className="btn" onClick={handleConnectBluesky}>
-              ☁️ Connect Bluesky
+            <button
+              className="btn"
+              onClick={handleConnectBluesky}
+              disabled={busyAction === 'connect-bluesky'}
+            >
+              {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : '☁️ Connect Bluesky'}
             </button>
           </div>
         </section>
