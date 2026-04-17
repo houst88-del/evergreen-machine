@@ -30,6 +30,8 @@ class ConnectedAccount(Base):
     handle: Mapped[str] = mapped_column(String(100))
 
     access_token: Mapped[str] = mapped_column(Text)
+    access_token_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
