@@ -101,6 +101,11 @@ def _meta_value(meta: Any, key: str) -> Any:
     return getattr(meta, key, None)
 
 
+def _max_import_pages() -> int:
+    configured = _safe_int(os.getenv("X_IMPORT_MAX_PAGES"), 100)
+    return max(1, configured)
+
+
 def _make_clients(
     db: Session,
     connected_account_id: int,
@@ -207,7 +212,7 @@ def _backfill_from_v1_timeline(
     api_v1: tweepy.API,
     x_user_id: str,
     handle: str,
-    limit: int,
+    limit: int | None,
     db: Session,
     existing_map: dict[str, Post],
     user_id: int,
@@ -218,9 +223,14 @@ def _backfill_from_v1_timeline(
     skipped = 0
     fetched = 0
     max_id: int | None = None
+    pages = 0
+    max_pages = _max_import_pages()
 
-    while fetched < limit:
-        page_size = min(200, limit - fetched)
+    while pages < max_pages:
+        remaining = (limit - fetched) if limit is not None else 200
+        if limit is not None and remaining <= 0:
+            break
+        page_size = min(200, remaining)
         timeline = api_v1.user_timeline(
             user_id=x_user_id,
             count=page_size,
@@ -229,6 +239,7 @@ def _backfill_from_v1_timeline(
             exclude_replies=True,
             tweet_mode="extended",
         )
+        pages += 1
         tweets = list(timeline or [])
         if not tweets:
             break
@@ -286,6 +297,8 @@ def _backfill_from_v1_timeline(
         "updated": updated,
         "skipped": skipped,
         "fetched": fetched,
+        "pages": pages,
+        "page_cap_hit": pages >= max_pages,
     }
 
 
@@ -295,7 +308,7 @@ def import_x_pool_posts(
     user_id: int,
     connected_account_id: int,
     handle: str,
-    limit: int = 800,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     client, api_v1, x_user_id = _make_clients(db, connected_account_id)
 
@@ -320,9 +333,13 @@ def import_x_pool_posts(
     v2_page_sizes: list[int] = []
     v2_pages = 0
     last_meta: dict[str, Any] = {}
+    max_pages = _max_import_pages()
 
-    while fetched < limit:
-        page_size = min(100, limit - fetched)
+    while v2_pages < max_pages:
+        remaining = (limit - fetched) if limit is not None else 100
+        if limit is not None and remaining <= 0:
+            break
+        page_size = min(100, remaining)
 
         response = client.get_users_tweets(
             id=x_user_id,
@@ -390,7 +407,8 @@ def import_x_pool_posts(
     fallback_limited = False
     fallback_error: str | None = None
     fallback_attempted = False
-    if fetched < min(limit, 25):
+    page_cap_hit = v2_pages >= max_pages and bool(next_token)
+    if fetched < 25:
         fallback_attempted = True
         try:
             fallback = _backfill_from_v1_timeline(
@@ -410,6 +428,10 @@ def import_x_pool_posts(
             debug_notes.append(
                 f"v1 fallback added visibility after shallow v2 fetch; total fetched now {fetched}."
             )
+            if fallback.get("page_cap_hit"):
+                debug_notes.append(
+                    f"v1 fallback hit the safety page cap at {fallback.get('pages', 0)} pages."
+                )
         except tweepy.TweepyException as exc:
             fallback_limited = True
             fallback_error = str(exc).strip() or "Unknown X fallback error"
@@ -437,9 +459,12 @@ def import_x_pool_posts(
         1,
         f"v2 timeline pages {v2_pages}; page sizes [{page_sizes_label}]; final next token {'yes' if last_meta.get('has_next_token') else 'no'}.",
     )
+    debug_notes.insert(2, f"X import safety page cap: {max_pages}.")
     debug_notes.append(
         f"v2 final meta result_count {last_meta.get('result_count', 0)}; newest {last_meta.get('newest_id') or '—'}; oldest {last_meta.get('oldest_id') or '—'}."
     )
+    if page_cap_hit:
+        debug_notes.append(f"v2 import hit the safety page cap at {max_pages} pages.")
     if fallback_attempted and fallback_limited:
         debug_notes.append(f"v1 fallback blocked: {fallback_error}.")
     elif fallback_attempted and not fallback_limited:
@@ -463,7 +488,7 @@ def import_x_posts(
     user_id: int,
     connected_account_id: int,
     handle: str,
-    limit: int = 200,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     return import_x_pool_posts(
         db,
