@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { apiFetch, me } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
@@ -263,6 +264,7 @@ const isFreshPulse = (value?: string | null) => {
 };
 
 export default function GalaxyPage() {
+  const [userId, setUserId] = useState<number | null>(null);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [selected, setSelected] = useState<string>("unified");
   const [galaxy, setGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} });
@@ -336,11 +338,27 @@ export default function GalaxyPage() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadSession() {
+      const session = await me();
+      if (cancelled) return;
+      setUserId(session?.user?.id ?? null);
+      if (!session?.user?.id) {
+        setError("No active login found.");
+      }
+    }
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
     async function loadAccounts() {
       try {
-        const res = await fetch(`${BACKEND}/api/connected-accounts?user_id=1`, {
-          cache: "no-store",
-        });
+        const res = await apiFetch(`/api/connected-accounts?user_id=${userId}`);
         const json = await res.json();
         if (!cancelled) {
           const next = Array.isArray(json.accounts) ? json.accounts : [];
@@ -362,17 +380,18 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected]);
+  }, [selected, userId]);
 
   useEffect(() => {
+    if (!userId) return;
+
     let cancelled = false;
     async function loadStatuses() {
       try {
         const out: Record<number, DashboardStatus> = {};
         for (const account of accounts) {
-          const res = await fetch(
-            `${BACKEND}/api/status?user_id=1&connected_account_id=${account.id}`,
-            { cache: "no-store" }
+          const res = await apiFetch(
+            `/api/status?user_id=${userId}&connected_account_id=${account.id}`
           );
           if (!res.ok) continue;
           out[account.id] = await res.json();
@@ -388,17 +407,19 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts]);
+  }, [accounts, userId]);
 
   useEffect(() => {
+    if (!userId) return;
+
     let cancelled = false;
     async function loadGalaxy() {
       try {
         const qs =
           selected === "unified"
-            ? "?unified=true"
-            : `?connected_account_id=${encodeURIComponent(selected)}`;
-        const res = await fetch(`${BACKEND}/api/galaxy${qs}`, { cache: "no-store" });
+            ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
+            : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(selected)}`;
+        const res = await apiFetch(`/api/galaxy${qs}`);
         const json: GalaxyResponse = await res.json();
         if (!cancelled) {
           setGalaxy({
@@ -417,7 +438,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected]);
+  }, [selected, userId]);
 
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
 

@@ -79,6 +79,20 @@ def _account_pacing_mode(account: ConnectedAccount | None) -> str:
     return normalize_mode(metadata.get("pacing_mode"))
 
 
+def posts_in_rotation_for_account(db, account: ConnectedAccount) -> int:
+    provider = str(account.provider or "").strip().lower()
+    if provider == "bluesky":
+        return (
+            db.query(Post)
+            .filter(
+                Post.connected_account_id == account.id,
+                Post.state == "active",
+            )
+            .count()
+        )
+    return active_rotation_count(account.handle)
+
+
 def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
     account = getattr(autopilot, "connected_account", None) if autopilot else None
     provider = getattr(autopilot, "provider", None) or getattr(account, "provider", None) or "x"
@@ -138,18 +152,7 @@ def get_or_create_autopilot_for_account(db, user: User, account: ConnectedAccoun
     )
 
     provider = str(account.provider or "").strip().lower()
-
-    if provider == "bluesky":
-        posts_in_rotation = (
-            db.query(Post)
-            .filter(
-                Post.connected_account_id == account.id,
-                Post.state == "active",
-            )
-            .count()
-        )
-    else:
-        posts_in_rotation = active_rotation_count(account.handle)
+    posts_in_rotation = posts_in_rotation_for_account(db, account)
 
     if autopilot:
         autopilot.provider = provider
@@ -289,7 +292,7 @@ def toggle_status(
         autopilot.enabled = enabled
         autopilot.connected = account.connection_status == "connected"
         autopilot.provider = account.provider
-        autopilot.posts_in_rotation = active_rotation_count(account.handle)
+        autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
         autopilot.last_action_at = datetime.now(UTC).replace(tzinfo=None)
         autopilot.next_cycle_at = datetime.now(UTC).replace(tzinfo=None) if enabled else None
 
@@ -322,7 +325,7 @@ def set_pacing_mode(
         autopilot = get_or_create_autopilot_for_account(db, user, account)
         autopilot.provider = account.provider
         autopilot.connected = account.connection_status == "connected"
-        autopilot.posts_in_rotation = active_rotation_count(account.handle)
+        autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
 
         db.commit()
         db.refresh(account)
@@ -423,7 +426,7 @@ def connect_provider(
         autopilot = get_or_create_autopilot_for_account(db, user, account)
         autopilot.connected = True
         autopilot.provider = provider
-        autopilot.posts_in_rotation = active_rotation_count(account.handle)
+        autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
 
         db.commit()
         db.refresh(account)

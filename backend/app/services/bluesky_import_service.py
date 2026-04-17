@@ -89,7 +89,7 @@ def import_bluesky_posts(
     user_id: int,
     connected_account_id: int,
     handle: str,
-    limit: int = 100,
+    limit: int = 500,
 ) -> dict:
 
     account = _find_bluesky_account(db, connected_account_id)
@@ -117,55 +117,66 @@ def import_bluesky_posts(
     skipped = 0
     now = _utc_now_naive()
 
-    response = client.app.bsky.feed.get_author_feed(
-        {
+    fetched = 0
+    cursor = None
+
+    while fetched < limit:
+        payload = {
             "actor": handle,
-            "limit": min(limit, 100),
+            "limit": min(limit - fetched, 100),
         }
-    )
+        if cursor:
+            payload["cursor"] = cursor
 
-    feed = list(getattr(response, "feed", []) or [])
+        response = client.app.bsky.feed.get_author_feed(payload)
+        feed = list(getattr(response, "feed", []) or [])
+        if not feed:
+            break
 
-    for item in feed:
+        for item in feed:
+            provider_post_id = _extract_post_uri(item).strip()
+            if not provider_post_id:
+                skipped += 1
+                continue
 
-        provider_post_id = _extract_post_uri(item).strip()
-        if not provider_post_id:
-            skipped += 1
-            continue
+            text = _extract_post_text(item)
+            score = 50 + _extract_like_count(item) * 3 + _extract_repost_count(item) * 4
 
-        text = _extract_post_text(item)
-        score = 50 + _extract_like_count(item) * 3 + _extract_repost_count(item) * 4
+            created_at = _extract_created_at(item) or now
 
-        created_at = _extract_created_at(item) or now
-
-        existing = (
-            db.query(Post)
-            .filter(
-                Post.connected_account_id == connected_account_id,
-                Post.provider_post_id == provider_post_id,
+            existing = (
+                db.query(Post)
+                .filter(
+                    Post.connected_account_id == connected_account_id,
+                    Post.provider_post_id == provider_post_id,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if existing:
-            existing.text = text or existing.text
-            existing.score = score
-            updated += 1
-            continue
+            if existing:
+                existing.text = text or existing.text
+                existing.score = score
+                updated += 1
+                continue
 
-        db.add(
-            Post(
-                user_id=user_id,
-                connected_account_id=connected_account_id,
-                provider_post_id=provider_post_id,
-                text=text or provider_post_id,
-                score=score,
-                state="active",
-                created_at=created_at,
+            db.add(
+                Post(
+                    user_id=user_id,
+                    connected_account_id=connected_account_id,
+                    provider_post_id=provider_post_id,
+                    text=text or provider_post_id,
+                    score=score,
+                    state="active",
+                    created_at=created_at,
+                )
             )
-        )
 
-        imported += 1
+            imported += 1
+
+        fetched += len(feed)
+        cursor = getattr(response, "cursor", None)
+        if not cursor:
+            break
 
     db.flush()
 

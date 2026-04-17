@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
+from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, Post
 
 router = APIRouter(prefix="/api/galaxy", tags=["galaxy"])
@@ -245,21 +246,44 @@ def _candidate_flag(score: float, gravity: str, revival_score: float) -> bool:
     return bool(score >= 180 or revival_score >= 120 or gravity in {"gravity", "strong"})
 
 
+def _resolve_requested_user_id(authorization: str | None, fallback_user_id: int) -> int:
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        payload = verify_token(token)
+        if payload and payload.get("user_id"):
+            return int(payload["user_id"])
+    return fallback_user_id
+
+
 def _fetch_accounts_for_mode(
     db: Session,
+    user_id: int,
     connected_account_id: int | None,
     unified: bool,
 ) -> list[ConnectedAccount]:
     if unified:
-        return db.query(ConnectedAccount).order_by(ConnectedAccount.id.asc()).all()
+        return (
+            db.query(ConnectedAccount)
+            .filter(ConnectedAccount.user_id == user_id)
+            .order_by(ConnectedAccount.id.asc())
+            .all()
+        )
 
     if connected_account_id is None:
-        first = db.query(ConnectedAccount).order_by(ConnectedAccount.id.asc()).first()
+        first = (
+            db.query(ConnectedAccount)
+            .filter(ConnectedAccount.user_id == user_id)
+            .order_by(ConnectedAccount.id.asc())
+            .first()
+        )
         return [first] if first else []
 
     account = (
         db.query(ConnectedAccount)
-        .filter(ConnectedAccount.id == connected_account_id)
+        .filter(
+            ConnectedAccount.id == connected_account_id,
+            ConnectedAccount.user_id == user_id,
+        )
         .first()
     )
     return [account] if account else []
@@ -322,17 +346,21 @@ def _aggregate_unified_metadata(
 
 @router.get("")
 def get_galaxy(
+    user_id: int = Query(default=1, ge=1),
     connected_account_id: int | None = Query(default=None),
     unified: bool = Query(default=False),
     limit: int = Query(default=2000, ge=1, le=5000),
+    authorization: str | None = Header(default=None),
 ):
     db: Session = SessionLocal()
     try:
-        accounts = _fetch_accounts_for_mode(db, connected_account_id, unified)
+        resolved_user_id = _resolve_requested_user_id(authorization, user_id)
+        accounts = _fetch_accounts_for_mode(db, resolved_user_id, connected_account_id, unified)
         if not accounts:
             return {
                 "nodes": [],
                 "meta": {
+                    "user_id": resolved_user_id,
                     "connected_account_id": connected_account_id,
                     "count": 0,
                     "running": False,
@@ -501,6 +529,7 @@ def get_galaxy(
         return {
             "nodes": nodes,
             "meta": {
+                "user_id": resolved_user_id,
                 "connected_account_id": connected_account_id,
                 "count": len(nodes),
                 "running": any_running,

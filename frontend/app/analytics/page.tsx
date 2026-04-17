@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { getToken } from '../lib/auth'
+import { getToken, me } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 import {
   compactNumber,
@@ -60,6 +60,8 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 }
 
 export default function AnalyticsPage() {
+  const [userId, setUserId] = useState<number | null>(null)
+  const [accountCount, setAccountCount] = useState(0)
   const [system, setSystem] = useState<SystemStatus | null>(null)
   const [jobs, setJobs] = useState<JobItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,26 +70,52 @@ export default function AnalyticsPage() {
   useEffect(() => {
     let mounted = true
 
+    async function loadSession() {
+      const session = await me()
+      if (!mounted) return
+      setUserId(session?.user?.id ?? null)
+      if (!session?.user?.id) {
+        setLoading(false)
+        setError('No active login found.')
+      }
+    }
+
+    loadSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!userId) return
+
+    let mounted = true
+
     async function load() {
       try {
         setError('')
 
-        const [systemRes, jobsRes] = await Promise.all([
+        const [systemRes, jobsRes, accountsRes] = await Promise.all([
           apiFetch('/api/system-status'),
-          apiFetch('/api/jobs?user_id=1'),
+          apiFetch(`/api/jobs?user_id=${userId}`),
+          apiFetch(`/api/connected-accounts?user_id=${userId}`),
         ])
 
         const systemJson = await systemRes.json()
         const jobsJson = await jobsRes.json()
+        const accountsJson = await accountsRes.json()
         const nextJobs = Array.isArray(jobsJson.jobs)
           ? jobsJson.jobs
           : Array.isArray(jobsJson)
             ? jobsJson
             : []
+        const nextAccounts = Array.isArray(accountsJson.accounts) ? accountsJson.accounts : []
 
         if (!mounted) return
         setSystem(systemJson)
         setJobs(nextJobs)
+        setAccountCount(nextAccounts.length)
       } catch (err) {
         if (!mounted) return
         setError(err instanceof Error ? err.message : 'Could not load analytics console')
@@ -103,21 +131,21 @@ export default function AnalyticsPage() {
       mounted = false
       window.clearInterval(id)
     }
-  }, [])
+  }, [userId])
 
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
     return {
       queued: heartbeat.queued ?? 0,
       processed: heartbeat.processed ?? 0,
-      syncedAccounts: heartbeat.synced_accounts ?? 0,
+      syncedAccounts: accountCount,
       repairedJobs: heartbeat.repaired_jobs ?? 0,
       pollSeconds: heartbeat.poll_seconds ?? 0,
       heartbeatAt: heartbeat.timestamp ?? null,
       workerStatus: heartbeat.status || (system?.worker?.ok ? 'ok' : 'offline'),
       workerError: heartbeat.error || null,
     }
-  }, [system])
+  }, [system, accountCount])
 
   return (
     <main className="page">
@@ -171,7 +199,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Synced Accounts</div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Connected Accounts</div>
             <div style={{ fontSize: 30, fontWeight: 700 }}>{summary.syncedAccounts}</div>
           </div>
 

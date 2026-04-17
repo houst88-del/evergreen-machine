@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { getToken } from '../lib/auth'
+import { getToken, me } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 import {
   compactNumber,
@@ -62,6 +62,7 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 }
 
 export default function PostsPage() {
+  const [userId, setUserId] = useState<number | null>(null)
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [statusMap, setStatusMap] = useState<Record<number, AccountStatus>>({})
   const [jobs, setJobs] = useState<JobItem[]>([])
@@ -71,22 +72,44 @@ export default function PostsPage() {
   useEffect(() => {
     let mounted = true
 
+    async function loadSession() {
+      const session = await me()
+      if (!mounted) return
+      setUserId(session?.user?.id ?? null)
+      if (!session?.user?.id) {
+        setLoading(false)
+        setError('No active login found.')
+      }
+    }
+
+    loadSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!userId) return
+
+    let mounted = true
+
     async function load() {
       try {
         setError('')
 
-        const accountsRes = await apiFetch('/api/connected-accounts?user_id=1')
+        const accountsRes = await apiFetch(`/api/connected-accounts?user_id=${userId}`)
         const accountsJson = await accountsRes.json()
         const nextAccounts = Array.isArray(accountsJson.accounts) ? accountsJson.accounts : []
 
         const nextStatusMap: Record<number, AccountStatus> = {}
         for (const account of nextAccounts) {
-          const res = await apiFetch(`/api/status?user_id=1&connected_account_id=${account.id}`)
+          const res = await apiFetch(`/api/status?user_id=${userId}&connected_account_id=${account.id}`)
           if (!res.ok) continue
           nextStatusMap[account.id] = await res.json()
         }
 
-        const jobsRes = await apiFetch('/api/jobs?user_id=1')
+        const jobsRes = await apiFetch(`/api/jobs?user_id=${userId}`)
         const jobsJson = await jobsRes.json()
         const nextJobs = Array.isArray(jobsJson.jobs)
           ? jobsJson.jobs
@@ -113,7 +136,7 @@ export default function PostsPage() {
       mounted = false
       window.clearInterval(id)
     }
-  }, [])
+  }, [userId])
 
   return (
     <main className="page">
