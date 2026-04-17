@@ -1,3 +1,4 @@
+from sqlalchemy.orm import Session
 def _make_client(db: Session, connected_account_id: int):
     account = (
         db.query(ConnectedAccount)
