@@ -10,6 +10,20 @@ from atproto import Client
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://*.vercel.app",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # easiest while testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
