@@ -110,6 +110,24 @@ const providerLabel = (provider?: string) => {
   return provider || "Provider";
 };
 
+const humanizeStrategy = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Standard circulation";
+  const normalized = raw.toLowerCase();
+  if (normalized === "x_db_tier_a") return "X priority orbit";
+  if (normalized === "constellation circulation") return "Constellation circulation";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const likelyNext = (node?: GalaxyNode | null) =>
+  !!node &&
+  (safeNum(node.predicted_velocity, 0) >= 0.65 ||
+    !!node.current_cycle ||
+    rankGravity(node) >= 300);
+
 const providerTheme = (provider?: string) => {
   const p = (provider || "").toLowerCase();
   if (p === "bluesky" || p === "bsky") {
@@ -638,6 +656,25 @@ export default function GalaxyPage() {
     );
   }, [workingNodes]);
 
+  const backgroundStars = useMemo(
+    () =>
+      Array.from({ length: 72 }, (_, index) => {
+        const x = ((index * 37) % 100) + ((index * 13) % 7) * 0.18;
+        const y = ((index * 23) % 100) + ((index * 7) % 5) * 0.24;
+        const size = 1 + (index % 3) * 0.8;
+        const delay = (index % 9) * 0.6;
+        const duration = 4.8 + (index % 5) * 1.2;
+        const tone =
+          index % 5 === 0
+            ? "rgba(125,211,252,0.9)"
+            : index % 4 === 0
+              ? "rgba(187,247,208,0.9)"
+              : "rgba(255,248,210,0.82)";
+        return { x, y, size, delay, duration, tone };
+      }),
+    []
+  );
+
   const nodeCount = workingNodes.length;
   const densityScale =
     nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
@@ -659,11 +696,30 @@ export default function GalaxyPage() {
         minHeight: "100vh",
         color: "rgba(236,253,245,0.98)",
         background:
-          "radial-gradient(circle at 50% 0%, rgba(16,185,129,0.13), transparent 28%), linear-gradient(90deg, #010707 0%, #03130f 35%, #03130f 65%, #010707 100%)",
+          "radial-gradient(circle at 50% 0%, rgba(16,185,129,0.13), transparent 28%), radial-gradient(circle at 52% 64%, rgba(250,228,120,0.06), transparent 26%), linear-gradient(90deg, #010707 0%, #03130f 35%, #03130f 65%, #010707 100%)",
         fontFamily:
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
+      <style>{`
+        @keyframes galaxyTwinkle {
+          0%, 100% { opacity: 0.22; transform: scale(1); }
+          50% { opacity: 0.82; transform: scale(1.35); }
+        }
+        @keyframes galaxyFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes galaxyPulse {
+          0% { transform: translate(-50%, -50%) scale(0.92); opacity: 0.72; }
+          70% { transform: translate(-50%, -50%) scale(1.18); opacity: 0.1; }
+          100% { transform: translate(-50%, -50%) scale(1.26); opacity: 0; }
+        }
+        @keyframes galaxyShimmer {
+          0%, 100% { opacity: 0.22; filter: blur(0px); }
+          50% { opacity: 0.5; filter: blur(1px); }
+        }
+      `}</style>
       <div style={{ maxWidth: 2600, margin: "0 auto", padding: 28 }}>
         <div
           style={{
@@ -870,7 +926,25 @@ export default function GalaxyPage() {
                 {currentStatus?.running ? "Running" : "Idle"}
               </div>
               <div style={{ marginTop: 8, fontSize: 14, color: "rgba(236,253,245,0.7)" }}>
-                {engine.strategy || "Standard circulation"}
+                {humanizeStrategy(engine.strategy)}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                {(selectedStar
+                  ? [
+                      selectedStar.current_cycle ? "Live now" : "",
+                      isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
+                      likelyNext(selectedStar) ? "High priority" : "",
+                    ]
+                  : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
+                  .filter(Boolean)
+                  .map((label, index) => (
+                    <span
+                      key={label}
+                      style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                    >
+                      {label}
+                    </span>
+                  ))}
               </div>
             </div>
 
@@ -976,7 +1050,7 @@ export default function GalaxyPage() {
                   {[
                     selectedStar.current_cycle ? "Current cycle" : "",
                     isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
-                    safeNum(selectedStar.predicted_velocity, 0) >= 0.65 ? "Likely next" : "",
+                    likelyNext(selectedStar) ? "Likely next" : "",
                   ]
                     .filter(Boolean)
                     .map((label) => (
@@ -1061,9 +1135,27 @@ export default function GalaxyPage() {
                 borderRadius: 30,
                 border: "1px solid rgba(52,211,153,0.18)",
                 background:
-                  "radial-gradient(circle at 50% 50%, rgba(253,224,71,0.10), transparent 58%), linear-gradient(180deg, #03100f 0%, #010707 100%)",
+                  "radial-gradient(circle at 50% 52%, rgba(253,224,71,0.12), transparent 42%), radial-gradient(circle at 16% 18%, rgba(125,211,252,0.08), transparent 28%), radial-gradient(circle at 82% 16%, rgba(187,247,208,0.08), transparent 24%), linear-gradient(180deg, #03100f 0%, #010707 100%)",
               }}
             >
+              {backgroundStars.map((star, index) => (
+                <span
+                  key={`background-star-${index}`}
+                  style={{
+                    position: "absolute",
+                    left: `${star.x}%`,
+                    top: `${star.y}%`,
+                    width: star.size,
+                    height: star.size,
+                    borderRadius: "999px",
+                    background: star.tone,
+                    opacity: 0.3,
+                    boxShadow: `0 0 ${star.size * 8}px ${star.tone}`,
+                    animation: `galaxyTwinkle ${star.duration}s ease-in-out ${star.delay}s infinite`,
+                    pointerEvents: "none",
+                  }}
+                />
+              ))}
               <div
                 style={{
                   position: "absolute",
@@ -1071,6 +1163,7 @@ export default function GalaxyPage() {
                   transform: sceneTransform,
                   transformOrigin: "center center",
                   transition: "transform 220ms ease-out",
+                  animation: timeLapseOn ? "galaxyFloat 9s ease-in-out infinite" : undefined,
                 }}
               >
                 {supernovaNode
@@ -1113,6 +1206,7 @@ export default function GalaxyPage() {
                           ? "radial-gradient(circle, rgba(250,228,120,0.18) 0%, rgba(250,228,120,0.06) 38%, transparent 72%)"
                           : "radial-gradient(circle, rgba(125,211,252,0.12) 0%, rgba(125,211,252,0.04) 38%, transparent 72%)",
                       opacity: n.o,
+                      animation: `galaxyShimmer ${8 + i * 1.4}s ease-in-out infinite`,
                       pointerEvents: "none",
                     }}
                   />
@@ -1166,6 +1260,22 @@ export default function GalaxyPage() {
                               position: "absolute",
                               left: `${(node as any)._px}%`,
                               top: `${(node as any)._py}%`,
+                              width: `${size * (selectedNow ? 8.8 : 6.6)}px`,
+                              height: `${size * (selectedNow ? 8.8 : 6.6)}px`,
+                              borderRadius: "9999px",
+                              border: `1px solid ${
+                                selectedNow ? "rgba(255,240,170,0.4)" : theme.border
+                              }`,
+                              animation: `galaxyPulse ${selectedNow ? 2.4 : 3.2}s ease-out infinite`,
+                              pointerEvents: "none",
+                              zIndex: selectedNow ? 5 : 4,
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: `${(node as any)._px}%`,
+                              top: `${(node as any)._py}%`,
                               width: `${size * (selectedNow ? 6.8 : 5.2)}px`,
                               height: `${size * (selectedNow ? 6.8 : 5.2)}px`,
                               transform: "translate(-50%, -50%)",
@@ -1196,6 +1306,24 @@ export default function GalaxyPage() {
                               opacity: 0.42 - ((flashTick + index * 11) % 16) * 0.02,
                               pointerEvents: "none",
                               zIndex: selectedNow ? 5 : 4,
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: `calc(${(node as any)._px}% - ${size * 2.8}px)`,
+                              top: `${(node as any)._py}%`,
+                              width: `${size * 4.8}px`,
+                              height: `${Math.max(10, size * 1.2)}px`,
+                              transform: "translate(-100%, -50%)",
+                              borderRadius: "9999px",
+                              background: `linear-gradient(90deg, transparent 0%, ${
+                                selectedNow ? "rgba(255,240,170,0.18)" : theme.glow
+                              } 78%, transparent 100%)`,
+                              filter: "blur(8px)",
+                              opacity: selectedNow ? 0.95 : 0.68,
+                              pointerEvents: "none",
+                              zIndex: selectedNow ? 4 : 3,
                             }}
                           />
                         </>
@@ -1273,6 +1401,9 @@ export default function GalaxyPage() {
                             whiteSpace: "nowrap",
                             pointerEvents: "none",
                             zIndex: 6,
+                            boxShadow: selectedNow
+                              ? "0 0 20px rgba(255,240,170,0.14)"
+                              : "0 10px 30px rgba(0,0,0,0.18)",
                           }}
                         >
                           {shortText(node.label || node.id, 24)}
@@ -1320,13 +1451,14 @@ export default function GalaxyPage() {
                     position: "absolute",
                     bottom: 20,
                     left: 20,
-                    maxWidth: 470,
+                    maxWidth: 520,
                     borderRadius: 28,
-                    border: "1px solid rgba(110,231,183,0.2)",
-                    background: "rgba(1,10,10,0.88)",
+                    border: "1px solid rgba(110,231,183,0.22)",
+                    background:
+                      "linear-gradient(145deg, rgba(2,14,12,0.92), rgba(1,10,10,0.84))",
                     padding: 20,
-                    boxShadow: "0 25px 50px rgba(0,0,0,0.35)",
-                    backdropFilter: "blur(10px)",
+                    boxShadow: "0 25px 50px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.02)",
+                    backdropFilter: "blur(14px)",
                     zIndex: 5,
                   }}
                 >
@@ -1346,6 +1478,24 @@ export default function GalaxyPage() {
                         }}
                       >
                         {shortText(hovered.label || hovered.url || hovered.id, 90)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span style={missionBadgeStyle("neutral", true)}>
+                          {humanizeStrategy(hovered.selection_strategy)}
+                        </span>
+                        {likelyNext(hovered) ? (
+                          <span style={missionBadgeStyle("gold", true)}>Likely next</span>
+                        ) : null}
+                        {hovered.current_cycle ? (
+                          <span style={missionBadgeStyle("gold", true)}>Current live star</span>
+                        ) : null}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1453,7 +1603,7 @@ export default function GalaxyPage() {
                           color: "rgba(236,253,245,0.9)",
                         }}
                       >
-                        {hovered.selection_strategy || "Standard circulation"}
+                        {humanizeStrategy(hovered.selection_strategy)}
                       </div>
                     </div>
                     <div>
@@ -1473,6 +1623,10 @@ export default function GalaxyPage() {
                           fontSize: 14,
                           lineHeight: 1.7,
                           color: "rgba(236,253,245,0.78)",
+                          padding: "12px 14px",
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,0.06)",
+                          background: "rgba(255,255,255,0.03)",
                         }}
                       >
                         {hovered.selection_reason || "No selection reason recorded."}
@@ -1513,6 +1667,8 @@ export default function GalaxyPage() {
                 {forecastNodes.map((n, i) => (
                   <div
                     key={n.id}
+                    onMouseEnter={() => setHovered(n)}
+                    onClick={() => setSelectedStarId(n.id)}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "20px 1fr auto",
@@ -1521,12 +1677,21 @@ export default function GalaxyPage() {
                       fontSize: 12,
                       padding: "8px 10px",
                       borderRadius: 14,
+                      cursor: "pointer",
                       border:
-                        i === 0
+                        selectedStarId === n.id
+                          ? "1px solid rgba(125,211,252,0.34)"
+                          : i === 0
                           ? "1px solid rgba(250,228,120,0.26)"
                           : "1px solid rgba(255,255,255,0.06)",
                       background:
-                        i === 0 ? "rgba(250,228,120,0.08)" : "rgba(255,255,255,0.02)",
+                        selectedStarId === n.id
+                          ? "rgba(125,211,252,0.08)"
+                          : i === 0
+                            ? "rgba(250,228,120,0.08)"
+                            : "rgba(255,255,255,0.02)",
+                      boxShadow:
+                        selectedStarId === n.id ? "0 0 24px rgba(125,211,252,0.08)" : undefined,
                     }}
                   >
                     <div style={{ color: "rgba(255,248,210,0.95)", fontWeight: 700 }}>
@@ -1606,7 +1771,7 @@ export default function GalaxyPage() {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 {[
-                  engine.strategy ? `Strategy ${engine.strategy}` : "",
+                  engine.strategy ? `Strategy ${humanizeStrategy(engine.strategy)}` : "",
                   engine.reason ? "Reason logged" : "",
                   engine.velocity ? "Velocity stack" : "",
                 ]
