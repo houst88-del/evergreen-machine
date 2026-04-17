@@ -5,6 +5,7 @@ const API_BASE =
   'https://backend-fixed-production.up.railway.app'
 
 const TOKEN_KEY = 'evergreen_auth_token'
+const USER_KEY = 'evergreen_auth_user'
 
 export type AuthUser = {
   id: number
@@ -35,6 +36,28 @@ export function setToken(token: string) {
 export function clearToken() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(TOKEN_KEY)
+}
+
+export function getStoredUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(USER_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as AuthUser
+  } catch {
+    return null
+  }
+}
+
+export function setStoredUser(user: AuthUser) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+export function clearStoredUser() {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(USER_KEY)
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
@@ -76,6 +99,10 @@ export async function signup(email: string, password: string, handle: string): P
     setToken(json.token)
   }
 
+  if (json.user) {
+    setStoredUser(json.user)
+  }
+
   return json
 }
 
@@ -99,23 +126,39 @@ export async function login(email: string, password: string): Promise<AuthRespon
     setToken(json.token)
   }
 
+  if (json.user) {
+    setStoredUser(json.user)
+  }
+
   return json
 }
 
 export async function me(): Promise<AuthResponse | null> {
   const token = getToken()
-  if (!token) return null
+  const storedUser = getStoredUser()
+
+  if (!token && !storedUser) return null
 
   const res = await apiFetch('/api/auth/me')
+
+  if (res.status === 404) {
+    return storedUser ? { user: storedUser, token: token || undefined } : null
+  }
+
   if (res.status === 401) {
     clearToken()
+    clearStoredUser()
     return null
   }
 
   const json = await res.json()
+
   if (!res.ok) {
-    clearToken()
-    return null
+    return storedUser ? { user: storedUser, token: token || undefined } : null
+  }
+
+  if (json.user) {
+    setStoredUser(json.user)
   }
 
   return json
@@ -123,4 +166,5 @@ export async function me(): Promise<AuthResponse | null> {
 
 export function logout() {
   clearToken()
+  clearStoredUser()
 }
