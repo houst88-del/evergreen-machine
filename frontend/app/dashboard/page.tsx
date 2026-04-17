@@ -439,7 +439,7 @@ export default function DashboardPage() {
     setBusyAction('connect-x')
 
     try {
-      const res = await apiFetch('/api/providers/x/connect')
+      const res = await apiFetch('/api/providers/x/start')
       const json = await res.json().catch(() => ({}))
 
       if (!res.ok || !json.authorization_url) {
