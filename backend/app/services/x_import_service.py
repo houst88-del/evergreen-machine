@@ -225,8 +225,8 @@ def _backfill_from_v1_timeline(
             user_id=x_user_id,
             count=page_size,
             max_id=max_id,
-            include_rts=False,
-            exclude_replies=False,
+            include_rts=True,
+            exclude_replies=True,
             tweet_mode="extended",
         )
         tweets = list(timeline or [])
@@ -328,7 +328,7 @@ def import_x_pool_posts(
             id=x_user_id,
             max_results=page_size,
             tweet_fields=["created_at", "public_metrics"],
-            exclude=["retweets"],
+            exclude=["replies"],
             pagination_token=next_token,
             user_auth=True,
         )
@@ -432,8 +432,9 @@ def import_x_pool_posts(
     )
 
     page_sizes_label = ", ".join(str(size) for size in v2_page_sizes) if v2_page_sizes else "0"
+    debug_notes.insert(0, "X import policy: include retweets, exclude replies.")
     debug_notes.insert(
-        0,
+        1,
         f"v2 timeline pages {v2_pages}; page sizes [{page_sizes_label}]; final next token {'yes' if last_meta.get('has_next_token') else 'no'}.",
     )
     debug_notes.append(
