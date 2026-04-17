@@ -706,7 +706,17 @@ export default function GalaxyPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 12, alignItems: "stretch" }}>
               <div style={cardStyle()}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                  {[["Gravity wells", true], ["Strong", false], ["Standard", false], ["Glow", false], ["Inline labels", false], ["Live motion", false], ["Constellations", false], ["Forecast", false], ["Nebulae", false]].map(([label, accent]: [string, boolean]) => (
+                  {([
+  ["Gravity wells", true],
+  ["Strong", false],
+  ["Standard", false],
+  ["Glow", false],
+  ["Inline labels", false],
+  ["Live motion", false],
+  ["Constellations", false],
+  ["Forecast", false],
+  ["Nebulae", false],
+] as [string, boolean][]).map(([label, accent]) => (
                     <span key={label} style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, border: accent ? "1px solid rgba(253,224,71,0.35)" : "1px solid rgba(110,231,183,0.2)", background: accent ? "rgba(253,224,71,0.12)" : "rgba(16,185,129,0.10)", color: accent ? "rgba(254,249,195,1)" : "rgba(236,253,245,0.9)" }}>{label}</span>
                   ))}
                 </div>
