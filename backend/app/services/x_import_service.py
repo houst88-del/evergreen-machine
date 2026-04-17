@@ -8,6 +8,7 @@ import tweepy
 from sqlalchemy.orm import Session
 
 from app.models.models import ConnectedAccount, Post
+from app.services.secret_crypto import decrypt_secret
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -98,10 +99,14 @@ def _make_client(db: Session, connected_account_id: int) -> tuple[tweepy.Client,
     if not account:
         raise RuntimeError(f"Connected account not found: {connected_account_id}")
 
-    access_token = getattr(account, "access_token", None)
-    access_token_secret = getattr(account, "access_token_secret", None)
+    raw_access_token = getattr(account, "access_token", None)
+    raw_access_token_secret = getattr(account, "access_token_secret", None)
 
-    # Be tolerant to either schema name.
+    access_token = decrypt_secret(raw_access_token) if raw_access_token else None
+    access_token_secret = (
+        decrypt_secret(raw_access_token_secret) if raw_access_token_secret else None
+    )
+
     provider_account_id = str(
         getattr(account, "provider_account_id", None)
         or getattr(account, "provider_user_id", None)
