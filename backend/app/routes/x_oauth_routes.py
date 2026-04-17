@@ -3,16 +3,14 @@ from __future__ import annotations
 import os
 
 import tweepy
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Cookie, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount, User
 from app.services.secret_crypto import encrypt_metadata, encrypt_secret
 
 router = APIRouter(prefix="/api/providers/x", tags=["providers"])
-
-OAUTH_REQUEST_SECRETS: dict[str, str] = {}
 
 
 def oauth_config():
@@ -182,29 +180,58 @@ def start_oauth():
         if not oauth_token or not oauth_token_secret:
             raise HTTPException(status_code=500, detail="Missing oauth request token or secret")
 
-        OAUTH_REQUEST_SECRETS[oauth_token] = oauth_token_secret
-        return {"ok": True, "authorization_url": url}
+        response = JSONResponse(
+            {
+                "ok": True,
+                "authorization_url": url,
+            }
+        )
+        response.set_cookie(
+            key="x_oauth_request_secret",
+            value=oauth_token_secret,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=600,
+            path="/",
+        )
+        response.set_cookie(
+            key="x_oauth_request_token",
+            value=oauth_token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=600,
+            path="/",
+        )
+        return response
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to start X OAuth: {exc}")
 
 
 @router.get("/callback", response_class=HTMLResponse)
-def oauth_callback(request: Request):
+def oauth_callback(
+    request: Request,
+    x_oauth_request_secret: str | None = Cookie(default=None),
+    x_oauth_request_token: str | None = Cookie(default=None),
+):
     oauth_token = str(request.query_params.get("oauth_token", "")).strip()
     oauth_verifier = str(request.query_params.get("oauth_verifier", "")).strip()
 
     if not oauth_token or not oauth_verifier:
         raise HTTPException(status_code=400, detail="Missing oauth_token or oauth_verifier")
 
-    request_secret = OAUTH_REQUEST_SECRETS.get(oauth_token)
-    if not request_secret:
-        raise HTTPException(status_code=400, detail="Unknown or expired oauth token")
+    if not x_oauth_request_secret or not x_oauth_request_token:
+        raise HTTPException(status_code=400, detail="Missing OAuth request cookie")
+
+    if oauth_token != x_oauth_request_token:
+        raise HTTPException(status_code=400, detail="OAuth token mismatch")
 
     api_key, api_secret, callback = oauth_config()
     auth = tweepy.OAuth1UserHandler(api_key, api_secret, callback=callback)
     auth.request_token = {
         "oauth_token": oauth_token,
-        "oauth_token_secret": request_secret,
+        "oauth_token_secret": x_oauth_request_secret,
     }
 
     try:
@@ -247,6 +274,9 @@ def oauth_callback(request: Request):
           </body>
         </html>
         """
-        return HTMLResponse(content=html)
-    finally:
-        OAUTH_REQUEST_SECRETS.pop(oauth_token, None)
+        response = HTMLResponse(content=html)
+        response.delete_cookie("x_oauth_request_secret", path="/")
+        response.delete_cookie("x_oauth_request_token", path="/")
+        return response
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to complete X OAuth: {exc}")
