@@ -1196,7 +1196,7 @@ export default function DashboardPage() {
                       <div>Next cycle: {fmtWhen(payload.next_cycle_at)}</div>
                     </div>
 
-                    {(payload.message || rotationHealth.selection_reason) && (
+                    {(payload.error || payload.message || rotationHealth.selection_reason) && (
                     <div
                       style={{
                         marginTop: 14,
