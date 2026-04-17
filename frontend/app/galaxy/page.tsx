@@ -59,7 +59,7 @@ type DashboardStatus = {
   metadata?: Record<string, unknown>;
 };
 
-const BACKEND = "http://127.0.0.1:8000";
+const BACKEND = "https://evergreen-machine-production.up.railway.app";
 
 const safeNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
