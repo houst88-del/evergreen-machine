@@ -1,119 +1,261 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { login, me } from '../lib/auth'
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 
-export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [checkingSession, setCheckingSession] = useState(true)
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "http://127.0.0.1:8000";
 
-  useEffect(() => {
-    let mounted = true
-
-    async function checkSession() {
-      try {
-        const session = await me()
-        if (!mounted) return
-        if (session?.user) {
-          router.replace('/dashboard')
-          return
-        }
-      } finally {
-        if (mounted) setCheckingSession(false)
-      }
+type LoginResponse =
+  | {
+      token?: string;
+      access_token?: string;
+      user?: {
+        id: number;
+        email?: string;
+        x_handle?: string;
+        handle?: string;
+      };
+      id?: number;
+      email?: string;
+      x_handle?: string;
+      handle?: string;
+      message?: string;
     }
+  | Record<string, any>;
 
-    checkSession()
-
-    return () => {
-      mounted = false
-    }
-  }, [router])
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    try {
-      await login(email, password)
-      router.push('/dashboard')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
-      setLoading(false)
-    }
+function normalizeUser(data: LoginResponse) {
+  if (data?.user && typeof data.user.id === "number") {
+    return {
+      id: data.user.id,
+      email: data.user.email,
+      x_handle: data.user.x_handle || data.user.handle,
+    };
   }
 
-  if (checkingSession) {
-    return (
-      <main className="page">
-        <div className="shell">
-          <section className="card" style={{ maxWidth: 560 }}>
-            Checking session...
-          </section>
-        </div>
-      </main>
-    )
+  if (typeof data?.id === "number") {
+    return {
+      id: data.id,
+      email: data.email,
+      x_handle: data.x_handle || data.handle,
+    };
+  }
+
+  return null;
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${API_BASE}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      let data: LoginResponse = {};
+      try {
+        data = await response.json();
+      } catch {
+      }
+
+      if (!response.ok) {
+        const message =
+          (typeof data?.message === "string" && data.message) ||
+          "Invalid credentials";
+        throw new Error(message);
+      }
+
+      const token =
+        (typeof data?.token === "string" && data.token) ||
+        (typeof data?.access_token === "string" && data.access_token) ||
+        "";
+
+      const user = normalizeUser(data);
+
+      if (token) {
+        localStorage.setItem("evergreen_token", token);
+      }
+
+      if (user) {
+        localStorage.setItem("evergreen_user", JSON.stringify(user));
+      } else {
+        localStorage.setItem(
+          "evergreen_user",
+          JSON.stringify({
+            id: 1,
+            email,
+          })
+        );
+      }
+
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <main className="page">
-      <div className="shell">
-        <header className="header">
-          <div>
-            <div className="wordmark">Evergreen</div>
-            <div className="subtle">Log in to your creator autopilot.</div>
-          </div>
-        </header>
+    <main style={styles.page}>
+      <div style={styles.shell}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Evergreen</h1>
+          <p style={styles.subtitle}>Log in and continue your mission control.</p>
+        </div>
 
-        <section className="card" style={{ maxWidth: 560 }}>
-          <h2>Log In</h2>
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>Log In</h2>
 
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 20 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <label style={styles.label}>
               <span>Email</span>
               <input
-                className="input"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@evergreen.com"
+                style={styles.input}
                 required
               />
             </label>
 
-            <label style={{ display: 'grid', gap: 6 }}>
+            <label style={styles.label}>
               <span>Password</span>
               <input
-                className="input"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                style={styles.input}
                 required
               />
             </label>
 
-            {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
+            {error ? <div style={styles.error}>{error}</div> : null}
 
-            <button className="btn primary" type="submit" disabled={loading}>
-              {loading ? 'Logging in...' : 'Log In'}
+            <button type="submit" disabled={busy} style={styles.primaryButton}>
+              {busy ? "Logging in..." : "Log In"}
             </button>
           </form>
 
-          <div style={{ marginTop: 20, display: 'flex', gap: 16 }}>
-            <Link href="/signup">Need an account? Sign up</Link>
-            <Link href="/forgot-password">Forgot password?</Link>
+          <div style={styles.footerText}>
+            Don&apos;t have an account? <Link href="/signup" style={styles.link}>Sign up</Link>
           </div>
         </section>
       </div>
     </main>
-  )
+  );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at 50% 10%, rgba(52,211,153,0.18), rgba(0,0,0,0) 35%), linear-gradient(180deg, #021a12 0%, #00120d 100%)",
+    color: "#ecfdf5",
+    padding: "24px",
+  },
+  shell: {
+    maxWidth: 1180,
+    margin: "0 auto",
+  },
+  header: {
+    marginBottom: 28,
+  },
+  title: {
+    margin: 0,
+    fontSize: 56,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+  },
+  subtitle: {
+    margin: "12px 0 0",
+    fontSize: 18,
+    color: "rgba(236,253,245,0.82)",
+  },
+  card: {
+    maxWidth: 760,
+    borderRadius: 28,
+    border: "1px solid rgba(167,243,208,0.18)",
+    background: "rgba(0,0,0,0.16)",
+    padding: 46,
+    boxShadow: "0 0 0 1px rgba(6,95,70,0.08) inset",
+  },
+  cardTitle: {
+    margin: "0 0 28px",
+    fontSize: 28,
+    fontWeight: 800,
+    color: "rgba(236,253,245,0.82)",
+  },
+  form: {
+    display: "grid",
+    gap: 20,
+  },
+  label: {
+    display: "grid",
+    gap: 12,
+    fontSize: 16,
+    fontWeight: 600,
+  },
+  input: {
+    height: 78,
+    borderRadius: 24,
+    border: "1px solid rgba(167,243,208,0.18)",
+    background: "rgba(0,0,0,0.18)",
+    color: "#ecfdf5",
+    padding: "0 26px",
+    fontSize: 18,
+    outline: "none",
+  },
+  error: {
+    borderRadius: 18,
+    border: "1px solid rgba(248,113,113,0.55)",
+    background: "rgba(127,29,29,0.22)",
+    color: "#fecaca",
+    padding: "14px 16px",
+    fontSize: 16,
+    fontWeight: 600,
+  },
+  primaryButton: {
+    height: 84,
+    borderRadius: 24,
+    border: "none",
+    background: "#9ae6b4",
+    color: "#052e1b",
+    fontSize: 22,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  footerText: {
+    marginTop: 28,
+    fontSize: 16,
+    color: "rgba(236,253,245,0.86)",
+  },
+  link: {
+    color: "#ecfdf5",
+    fontWeight: 700,
+    textDecoration: "none",
+  },
+};
