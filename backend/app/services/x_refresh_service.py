@@ -19,6 +19,8 @@ from app.services.secret_crypto import decrypt_metadata, decrypt_secret
 RETWEET_STATE_SETTLE_MIN_SECONDS = 8
 RETWEET_STATE_SETTLE_MAX_SECONDS = 14
 DELAY_BETWEEN_ACTIONS = 3
+RETWEET_RETRY_ATTEMPTS = 3
+RETWEET_RETRY_SETTLE_SECONDS = 6
 
 VERIFY_ATTEMPTS = 5
 VERIFY_SLEEP_SECONDS = 3
@@ -211,6 +213,21 @@ def _verify_final_retweeted_state(client: tweepy.Client, tweet_id: str, user_id:
     return False
 
 
+def _wait_for_retweet_state_to_clear(tweet_id: str, attempt: int = 1) -> int:
+    settle_seconds = random.randint(
+        RETWEET_STATE_SETTLE_MIN_SECONDS,
+        RETWEET_STATE_SETTLE_MAX_SECONDS,
+    )
+    extra_seconds = max(0, attempt - 1) * RETWEET_RETRY_SETTLE_SECONDS
+    total_seconds = settle_seconds + extra_seconds
+    print(
+        f"[evergreen][x-debug] waiting {total_seconds}s for retweet state to clear "
+        f"(attempt={attempt})"
+    )
+    time.sleep(total_seconds)
+    return total_seconds
+
+
 def refresh_repost(tweet_id: str, handle: str | None = None) -> RefreshResult:
     tweet_id = str(tweet_id).strip()
     handle_slug = normalize_handle(handle)
@@ -271,46 +288,73 @@ def refresh_repost(tweet_id: str, handle: str | None = None) -> RefreshResult:
 
         time.sleep(DELAY_BETWEEN_ACTIONS)
 
-        settle_seconds = random.randint(
-            RETWEET_STATE_SETTLE_MIN_SECONDS,
-            RETWEET_STATE_SETTLE_MAX_SECONDS,
-        )
-        print(f"[evergreen][x-debug] waiting {settle_seconds}s for retweet state to clear")
-        time.sleep(settle_seconds)
+        retweet_sync_delay = False
+        for retweet_attempt in range(1, RETWEET_RETRY_ATTEMPTS + 1):
+            _wait_for_retweet_state_to_clear(tweet_id, retweet_attempt)
 
-        try:
-            print(f"[evergreen][x-debug] attempting retweet tweet_id={tweet_id}")
-            client.retweet(tweet_id=tweet_id, user_auth=True)
-            did_retweet = True
-            print(f"[evergreen][x-debug] retweet call succeeded tweet_id={tweet_id}")
-        except Exception as e:
-            message = str(e)
-            lowered = message.lower()
-            print(f"[evergreen][x-debug] retweet result={message}")
-
-            if is_dead_tweet_error(message):
-                _retire_dead_tweet(tweet_id=tweet_id, handle=handle, raw_error=message)
-                return RefreshResult(
-                    ok=False,
-                    message=f"Dead tweet retired for @{handle_slug}: {tweet_id}",
-                    tweet_id=tweet_id,
-                    did_unretweet=did_unretweet,
-                    did_retweet=False,
+            try:
+                print(
+                    f"[evergreen][x-debug] attempting retweet tweet_id={tweet_id} "
+                    f"attempt={retweet_attempt}/{RETWEET_RETRY_ATTEMPTS}"
                 )
-
-            if (
-                "already retweeted" in lowered
-                or "cannot retweet a tweet that you have already retweeted" in lowered
-            ):
-                return RefreshResult(
-                    ok=False,
-                    message=f"State sync delay for @{handle_slug} on {tweet_id} — X still thinks it is retweeted",
-                    tweet_id=tweet_id,
-                    did_unretweet=did_unretweet,
-                    did_retweet=did_retweet,
+                client.retweet(tweet_id=tweet_id, user_auth=True)
+                did_retweet = True
+                retweet_sync_delay = False
+                print(
+                    f"[evergreen][x-debug] retweet call succeeded tweet_id={tweet_id} "
+                    f"attempt={retweet_attempt}"
                 )
+                break
+            except Exception as e:
+                message = str(e)
+                lowered = message.lower()
+                print(f"[evergreen][x-debug] retweet result={message}")
 
-            raise
+                if is_dead_tweet_error(message):
+                    _retire_dead_tweet(tweet_id=tweet_id, handle=handle, raw_error=message)
+                    return RefreshResult(
+                        ok=False,
+                        message=f"Dead tweet retired for @{handle_slug}: {tweet_id}",
+                        tweet_id=tweet_id,
+                        did_unretweet=did_unretweet,
+                        did_retweet=False,
+                    )
+
+                if (
+                    "already retweeted" in lowered
+                    or "cannot retweet a tweet that you have already retweeted" in lowered
+                ):
+                    retweet_sync_delay = True
+                    print(
+                        f"[evergreen][x-debug] retweet_sync_delay tweet_id={tweet_id} "
+                        f"attempt={retweet_attempt}/{RETWEET_RETRY_ATTEMPTS}"
+                    )
+                    if retweet_attempt < RETWEET_RETRY_ATTEMPTS:
+                        continue
+                    return RefreshResult(
+                        ok=False,
+                        message=(
+                            f"State sync delay for @{handle_slug} on {tweet_id} — "
+                            f"X still thinks it is retweeted after {RETWEET_RETRY_ATTEMPTS} attempts"
+                        ),
+                        tweet_id=tweet_id,
+                        did_unretweet=did_unretweet,
+                        did_retweet=did_retweet,
+                    )
+
+                raise
+
+        if not did_retweet and retweet_sync_delay:
+            return RefreshResult(
+                ok=False,
+                message=(
+                    f"State sync delay for @{handle_slug} on {tweet_id} — "
+                    f"retweet verification never cleared"
+                ),
+                tweet_id=tweet_id,
+                did_unretweet=did_unretweet,
+                did_retweet=did_retweet,
+            )
 
         if not _verify_final_retweeted_state(client, tweet_id, user_id):
             return RefreshResult(
