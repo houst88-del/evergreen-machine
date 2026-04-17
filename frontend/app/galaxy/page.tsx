@@ -201,8 +201,12 @@ const highlightOpacity = (
   mode: "off" | "strong" | "viral" | "conversion"
 ) => {
   if (mode === "off") return 1;
-  if (mode === "strong") return safeNum(node.normalized_score ?? node.score, 0) >= 120 ? 1 : 0.16;
-  if (mode === "viral") return safeNum(node.predicted_velocity, 0) >= 0.65 || !!node.current_cycle ? 1 : 0.12;
+  if (mode === "strong") {
+    return safeNum(node.normalized_score ?? node.score, 0) >= 120 ? 1 : 0.16;
+  }
+  if (mode === "viral") {
+    return safeNum(node.predicted_velocity, 0) >= 0.65 || !!node.current_cycle ? 1 : 0.12;
+  }
   if (mode === "conversion") {
     const label = String(node.label || "").toLowerCase();
     const arche = String(node.archetype || "").toLowerCase();
@@ -231,8 +235,12 @@ export default function GalaxyPage() {
   const [timeLapseOn, setTimeLapseOn] = useState(true);
   const [timeLapseSpeed, setTimeLapseSpeed] = useState(0.25);
   const [timeTravel, setTimeTravel] = useState(0);
-  const [intelligenceView, setIntelligenceView] = useState<"balanced" | "forecast" | "revival" | "gravity">("balanced");
-  const [highlightMode, setHighlightMode] = useState<"off" | "strong" | "viral" | "conversion">("off");
+  const [intelligenceView, setIntelligenceView] = useState<
+    "balanced" | "forecast" | "revival" | "gravity"
+  >("balanced");
+  const [highlightMode, setHighlightMode] = useState<
+    "off" | "strong" | "viral" | "conversion"
+  >("off");
   const [motionFactor, setMotionFactor] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [cameraDriftTick, setCameraDriftTick] = useState(0);
@@ -261,18 +269,27 @@ export default function GalaxyPage() {
   }, [timeLapseOn]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setFlashTick((v) => v + (motionFactor > 0.02 ? 1 : 0)), 1800);
+    const id = window.setInterval(
+      () => setFlashTick((v) => v + (motionFactor > 0.02 ? 1 : 0)),
+      1800
+    );
     return () => window.clearInterval(id);
   }, [motionFactor]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setWaveTick((v) => v + (motionFactor > 0.02 ? 1 : 0)), 1400);
+    const id = window.setInterval(
+      () => setWaveTick((v) => v + (motionFactor > 0.02 ? 1 : 0)),
+      1400
+    );
     return () => window.clearInterval(id);
   }, [motionFactor]);
 
   useEffect(() => {
     if (!timeLapseOn) return;
-    const id = window.setInterval(() => setTimeWarp((v) => (v + timeLapseSpeed) % 100), 360);
+    const id = window.setInterval(
+      () => setTimeWarp((v) => (v + timeLapseSpeed) % 100),
+      360
+    );
     return () => window.clearInterval(id);
   }, [timeLapseOn, timeLapseSpeed]);
 
@@ -280,12 +297,17 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadAccounts() {
       try {
-        const res = await fetch(`${BACKEND}/api/connected-accounts?user_id=1`, { cache: "no-store" });
+        const res = await fetch(`${BACKEND}/api/connected-accounts?user_id=1`, {
+          cache: "no-store",
+        });
         const json = await res.json();
         if (!cancelled) {
           const next = Array.isArray(json.accounts) ? json.accounts : [];
           setAccounts(next);
-          if (selected !== "unified" && !next.some((a: ConnectedAccount) => String(a.id) === selected)) {
+          if (
+            selected !== "unified" &&
+            !next.some((a: ConnectedAccount) => String(a.id) === selected)
+          ) {
             setSelected("unified");
           }
         }
@@ -307,12 +329,16 @@ export default function GalaxyPage() {
       try {
         const out: Record<number, DashboardStatus> = {};
         for (const account of accounts) {
-          const res = await fetch(`${BACKEND}/api/status?user_id=1&connected_account_id=${account.id}`, { cache: "no-store" });
+          const res = await fetch(
+            `${BACKEND}/api/status?user_id=1&connected_account_id=${account.id}`,
+            { cache: "no-store" }
+          );
           if (!res.ok) continue;
           out[account.id] = await res.json();
         }
         if (!cancelled) setStatusMap(out);
       } catch {
+        // ignore
       }
     }
     if (accounts.length) loadStatuses();
@@ -327,11 +353,17 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadGalaxy() {
       try {
-        const qs = selected === "unified" ? "?unified=true" : `?connected_account_id=${encodeURIComponent(selected)}`;
+        const qs =
+          selected === "unified"
+            ? "?unified=true"
+            : `?connected_account_id=${encodeURIComponent(selected)}`;
         const res = await fetch(`${BACKEND}/api/galaxy${qs}`, { cache: "no-store" });
         const json: GalaxyResponse = await res.json();
         if (!cancelled) {
-          setGalaxy({ nodes: Array.isArray(json.nodes) ? json.nodes : [], meta: json.meta || {} });
+          setGalaxy({
+            nodes: Array.isArray(json.nodes) ? json.nodes : [],
+            meta: json.meta || {},
+          });
           setError("");
         }
       } catch {
@@ -358,11 +390,23 @@ export default function GalaxyPage() {
 
     return nodes.map((node, index) => {
       const phase = index * 0.17;
-      const orbitBreathe = 0.5 + mv(0.018, liveTick + timeWarp * 2 + temporalShift, phase) * 0.8;
+      const orbitBreathe =
+        0.5 + mv(0.018, liveTick + timeWarp * 2 + temporalShift, phase) * 0.8;
       const t = index * 0.42 + liveTick * 0.01 + warp + temporalShift * 0.03;
       const temporalRadiusBias = Math.max(-8, Math.min(14, (timeTravel - 50) * 0.08));
-      const contentAgeBias = Math.max(-10, Math.min(10, safeNum(node.refresh_count, 0) * 0.35 - safeNum(node.archive_signal, 0) * 5));
-      const spiralR = 8 + Math.min(38, Math.sqrt(index) * 2.55) + orbitBreathe + temporalRadiusBias + contentAgeBias;
+      const contentAgeBias = Math.max(
+        -10,
+        Math.min(
+          10,
+          safeNum(node.refresh_count, 0) * 0.35 - safeNum(node.archive_signal, 0) * 5
+        )
+      );
+      const spiralR =
+        8 +
+        Math.min(38, Math.sqrt(index) * 2.55) +
+        orbitBreathe +
+        temporalRadiusBias +
+        contentAgeBias;
 
       let px = centerX + Math.cos(t) * spiralR;
       let py = centerY + Math.sin(t) * (spiralR * 0.58);
@@ -374,20 +418,33 @@ export default function GalaxyPage() {
         const wellR = 10 + wellIndex * 7.5;
         const wx = centerX + Math.cos(wellT) * wellR;
         const wy = centerY + Math.sin(wellT) * (wellR * 0.5);
-        const pull = Math.min(0.72, 0.12 + safeNum(node.gravity_score, 0) * 0.0015 + safeNum(node.normalized_score ?? node.score, 0) * 0.0008 + safeNum(node.predicted_velocity, 0) * 0.04);
+        const pull = Math.min(
+          0.72,
+          0.12 +
+            safeNum(node.gravity_score, 0) * 0.0015 +
+            safeNum(node.normalized_score ?? node.score, 0) * 0.0008 +
+            safeNum(node.predicted_velocity, 0) * 0.04
+        );
         px = px * (1 - pull) + wx * pull;
         py = py * (1 - pull) + wy * pull;
       }
 
-      px += mv(0.03, liveTick + timeWarp + temporalShift, phase) * (node.candidate ? 0.55 : 0.28);
-      py += mv(0.026, liveTick + timeWarp + temporalShift, phase + 1.2) * (node.current_cycle ? 0.72 : 0.34);
+      px +=
+        mv(0.03, liveTick + timeWarp + temporalShift, phase) *
+        (node.candidate ? 0.55 : 0.28);
+      py +=
+        mv(0.026, liveTick + timeWarp + temporalShift, phase + 1.2) *
+        (node.current_cycle ? 0.72 : 0.34);
 
       if (node.cold_archive || safeNum(node.archive_signal, 0) > 0.75) {
         px += (index % 2 === 0 ? 1 : -1) * 6;
         py += 6 + (index % 7);
       }
 
-      const drift = safeNum(node.archive_signal, 0) * 10 + (node.cold_archive ? 8 : 0) + Math.max(0, (50 - timeTravel) * 0.08);
+      const drift =
+        safeNum(node.archive_signal, 0) * 10 +
+        (node.cold_archive ? 8 : 0) +
+        Math.max(0, (50 - timeTravel) * 0.08);
       px += Math.cos(index) * drift * 0.08;
       py += Math.sin(index) * drift * 0.08;
 
@@ -417,7 +474,10 @@ export default function GalaxyPage() {
 
   const heatNebulae = useMemo(() => {
     const hubs = [...workingNodes]
-      .sort((a, b) => intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView))
+      .sort(
+        (a, b) =>
+          intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)
+      )
       .slice(0, 8);
     return hubs.map((node, i) => ({
       x: (node as any)._px,
@@ -428,7 +488,10 @@ export default function GalaxyPage() {
     }));
   }, [workingNodes, intelligenceView]);
 
-  const currentStatus = useMemo(() => (selected === "unified" ? null : statusMap[Number(selected)] || null), [selected, statusMap]);
+  const currentStatus = useMemo(
+    () => (selected === "unified" ? null : statusMap[Number(selected)] || null),
+    [selected, statusMap]
+  );
 
   const selectedLabel = useMemo(() => {
     if (selected === "unified") return "Unified Galaxy";
@@ -438,16 +501,23 @@ export default function GalaxyPage() {
 
   const counts = useMemo(() => {
     const gravityStars = workingNodes.filter((n) => rankGravity(n) >= 250).length;
-    const strongStars = workingNodes.filter((n) => safeNum(n.normalized_score ?? n.score, 0) >= 120).length;
+    const strongStars = workingNodes.filter(
+      (n) => safeNum(n.normalized_score ?? n.score, 0) >= 120
+    ).length;
     const candidates = workingNodes.filter((n) => !!n.candidate).length;
     const currentCycle = workingNodes.filter((n) => !!n.current_cycle).length;
-    const recent = workingNodes.filter((n) => minutesAgo(n.last_resurfaced_at).includes("m ago")).length;
+    const recent = workingNodes.filter((n) =>
+      minutesAgo(n.last_resurfaced_at).includes("m ago")
+    ).length;
     return { gravityStars, strongStars, candidates, currentCycle, recent };
   }, [workingNodes]);
 
   const supernovaNode = useMemo(() => {
     const candidates = [...workingNodes]
-      .filter((n) => safeNum(n.predicted_velocity, 0) > 0.7 || !!n.current_cycle || rankGravity(n) > 300)
+      .filter(
+        (n) =>
+          safeNum(n.predicted_velocity, 0) > 0.7 || !!n.current_cycle || rankGravity(n) > 300
+      )
       .sort((a, b) => rankGravity(b) - rankGravity(a));
     return candidates[0] || null;
   }, [workingNodes]);
@@ -456,94 +526,336 @@ export default function GalaxyPage() {
     if (!selectedStarId && supernovaNode) setSelectedStarId(supernovaNode.id);
   }, [supernovaNode, selectedStarId]);
 
-  const selectedStar = useMemo(() => workingNodes.find((n) => n.id === selectedStarId) || null, [workingNodes, selectedStarId]);
+  const selectedStar = useMemo(
+    () => workingNodes.find((n) => n.id === selectedStarId) || null,
+    [workingNodes, selectedStarId]
+  );
 
   const forecastNodes = useMemo(
-    () => [...workingNodes].filter((n) => !n.cold_archive).sort((a, b) => intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)).slice(0, 5),
+    () =>
+      [...workingNodes]
+        .filter((n) => !n.cold_archive)
+        .sort(
+          (a, b) =>
+            intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)
+        )
+        .slice(0, 5),
     [workingNodes, intelligenceView]
   );
 
   const nodeCount = workingNodes.length;
-  const densityScale = nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
-  const sceneScale = zoom * densityScale * (highlightMode === "strong" || highlightMode === "viral" ? 1.05 : 1);
+  const densityScale =
+    nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
+  const sceneScale =
+    zoom * densityScale * (highlightMode === "strong" || highlightMode === "viral" ? 1.05 : 1);
   const baseShiftX = selectedStar ? (50 - (selectedStar as any)._px) * 0.12 : 0;
   const baseShiftY = selectedStar ? (52 - (selectedStar as any)._py) * 0.12 : 0;
-  const driftX = Math.sin(cameraDriftTick * 0.01) * 2.2 + Math.cos(parallaxTick * 0.008) * 1.2;
+  const driftX =
+    Math.sin(cameraDriftTick * 0.01) * 2.2 + Math.cos(parallaxTick * 0.008) * 1.2;
   const driftY = Math.cos(cameraDriftTick * 0.009) * 1.6;
-  const sceneTransform = `translate(${baseShiftX + driftX}px, ${baseShiftY + driftY}px) scale(${sceneScale})`;
+  const sceneTransform = `translate(${baseShiftX + driftX}px, ${
+    baseShiftY + driftY
+  }px) scale(${sceneScale})`;
   const paneHeight = nodeCount > 700 ? "58vh" : "calc(100vh - 340px)";
 
   return (
-    <div style={{ minHeight: "100vh", color: "rgba(236,253,245,0.98)", background: "radial-gradient(circle at 50% 0%, rgba(16,185,129,0.13), transparent 28%), linear-gradient(90deg, #010707 0%, #03130f 35%, #03130f 65%, #010707 100%)", fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        color: "rgba(236,253,245,0.98)",
+        background:
+          "radial-gradient(circle at 50% 0%, rgba(16,185,129,0.13), transparent 28%), linear-gradient(90deg, #010707 0%, #03130f 35%, #03130f 65%, #010707 100%)",
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}
+    >
       <div style={{ maxWidth: 2600, margin: "0 auto", padding: 28 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 18,
+          }}
+        >
           <div>
-            <h1 style={{ fontSize: 54, lineHeight: 1, margin: 0, fontWeight: 700 }}>Evergreen Galaxy</h1>
-            <p style={{ marginTop: 10, color: "rgba(236,253,245,0.72)", fontSize: 14 }}>Gravity wells now reveal where your strongest resurfacing pull concentrates.</p>
+            <h1 style={{ fontSize: 54, lineHeight: 1, margin: 0, fontWeight: 700 }}>
+              Evergreen Galaxy
+            </h1>
+            <p
+              style={{
+                marginTop: 10,
+                color: "rgba(236,253,245,0.72)",
+                fontSize: 14,
+              }}
+            >
+              Gravity wells now reveal where your strongest resurfacing pull concentrates.
+            </p>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <button onClick={() => (window.location.href = "/dashboard")} style={{ borderRadius: 999, border: "1px solid rgba(52,211,153,0.28)", background: "rgba(16,185,129,0.08)", color: "white", padding: "10px 16px", cursor: "pointer" }}>← Dashboard</button>
-            <div style={{ borderRadius: 999, border: "1px solid rgba(52,211,153,0.18)", background: "rgba(0,0,0,0.28)", color: "rgba(236,253,245,0.78)", padding: "10px 14px", fontSize: 12 }}>Galaxy View</div>
-            <select value={selected} onChange={(e) => setSelected(e.target.value)} style={{ borderRadius: 999, border: "1px solid rgba(125,211,252,0.38)", background: "#031110", color: "white", padding: "10px 14px" }}>
+
+          <div
+            style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <button
+              onClick={() => (window.location.href = "/dashboard")}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(52,211,153,0.28)",
+                background: "rgba(16,185,129,0.08)",
+                color: "white",
+                padding: "10px 16px",
+                cursor: "pointer",
+              }}
+            >
+              ← Dashboard
+            </button>
+            <div
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(52,211,153,0.18)",
+                background: "rgba(0,0,0,0.28)",
+                color: "rgba(236,253,245,0.78)",
+                padding: "10px 14px",
+                fontSize: 12,
+              }}
+            >
+              Galaxy View
+            </div>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(125,211,252,0.38)",
+                background: "#031110",
+                color: "white",
+                padding: "10px 14px",
+              }}
+            >
               <option value="unified">Unified Galaxy</option>
-              {accounts.map((account) => <option key={account.id} value={String(account.id)}>{account.provider}: {account.handle}</option>)}
+              {accounts.map((account) => (
+                <option key={account.id} value={String(account.id)}>
+                  {account.provider}: {account.handle}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        {error ? <div style={{ marginBottom: 16, borderRadius: 18, border: "1px solid rgba(248,113,113,0.35)", background: "rgba(239,68,68,0.12)", padding: "12px 16px", color: "rgba(254,226,226,0.95)" }}>{error}</div> : null}
+        {error ? (
+          <div
+            style={{
+              marginBottom: 16,
+              borderRadius: 18,
+              border: "1px solid rgba(248,113,113,0.35)",
+              background: "rgba(239,68,68,0.12)",
+              padding: "12px 16px",
+              color: "rgba(254,226,226,0.95)",
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 12, marginBottom: 14 }}>
-          {[["Total Stars", String(workingNodes.length)], ["Gravity Stars", String(counts.gravityStars)], ["Strong Stars", String(counts.strongStars)], ["Standard Stars", String(Math.max(0, workingNodes.length - counts.strongStars))], ["Candidates", String(counts.candidates)], ["Current Cycle", String(counts.currentCycle)], ["Recent Pulses", String(counts.recent)]].map(([label, value]) => (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          {[
+            ["Total Stars", String(workingNodes.length)],
+            ["Gravity Stars", String(counts.gravityStars)],
+            ["Strong Stars", String(counts.strongStars)],
+            ["Standard Stars", String(Math.max(0, workingNodes.length - counts.strongStars))],
+            ["Candidates", String(counts.candidates)],
+            ["Current Cycle", String(counts.currentCycle)],
+            ["Recent Pulses", String(counts.recent)],
+          ].map(([label, value]) => (
             <div key={label} style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>{label}</div>
-              <div style={{ marginTop: 10, fontSize: 42, fontWeight: 700, lineHeight: 1 }}>{value}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                {label}
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 42,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                {value}
+              </div>
             </div>
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "0.75fr 3.1fr 0.75fr", gap: 16, marginBottom: 14, alignItems: "start" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "0.75fr 3.1fr 0.75fr",
+            gap: 16,
+            marginBottom: 14,
+            alignItems: "start",
+          }}
+        >
           <div style={{ display: "grid", gap: 12 }}>
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Command Deck</div>
-              <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.74)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Command Deck
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 13,
+                  lineHeight: 1.8,
+                  color: "rgba(236,253,245,0.74)",
+                }}
+              >
                 <div>View: {selectedLabel}</div>
                 <div>Mode: {intelligenceView}</div>
-                <div>Travel: {timeTravel < 34 ? "Past" : timeTravel > 66 ? "Future" : "Present"}</div>
+                <div>
+                  Travel: {timeTravel < 34 ? "Past" : timeTravel > 66 ? "Future" : "Present"}
+                </div>
                 <div>Zoom: {zoom.toFixed(1)}x</div>
                 <div>Focus: {highlightMode === "off" ? "Balanced" : highlightMode}</div>
               </div>
             </div>
 
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Autopilot Signal</div>
-              <div style={{ marginTop: 10, fontSize: 40, fontWeight: 700 }}>{currentStatus?.running ? "Running" : "Idle"}</div>
-              <div style={{ marginTop: 8, fontSize: 14, color: "rgba(236,253,245,0.7)" }}>{engine.strategy || "Standard circulation"}</div>
-            </div>
-
-            <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Time Travel</div>
-              <div style={{ marginTop: 10 }}>
-                <input type="range" min={0} max={100} value={timeTravel} onChange={(e) => setTimeTravel(Number(e.target.value))} style={{ width: "100%" }} />
-                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(236,253,245,0.7)" }}>{timeTravel < 34 ? "Past bias" : timeTravel > 66 ? "Future bias" : "Present"}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Autopilot Signal
+              </div>
+              <div style={{ marginTop: 10, fontSize: 40, fontWeight: 700 }}>
+                {currentStatus?.running ? "Running" : "Idle"}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 14, color: "rgba(236,253,245,0.7)" }}>
+                {engine.strategy || "Standard circulation"}
               </div>
             </div>
 
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Replay</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Time Travel
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={timeTravel}
+                  onChange={(e) => setTimeTravel(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
+                  {timeTravel < 34 ? "Past bias" : timeTravel > 66 ? "Future bias" : "Present"}
+                </div>
+              </div>
+            </div>
+
+            <div style={cardStyle()}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Replay
+              </div>
               <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
-                <button onClick={() => setTimeLapseOn((v) => !v)} style={{ borderRadius: 999, border: "1px solid rgba(110,231,183,0.2)", background: "rgba(16,185,129,0.08)", color: "white", padding: "8px 10px", cursor: "pointer" }}>{timeLapseOn ? "Pause" : "Play"}</button>
-                <input type="range" min={0.25} max={2} step={0.25} value={timeLapseSpeed} onChange={(e) => setTimeLapseSpeed(Number(e.target.value))} />
-                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>Speed {timeLapseSpeed.toFixed(1)}x</div>
+                <button
+                  onClick={() => setTimeLapseOn((v) => !v)}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid rgba(110,231,183,0.2)",
+                    background: "rgba(16,185,129,0.08)",
+                    color: "white",
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {timeLapseOn ? "Pause" : "Play"}
+                </button>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={2}
+                  step={0.25}
+                  value={timeLapseSpeed}
+                  onChange={(e) => setTimeLapseSpeed(Number(e.target.value))}
+                />
+                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
+                  Speed {timeLapseSpeed.toFixed(1)}x
+                </div>
                 <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>Zoom</div>
-                <input type="range" min={0.8} max={1.4} step={0.05} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
+                <input
+                  type="range"
+                  min={0.8}
+                  max={1.4}
+                  step={0.05}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                />
               </div>
             </div>
 
             <div style={{ ...cardStyle(), padding: 12 }}>
-              <div style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)", marginBottom: 6 }}>Follow the Star</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(236,253,245,0.94)" }}>{selectedStar ? shortText(selectedStar.label || selectedStar.id, 36) : "No star selected"}</div>
-              <div style={{ fontSize: 12, color: "rgba(236,253,245,0.58)", marginTop: 6 }}>{selectedStar ? `${selectedStar.provider || "provider"} · intelligence ${intelligenceScore(selectedStar, intelligenceView).toFixed(0)}` : "Click any star to lock focus."}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                  marginBottom: 6,
+                }}
+              >
+                Follow the Star
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(236,253,245,0.94)" }}>
+                {selectedStar ? shortText(selectedStar.label || selectedStar.id, 36) : "No star selected"}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(236,253,245,0.58)", marginTop: 6 }}>
+                {selectedStar
+                  ? `${selectedStar.provider || "provider"} · intelligence ${intelligenceScore(
+                      selectedStar,
+                      intelligenceView
+                    ).toFixed(0)}`
+                  : "Click any star to lock focus."}
+              </div>
             </div>
           </div>
 
@@ -551,72 +863,324 @@ export default function GalaxyPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 12 }}>
               <div style={cardStyle()}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                  {[ ["Gravity wells", true], ["Strong", false], ["Standard", false], ["Glow", false], ["Inline labels", false], ["Live motion", false], ["Constellations", false], ["Forecast", false], ["Nebulae", false] ].map(([label, accent]) => (
-                    <span key={label} style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, border: accent ? "1px solid rgba(253,224,71,0.35)" : "1px solid rgba(110,231,183,0.2)", background: accent ? "rgba(253,224,71,0.12)" : "rgba(16,185,129,0.10)", color: accent ? "rgba(254,249,195,1)" : "rgba(236,253,245,0.9)" }}>{label}</span>
+                  {(
+                    [
+                      ["Gravity wells", true],
+                      ["Strong", false],
+                      ["Standard", false],
+                      ["Glow", false],
+                      ["Inline labels", false],
+                      ["Live motion", false],
+                      ["Constellations", false],
+                      ["Forecast", false],
+                      ["Nebulae", false],
+                    ] as [string, boolean][]
+                  ).map(([label, accent]) => (
+                    <span
+                      key={label}
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        border: accent
+                          ? "1px solid rgba(253,224,71,0.35)"
+                          : "1px solid rgba(110,231,183,0.2)",
+                        background: accent
+                          ? "rgba(253,224,71,0.12)"
+                          : "rgba(16,185,129,0.10)",
+                        color: accent
+                          ? "rgba(254,249,195,1)"
+                          : "rgba(236,253,245,0.9)",
+                      }}
+                    >
+                      {label}
+                    </span>
                   ))}
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>Nebula heat zones now reveal where forecast pressure and engagement density are building. Forecast stars get faint pre-pull halos before they explode.</div>
+                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>
+                  Nebula heat zones now reveal where forecast pressure and engagement density are
+                  building. Forecast stars get faint pre-pull halos before they explode.
+                </div>
               </div>
 
               <div style={cardStyle()}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                  {["Score", "Gravity", "Gravity score", "Velocity", "Archive", "Archetype", "Revival", "Refreshes", "Strategy", "Reason", "State"].map((label) => (
-                    <span key={label} style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, border: "1px solid rgba(110,231,183,0.2)", background: "rgba(16,185,129,0.10)", color: "rgba(236,253,245,0.9)" }}>{label}</span>
+                  {[
+                    "Score",
+                    "Gravity",
+                    "Gravity score",
+                    "Velocity",
+                    "Archive",
+                    "Archetype",
+                    "Revival",
+                    "Refreshes",
+                    "Strategy",
+                    "Reason",
+                    "State",
+                  ].map((label) => (
+                    <span
+                      key={label}
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        border: "1px solid rgba(110,231,183,0.2)",
+                        background: "rgba(16,185,129,0.10)",
+                        color: "rgba(236,253,245,0.9)",
+                      }}
+                    >
+                      {label}
+                    </span>
                   ))}
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>Hover cards foreground engine reasons so the galaxy mirrors what the worker is most likely to choose next.</div>
+                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>
+                  Hover cards foreground engine reasons so the galaxy mirrors what the worker is
+                  most likely to choose next.
+                </div>
               </div>
             </div>
 
-            <div style={{ position: "relative", height: paneHeight, overflow: "hidden", borderRadius: 30, border: "1px solid rgba(52,211,153,0.18)", background: "radial-gradient(circle at 50% 50%, rgba(253,224,71,0.10), transparent 58%), linear-gradient(180deg, #03100f 0%, #010707 100%)" }}>
-              <div style={{ position: "absolute", inset: 0, transform: sceneTransform, transformOrigin: "center center", transition: "transform 220ms ease-out" }}>
-                {supernovaNode ? [0, 1, 2].map((i) => {
-                  const r = 40 + ((waveTick + i * 20) % 120) * 2;
-                  const o = Math.max(0, 0.25 - r / 400);
-                  return <div key={`viralwave-${i}`} style={{ position: "absolute", left: `${(supernovaNode as any)._px}%`, top: `${(supernovaNode as any)._py}%`, width: `${r * 2}px`, height: `${r * 2}px`, transform: "translate(-50%,-50%)", borderRadius: "9999px", border: `1px solid rgba(255,240,170,${o})`, pointerEvents: "none" }} />;
-                }) : null}
+            <div
+              style={{
+                position: "relative",
+                height: paneHeight,
+                overflow: "hidden",
+                borderRadius: 30,
+                border: "1px solid rgba(52,211,153,0.18)",
+                background:
+                  "radial-gradient(circle at 50% 50%, rgba(253,224,71,0.10), transparent 58%), linear-gradient(180deg, #03100f 0%, #010707 100%)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  transform: sceneTransform,
+                  transformOrigin: "center center",
+                  transition: "transform 220ms ease-out",
+                }}
+              >
+                {supernovaNode
+                  ? [0, 1, 2].map((i) => {
+                      const r = 40 + ((waveTick + i * 20) % 120) * 2;
+                      const o = Math.max(0, 0.25 - r / 400);
+                      return (
+                        <div
+                          key={`viralwave-${i}`}
+                          style={{
+                            position: "absolute",
+                            left: `${(supernovaNode as any)._px}%`,
+                            top: `${(supernovaNode as any)._py}%`,
+                            width: `${r * 2}px`,
+                            height: `${r * 2}px`,
+                            transform: "translate(-50%,-50%)",
+                            borderRadius: "9999px",
+                            border: `1px solid rgba(255,240,170,${o})`,
+                            pointerEvents: "none",
+                          }}
+                        />
+                      );
+                    })
+                  : null}
 
                 {heatNebulae.map((n, i) => (
-                  <div key={`nebula-${i}`} style={{ position: "absolute", left: `${n.x}%`, top: `${n.y}%`, width: `${n.rx}px`, height: `${n.ry}px`, transform: "translate(-50%, -50%)", borderRadius: "9999px", filter: "blur(34px)", background: i < 3 ? "radial-gradient(circle, rgba(250,228,120,0.18) 0%, rgba(250,228,120,0.06) 38%, transparent 72%)" : "radial-gradient(circle, rgba(125,211,252,0.12) 0%, rgba(125,211,252,0.04) 38%, transparent 72%)", opacity: n.o, pointerEvents: "none" }} />
+                  <div
+                    key={`nebula-${i}`}
+                    style={{
+                      position: "absolute",
+                      left: `${n.x}%`,
+                      top: `${n.y}%`,
+                      width: `${n.rx}px`,
+                      height: `${n.ry}px`,
+                      transform: "translate(-50%, -50%)",
+                      borderRadius: "9999px",
+                      filter: "blur(34px)",
+                      background:
+                        i < 3
+                          ? "radial-gradient(circle, rgba(250,228,120,0.18) 0%, rgba(250,228,120,0.06) 38%, transparent 72%)"
+                          : "radial-gradient(circle, rgba(125,211,252,0.12) 0%, rgba(125,211,252,0.04) 38%, transparent 72%)",
+                      opacity: n.o,
+                      pointerEvents: "none",
+                    }}
+                  />
                 ))}
 
                 {gravityWells.map(({ node, size, opacity }, i) => (
-                  <div key={`well-${node.id}-${i}`} style={{ position: "absolute", left: `${(node as any)._px}%`, top: `${(node as any)._py}%`, width: `${size * 8}px`, height: `${size * 8}px`, transform: "translate(-50%, -50%)", borderRadius: "9999px", background: "radial-gradient(circle, rgba(255,246,190,0.16) 0%, rgba(255,246,190,0.06) 30%, transparent 72%)", opacity, pointerEvents: "none" }} />
+                  <div
+                    key={`well-${node.id}-${i}`}
+                    style={{
+                      position: "absolute",
+                      left: `${(node as any)._px}%`,
+                      top: `${(node as any)._py}%`,
+                      width: `${size * 8}px`,
+                      height: `${size * 8}px`,
+                      transform: "translate(-50%, -50%)",
+                      borderRadius: "9999px",
+                      background:
+                        "radial-gradient(circle, rgba(255,246,190,0.16) 0%, rgba(255,246,190,0.06) 30%, transparent 72%)",
+                      opacity,
+                      pointerEvents: "none",
+                    }}
+                  />
                 ))}
 
                 {workingNodes.map((node, index) => {
                   const accent = rarityAccent(node);
                   const selectedNow = selectedStarId === node.id;
                   const opacity = highlightOpacity(node, highlightMode);
-                  const starScale = selectedNow ? 1.18 : node.current_cycle ? 1.1 : node.candidate ? 1.04 : 1;
+                  const starScale =
+                    selectedNow ? 1.18 : node.current_cycle ? 1.1 : node.candidate ? 1.04 : 1;
                   const twinkle = 1 + Math.sin(liveTick * 0.04 + index * 0.8) * 0.08;
                   const size = ((node as any)._r || 6) * starScale * twinkle;
                   const glow = Math.max(10, size * 5.2);
+
                   return (
-                    <button key={node.id} onClick={() => setSelectedStarId(node.id)} onMouseEnter={() => setHovered(node)} onMouseLeave={() => setHovered((current) => (current?.id === node.id ? null : current))} style={{ position: "absolute", left: `${(node as any)._px}%`, top: `${(node as any)._py}%`, width: `${size * 2}px`, height: `${size * 2}px`, transform: "translate(-50%, -50%)", borderRadius: "9999px", border: `1px solid ${accent.border}`, background: accent.fill, boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.7}px ${accent.aura}`, cursor: "pointer", opacity, zIndex: selectedNow ? 4 : node.current_cycle ? 3 : 2 }} aria-label={shortText(node.label || node.id, 64)}>
-                      {node.current_cycle ? <span style={{ position: "absolute", inset: -8, borderRadius: "9999px", border: "1px solid rgba(255,240,170,0.38)" }} /> : null}
+                    <button
+                      key={node.id}
+                      onClick={() => setSelectedStarId(node.id)}
+                      onMouseEnter={() => setHovered(node)}
+                      onMouseLeave={() =>
+                        setHovered((current) => (current?.id === node.id ? null : current))
+                      }
+                      style={{
+                        position: "absolute",
+                        left: `${(node as any)._px}%`,
+                        top: `${(node as any)._py}%`,
+                        width: `${size * 2}px`,
+                        height: `${size * 2}px`,
+                        transform: "translate(-50%, -50%)",
+                        borderRadius: "9999px",
+                        border: `1px solid ${accent.border}`,
+                        background: accent.fill,
+                        boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.7}px ${accent.aura}`,
+                        cursor: "pointer",
+                        opacity,
+                        zIndex: selectedNow ? 4 : node.current_cycle ? 3 : 2,
+                      }}
+                      aria-label={shortText(node.label || node.id, 64)}
+                    >
+                      {node.current_cycle ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            inset: -8,
+                            borderRadius: "9999px",
+                            border: "1px solid rgba(255,240,170,0.38)",
+                          }}
+                        />
+                      ) : null}
                     </button>
                   );
                 })}
 
-                <div style={{ position: "absolute", left: 14, top: 4, fontSize: 13, color: "rgba(236,253,245,0.82)", pointerEvents: "none", zIndex: 3 }}><div style={{ fontWeight: 600 }}>Cinematic Spiral Galaxy · centered view tuned for dense unified mode</div></div>
-                <div style={{ position: "absolute", right: 14, top: 4, fontSize: 13, color: "rgba(236,253,245,0.75)", pointerEvents: "none", zIndex: 3 }}>{workingNodes.length} visible stars · {currentStatus?.running ? "Autopilot running" : "Autopilot idle"}</div>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: 4,
+                    fontSize: 13,
+                    color: "rgba(236,253,245,0.82)",
+                    pointerEvents: "none",
+                    zIndex: 3,
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>
+                    Cinematic Spiral Galaxy · centered view tuned for dense unified mode
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: 4,
+                    fontSize: 13,
+                    color: "rgba(236,253,245,0.75)",
+                    pointerEvents: "none",
+                    zIndex: 3,
+                  }}
+                >
+                  {workingNodes.length} visible stars ·{" "}
+                  {currentStatus?.running ? "Autopilot running" : "Autopilot idle"}
+                </div>
               </div>
 
               {hovered ? (
-                <div style={{ position: "absolute", bottom: 20, left: 20, maxWidth: 470, borderRadius: 28, border: "1px solid rgba(110,231,183,0.2)", background: "rgba(1,10,10,0.88)", padding: 20, boxShadow: "0 25px 50px rgba(0,0,0,0.35)", backdropFilter: "blur(10px)", zIndex: 5 }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 20,
+                    left: 20,
+                    maxWidth: 470,
+                    borderRadius: 28,
+                    border: "1px solid rgba(110,231,183,0.2)",
+                    background: "rgba(1,10,10,0.88)",
+                    padding: 20,
+                    boxShadow: "0 25px 50px rgba(0,0,0,0.35)",
+                    backdropFilter: "blur(10px)",
+                    zIndex: 5,
+                  }}
+                >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
                     <div>
-                      <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>{hovered.provider || "provider"} · {hovered.handle || "handle"}</div>
-                      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, lineHeight: 1.35 }}>{shortText(hovered.label || hovered.url || hovered.id, 90)}</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          letterSpacing: "0.18em",
+                          textTransform: "uppercase",
+                          color: "rgba(236,253,245,0.58)",
+                        }}
+                      >
+                        {hovered.provider || "provider"} · {hovered.handle || "handle"}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 22,
+                          fontWeight: 700,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {shortText(hovered.label || hovered.url || hovered.id, 90)}
+                      </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <div style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, background: providerColor(hovered.provider).replace("0.95", "0.14"), border: `1px solid ${providerColor(hovered.provider).replace("0.95", "0.28")}` }}>{hovered.gravity || "standard"}</div>
-                      <div style={{ borderRadius: 999, padding: "6px 12px", fontSize: 12, background: "rgba(250,228,120,0.1)", border: "1px solid rgba(250,228,120,0.22)", color: "rgba(255,248,210,0.94)" }}>{rarityAccent(hovered).tag}</div>
+                      <div
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          background: providerColor(hovered.provider).replace("0.95", "0.14"),
+                          border: `1px solid ${providerColor(hovered.provider).replace("0.95", "0.28")}`,
+                        }}
+                      >
+                        {hovered.gravity || "standard"}
+                      </div>
+                      <div
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          background: "rgba(250,228,120,0.1)",
+                          border: "1px solid rgba(250,228,120,0.22)",
+                          color: "rgba(255,248,210,0.94)",
+                        }}
+                      >
+                        {rarityAccent(hovered).tag}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, fontSize: 13, color: "rgba(236,253,245,0.72)" }}>
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 10,
+                      fontSize: 13,
+                      color: "rgba(236,253,245,0.72)",
+                    }}
+                  >
                     <div>Score: {safeNum(hovered.normalized_score ?? hovered.score, 0)}</div>
                     <div>Gravity score: {safeNum(hovered.gravity_score, 0)}</div>
                     <div>Velocity: {safeNum(hovered.predicted_velocity, 0).toFixed(2)}</div>
@@ -627,10 +1191,34 @@ export default function GalaxyPage() {
                     <div>Archetype: {hovered.archetype || "unclassified"}</div>
                   </div>
 
-                  <div style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "rgba(236,253,245,0.68)" }}>
-                    <div><span style={{ color: "rgba(236,253,245,0.58)" }}>Strategy:</span> <span>{hovered.selection_strategy || "Standard circulation"}</span></div>
-                    <div><span style={{ color: "rgba(236,253,245,0.58)" }}>Reason:</span> <span>{hovered.selection_reason || "No selection reason recorded."}</span></div>
-                    {hovered.url ? <div style={{ marginTop: 8 }}><a href={hovered.url} target="_blank" rel="noreferrer" style={{ color: "rgba(186,230,253,1)", textDecoration: "underline" }}>Open post</a></div> : null}
+                  <div
+                    style={{
+                      marginTop: 14,
+                      fontSize: 13,
+                      lineHeight: 1.7,
+                      color: "rgba(236,253,245,0.68)",
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: "rgba(236,253,245,0.58)" }}>Strategy:</span>{" "}
+                      <span>{hovered.selection_strategy || "Standard circulation"}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: "rgba(236,253,245,0.58)" }}>Reason:</span>{" "}
+                      <span>{hovered.selection_reason || "No selection reason recorded."}</span>
+                    </div>
+                    {hovered.url ? (
+                      <div style={{ marginTop: 8 }}>
+                        <a
+                          href={hovered.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "rgba(186,230,253,1)", textDecoration: "underline" }}
+                        >
+                          Open post
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -639,20 +1227,61 @@ export default function GalaxyPage() {
 
           <div style={{ display: "grid", gap: 12 }}>
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)", marginBottom: 10 }}>Intelligence Window</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                  marginBottom: 10,
+                }}
+              >
+                Intelligence Window
+              </div>
               <div style={{ display: "grid", gap: 8 }}>
                 {forecastNodes.map((n, i) => (
-                  <div key={n.id} style={{ display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}>
-                    <div style={{ color: "rgba(255,248,210,0.95)", fontWeight: 700 }}>{i + 1}</div>
-                    <div style={{ color: "rgba(236,253,245,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortText(n.label || n.id, 34)}</div>
-                    <div style={{ color: "rgba(236,253,245,0.58)" }}>{intelligenceScore(n, intelligenceView).toFixed(0)}</div>
+                  <div
+                    key={n.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "20px 1fr auto",
+                      gap: 8,
+                      alignItems: "center",
+                      fontSize: 12,
+                    }}
+                  >
+                    <div style={{ color: "rgba(255,248,210,0.95)", fontWeight: 700 }}>
+                      {i + 1}
+                    </div>
+                    <div
+                      style={{
+                        color: "rgba(236,253,245,0.9)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {shortText(n.label || n.id, 34)}
+                    </div>
+                    <div style={{ color: "rgba(236,253,245,0.58)" }}>
+                      {intelligenceScore(n, intelligenceView).toFixed(0)}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Momentum + Pair</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Momentum + Pair
+              </div>
               <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.75 }}>
                 <div>Momentum: {engine.momentum > 0 ? `${engine.momentum} stack` : "Inactive"}</div>
                 <div>Velocity: {engine.velocity ? "Active" : "Inactive"}</div>
@@ -662,7 +1291,16 @@ export default function GalaxyPage() {
             </div>
 
             <div style={cardStyle()}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(236,253,245,0.58)" }}>Next Cycle</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Next Cycle
+              </div>
               <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8 }}>
                 <div>When: {fmtWhen(engine.nextRefreshAt)}</div>
                 <div>Exact: {engine.nextRefreshAt || "—"}</div>
