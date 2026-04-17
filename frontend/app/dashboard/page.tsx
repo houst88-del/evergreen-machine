@@ -69,6 +69,7 @@ function relativeWhen(value?: string | null) {
   if (!value) return '—'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
+
   const diffMs = d.getTime() - Date.now()
   const mins = Math.round(Math.abs(diffMs) / 60000)
 
@@ -80,6 +81,59 @@ function relativeWhen(value?: string | null) {
 
   const days = Math.round(hrs / 24)
   return diffMs >= 0 ? `in ${days}d` : `${days}d ago`
+}
+
+function cycleLabel(value?: string | null) {
+  if (!value) return 'No cycle scheduled'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return 'No cycle scheduled'
+
+  const diffMs = d.getTime() - Date.now()
+
+  if (diffMs < -5 * 60 * 1000) {
+    return 'Overdue'
+  }
+
+  return relativeWhen(value)
+}
+
+function providerLabel(provider?: string) {
+  const p = String(provider || '').toLowerCase()
+  if (p === 'x' || p === 'twitter') return 'X'
+  if (p === 'bluesky' || p === 'bsky') return 'Bluesky'
+  return provider || 'Provider'
+}
+
+function statusPillStyle(kind: 'good' | 'warn' | 'neutral' | 'bad'): React.CSSProperties {
+  if (kind === 'good') {
+    return {
+      border: '1px solid rgba(110,231,183,0.28)',
+      background: 'rgba(16,185,129,0.10)',
+      color: '#d1fae5',
+    }
+  }
+
+  if (kind === 'warn') {
+    return {
+      border: '1px solid rgba(253,224,71,0.28)',
+      background: 'rgba(250,204,21,0.10)',
+      color: '#fef9c3',
+    }
+  }
+
+  if (kind === 'bad') {
+    return {
+      border: '1px solid rgba(248,113,113,0.28)',
+      background: 'rgba(239,68,68,0.10)',
+      color: '#fecaca',
+    }
+  }
+
+  return {
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.04)',
+    color: 'rgba(236,253,245,0.88)',
+  }
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
@@ -168,7 +222,7 @@ export default function DashboardPage() {
               if (!res.ok) return
               nextStatusMap[account.id] = await res.json()
             } catch {
-              // ignore per-account failures
+              // ignore account-specific failures
             }
           })
         )
@@ -180,6 +234,7 @@ export default function DashboardPage() {
             : []
 
         if (!mounted) return
+
         setSystem(systemJson)
         setAccounts(nextAccounts)
         setStatusMap(nextStatusMap)
@@ -210,7 +265,6 @@ export default function DashboardPage() {
     )
 
     const connectedCount = accountStatuses.filter((item) => item.connected).length
-    const runningCount = accountStatuses.filter((item) => item.running).length
 
     const nextCycleCandidates = accountStatuses
       .map((item) => item.next_cycle_at)
@@ -233,10 +287,60 @@ export default function DashboardPage() {
       workerError: heartbeat.error || null,
       postsInRotation,
       connectedCount,
-      runningCount,
       nextCycle,
     }
   }, [system, statusMap, accounts.length])
+
+  async function refreshMissionControlNow() {
+    if (!session?.user) return
+    try {
+      const userId = session.user.id || 1
+
+      const [systemRes, accountsRes, jobsRes] = await Promise.all([
+        apiFetch('/api/system-status'),
+        apiFetch(`/api/connected-accounts?user_id=${userId}`),
+        apiFetch(`/api/jobs?user_id=${userId}`),
+      ])
+
+      const systemJson = await systemRes.json()
+      const accountsJson = await accountsRes.json()
+      const jobsJson = await jobsRes.json()
+
+      const nextAccounts = Array.isArray(accountsJson.accounts)
+        ? accountsJson.accounts
+        : Array.isArray(accountsJson)
+          ? accountsJson
+          : []
+
+      const nextStatusMap: Record<number, AccountStatus> = {}
+      await Promise.all(
+        nextAccounts.map(async (account: ConnectedAccount) => {
+          try {
+            const res = await apiFetch(
+              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+            )
+            if (!res.ok) return
+            nextStatusMap[account.id] = await res.json()
+          } catch {
+            // ignore account-specific failures
+          }
+        })
+      )
+
+      const nextJobs = Array.isArray(jobsJson.jobs)
+        ? jobsJson.jobs
+        : Array.isArray(jobsJson)
+          ? jobsJson
+          : []
+
+      setSystem(systemJson)
+      setAccounts(nextAccounts)
+      setStatusMap(nextStatusMap)
+      setJobs(nextJobs)
+    } catch {
+      // ignore silent refresh failures
+    }
+  }
 
   async function handleRefreshNow() {
     if (!session?.user) return
@@ -257,6 +361,9 @@ export default function DashboardPage() {
       }
 
       setActionMessage('Refresh job queued.')
+      window.setTimeout(() => {
+        refreshMissionControlNow()
+      }, 1200)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
     } finally {
@@ -283,6 +390,9 @@ export default function DashboardPage() {
       }
 
       setActionMessage('Analytics job queued.')
+      window.setTimeout(() => {
+        refreshMissionControlNow()
+      }, 1200)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
     } finally {
@@ -463,9 +573,9 @@ export default function DashboardPage() {
           <div>
             <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Next Cycle</div>
             <div>
-              {fmtWhen(summary.nextCycle)}{' '}
+              {summary.nextCycle ? fmtWhen(summary.nextCycle) : 'No cycle scheduled'}{' '}
               <span style={{ opacity: 0.7 }}>
-                {summary.nextCycle ? `(${relativeWhen(summary.nextCycle)})` : ''}
+                {summary.nextCycle ? `(${cycleLabel(summary.nextCycle)})` : ''}
               </span>
             </div>
           </div>
@@ -485,6 +595,9 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
               {accounts.map((account) => {
                 const status = statusMap[account.id]
+                const nextCycleText = cycleLabel(status?.next_cycle_at)
+                const isOverdue = nextCycleText === 'Overdue'
+
                 return (
                   <div
                     key={account.id}
@@ -512,7 +625,7 @@ export default function DashboardPage() {
                             textTransform: 'uppercase',
                           }}
                         >
-                          {account.provider}
+                          {providerLabel(account.provider)}
                         </div>
                         <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>
                           {account.handle}
@@ -520,13 +633,33 @@ export default function DashboardPage() {
                       </div>
 
                       <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Connected</div>
-                        <div>{status?.connected ? 'Yes' : 'No'}</div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                          Connected
+                        </div>
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle(status?.connected ? 'good' : 'neutral'),
+                          }}
+                        >
+                          {status?.connected ? 'Yes' : 'No'}
+                        </span>
                       </div>
 
                       <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Autopilot</div>
-                        <div>{status?.running ? 'Running' : 'Idle'}</div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                          Autopilot
+                        </div>
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle(status?.running ? 'good' : 'neutral'),
+                          }}
+                        >
+                          {status?.running ? 'Running' : 'Idle'}
+                        </span>
                       </div>
 
                       <div>
@@ -535,8 +668,18 @@ export default function DashboardPage() {
                       </div>
 
                       <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Next Cycle</div>
-                        <div>{relativeWhen(status?.next_cycle_at)}</div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                          Next Cycle
+                        </div>
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle(isOverdue ? 'warn' : 'neutral'),
+                          }}
+                        >
+                          {nextCycleText}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -578,7 +721,19 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="btn" style={{ cursor: 'default' }}>
+                    <div
+                      className="btn"
+                      style={{
+                        cursor: 'default',
+                        ...statusPillStyle(
+                          String(job.state || job.status || '').toLowerCase().includes('fail')
+                            ? 'bad'
+                            : String(job.state || job.status || '').toLowerCase().includes('complete')
+                              ? 'good'
+                              : 'neutral'
+                        ),
+                      }}
+                    >
                       {job.state || job.status || 'unknown'}
                     </div>
                   </div>
