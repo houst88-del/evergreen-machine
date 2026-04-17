@@ -444,10 +444,18 @@ export default function DashboardPage() {
   }
 
   function handleConnectXOAuth() {
+    if (!session?.user?.id) {
+      setError('Missing session user.')
+      return
+    }
+
     setActionMessage('')
     setError('')
     setBusyAction('connect-x')
-    window.location.assign(`${API_BASE}/api/providers/x/start`)
+
+    window.location.assign(
+      `${API_BASE}/api/providers/x/start?user_id=${encodeURIComponent(String(session.user.id))}`
+    )
   }
 
   async function handleConnectBluesky() {

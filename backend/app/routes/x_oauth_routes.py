@@ -3,11 +3,10 @@ from __future__ import annotations
 import os
 
 import tweepy
-from fastapi import APIRouter, Cookie, Header, HTTPException, Request
+from fastapi import APIRouter, Cookie, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.db import SessionLocal
-from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, User
 from app.services.secret_crypto import encrypt_metadata, encrypt_secret
 
@@ -35,19 +34,11 @@ def dashboard_redirect_url() -> str:
     ).strip()
 
 
-def resolve_user_id_from_auth_header(authorization: str | None) -> int:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-
-    token = authorization.split(" ", 1)[1].strip()
-    payload = verify_token(token)
-    if not payload or not payload.get("user_id"):
-        raise HTTPException(status_code=401, detail="Invalid auth token")
-
-    return int(payload["user_id"])
-
-
-def get_or_create_account_scoped_autopilot(db, user: User, account: ConnectedAccount) -> AutopilotStatus:
+def get_or_create_account_scoped_autopilot(
+    db,
+    user: User,
+    account: ConnectedAccount,
+) -> AutopilotStatus:
     autopilot = (
         db.query(AutopilotStatus)
         .filter(AutopilotStatus.connected_account_id == account.id)
@@ -142,15 +133,15 @@ def save_or_update_x_account(
         db.commit()
         db.refresh(account)
         db.refresh(autopilot)
+
         return int(account.id)
     finally:
         db.close()
 
 
 @router.get("/start")
-def start_oauth(authorization: str | None = Header(default=None)):
+def start_oauth(user_id: int = Query(..., ge=1)):
     api_key, api_secret, callback = oauth_config()
-    user_id = resolve_user_id_from_auth_header(authorization)
 
     auth = tweepy.OAuth1UserHandler(
         api_key,
