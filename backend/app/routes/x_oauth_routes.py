@@ -4,7 +4,7 @@ import os
 
 import tweepy
 from fastapi import APIRouter, Cookie, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount, User
@@ -22,10 +22,7 @@ def oauth_config():
     ).strip()
 
     if not api_key or not api_secret:
-        raise HTTPException(
-            status_code=500,
-            detail="Missing X_API_KEY or X_API_SECRET",
-        )
+        raise HTTPException(status_code=500, detail="Missing X_API_KEY or X_API_SECRET")
 
     return api_key, api_secret, callback
 
@@ -52,11 +49,7 @@ def resolve_local_dev_user_id() -> int:
         db.close()
 
 
-def get_or_create_account_scoped_autopilot(
-    db,
-    user: User,
-    account: ConnectedAccount,
-) -> AutopilotStatus:
+def get_or_create_account_scoped_autopilot(db, user: User, account: ConnectedAccount) -> AutopilotStatus:
     autopilot = (
         db.query(AutopilotStatus)
         .filter(AutopilotStatus.connected_account_id == account.id)
@@ -151,7 +144,6 @@ def save_or_update_x_account(
         db.commit()
         db.refresh(account)
         db.refresh(autopilot)
-
         return int(account.id)
     finally:
         db.close()
@@ -168,24 +160,17 @@ def start_oauth():
     )
 
     try:
-        url = auth.get_authorization_url(signin_with_twitter=True)
-
+        authorization_url = auth.get_authorization_url(signin_with_twitter=True)
         request_token = getattr(auth, "request_token", None)
         if not request_token:
             raise HTTPException(status_code=500, detail="Failed to store X request token")
 
         oauth_token = request_token.get("oauth_token")
         oauth_token_secret = request_token.get("oauth_token_secret")
-
         if not oauth_token or not oauth_token_secret:
             raise HTTPException(status_code=500, detail="Missing oauth request token or secret")
 
-        response = JSONResponse(
-            {
-                "ok": True,
-                "authorization_url": url,
-            }
-        )
+        response = RedirectResponse(url=authorization_url, status_code=302)
         response.set_cookie(
             key="x_oauth_request_secret",
             value=oauth_token_secret,
@@ -220,10 +205,8 @@ def oauth_callback(
 
     if not oauth_token or not oauth_verifier:
         raise HTTPException(status_code=400, detail="Missing oauth_token or oauth_verifier")
-
     if not x_oauth_request_secret or not x_oauth_request_token:
         raise HTTPException(status_code=400, detail="Missing OAuth request cookie")
-
     if oauth_token != x_oauth_request_token:
         raise HTTPException(status_code=400, detail="OAuth token mismatch")
 

@@ -433,24 +433,11 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleConnectXOAuth() {
+  function handleConnectXOAuth() {
     setActionMessage('')
     setError('')
     setBusyAction('connect-x')
-
-    try {
-      const res = await apiFetch('/api/providers/x/start')
-      const json = await res.json().catch(() => ({}))
-
-      if (!res.ok || !json.authorization_url) {
-        throw new Error(json.detail || json.message || 'Could not start X OAuth')
-      }
-
-      window.location.href = String(json.authorization_url)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start X OAuth')
-      setBusyAction(null)
-    }
+    window.location.href = `${API_BASE}/api/providers/x/start`
   }
 
   async function handleConnectBluesky() {
@@ -696,7 +683,7 @@ export default function DashboardPage() {
               marginTop: 20,
             }}
           >
-            <button
+              <button
               className="btn"
               onClick={handleConnectXOAuth}
               disabled={busyAction === 'connect-x'}
@@ -922,7 +909,7 @@ export default function DashboardPage() {
                     background: 'rgba(16,185,129,0.04)',
                   }}
                 >
-                  <div
+                    <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
