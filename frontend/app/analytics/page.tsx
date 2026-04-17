@@ -372,7 +372,7 @@ export default function AnalyticsPage() {
                         wordBreak: 'break-word',
                       }}
                     >
-                      {payload.message || payload.rotation_health?.selection_reason || 'No message provided.'}
+                      {payload.error || payload.message || payload.rotation_health?.selection_reason || 'No message provided.'}
                     </div>
 
                     <div

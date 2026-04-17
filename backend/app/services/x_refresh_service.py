@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import time
 from dataclasses import dataclass
@@ -9,7 +10,10 @@ from typing import Any
 
 import tweepy
 
+from app.core.db import SessionLocal
+from app.models.models import ConnectedAccount
 from app.services.pool_service import retire_dead_tweet
+from app.services.secret_crypto import decrypt_metadata, decrypt_secret
 
 
 RETWEET_STATE_SETTLE_MIN_SECONDS = 8
@@ -42,7 +46,60 @@ def config_file(handle: str | None = None) -> Path:
     return resolve_client_dir(handle) / "config.json"
 
 
+def _load_db_config(handle: str | None = None) -> dict[str, str] | None:
+    clean = normalize_handle(handle).lower()
+    db = SessionLocal()
+    try:
+        account = (
+            db.query(ConnectedAccount)
+            .filter(ConnectedAccount.provider == "x")
+            .order_by(ConnectedAccount.updated_at.desc(), ConnectedAccount.id.desc())
+            .all()
+        )
+        match = None
+        for row in account:
+            row_handle = normalize_handle(getattr(row, "handle", None)).lower()
+            if row_handle == clean:
+                match = row
+                break
+
+        if not match:
+            return None
+
+        metadata = decrypt_metadata(getattr(match, "metadata_json", None) or {})
+        api_key = str(os.getenv("X_API_KEY", "")).strip() or str(metadata.get("api_key", "") or "").strip()
+        api_secret = str(os.getenv("X_API_SECRET", "")).strip() or str(metadata.get("api_secret", "") or "").strip()
+        access_token = decrypt_secret(getattr(match, "access_token", None))
+        access_token_secret = decrypt_secret(getattr(match, "access_token_secret", None))
+
+        if not access_token:
+            access_token = str(metadata.get("access_token", "") or "").strip()
+        if not access_token_secret:
+            access_token_secret = str(metadata.get("access_token_secret", "") or "").strip()
+
+        config = {
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "access_token": access_token,
+            "access_token_secret": access_token_secret,
+            "user_id": str(getattr(match, "provider_account_id", "") or "").strip(),
+            "handle": str(getattr(match, "handle", "") or "").strip(),
+        }
+
+        required = ["api_key", "api_secret", "access_token", "access_token_secret", "user_id"]
+        if any(not str(config.get(key, "")).strip() for key in required):
+            return None
+
+        return config
+    finally:
+        db.close()
+
+
 def load_config(handle: str | None = None) -> tuple[dict, Path]:
+    db_config = _load_db_config(handle)
+    if db_config:
+        return db_config, Path("<db-config>")
+
     path = config_file(handle)
     if not path.exists():
         raise FileNotFoundError(f"Missing config.json at: {path}")

@@ -497,7 +497,12 @@ def _run_analytics_job(connected_account_id: int, payload: dict | None = None) -
                 handle=account.handle,
             )
             autopilot.posts_in_rotation = int(imported["active_posts"])
-            message = f"X importer complete: +{imported['imported']} new, {imported['updated']} updated"
+            message = (
+                f"X importer complete: +{imported['imported']} new, "
+                f"{imported['updated']} updated, fetched {imported.get('fetched', 0)}"
+            )
+            if imported.get("fallback_limited"):
+                message += " (v1 fallback unavailable on current X access tier)"
             next_step = "X posts are now in the Evergreen galaxy"
             cycle_events.extend(["x import started", "x import completed"])
         db.commit()

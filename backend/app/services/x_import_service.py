@@ -8,7 +8,7 @@ import tweepy
 from sqlalchemy.orm import Session
 
 from app.models.models import ConnectedAccount, Post
-from app.services.secret_crypto import decrypt_secret
+from app.services.secret_crypto import decrypt_metadata, decrypt_secret
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -110,11 +110,16 @@ def _make_clients(
 
     raw_access_token = getattr(account, "access_token", None)
     raw_access_token_secret = getattr(account, "access_token_secret", None)
+    metadata = decrypt_metadata(getattr(account, "metadata_json", None) or {})
 
     access_token = decrypt_secret(raw_access_token) if raw_access_token else None
     access_token_secret = (
         decrypt_secret(raw_access_token_secret) if raw_access_token_secret else None
     )
+    if not access_token:
+        access_token = str(metadata.get("access_token", "") or "").strip() or None
+    if not access_token_secret:
+        access_token_secret = str(metadata.get("access_token_secret", "") or "").strip() or None
 
     provider_account_id = str(
         getattr(account, "provider_account_id", None)
@@ -363,21 +368,25 @@ def import_x_pool_posts(
     # Some X app/user combinations return only a very shallow v2 timeline.
     # When that happens, backfill through the OAuth1 timeline instead of
     # accepting an obviously incomplete pool.
+    fallback_limited = False
     if fetched < min(limit, 25):
-        fallback = _backfill_from_v1_timeline(
-            api_v1=api_v1,
-            x_user_id=x_user_id,
-            handle=handle,
-            limit=limit,
-            db=db,
-            existing_map=existing_map,
-            user_id=user_id,
-            connected_account_id=connected_account_id,
-        )
-        imported += fallback["imported"]
-        updated += fallback["updated"]
-        skipped += fallback["skipped"]
-        fetched = max(fetched, fallback["fetched"])
+        try:
+            fallback = _backfill_from_v1_timeline(
+                api_v1=api_v1,
+                x_user_id=x_user_id,
+                handle=handle,
+                limit=limit,
+                db=db,
+                existing_map=existing_map,
+                user_id=user_id,
+                connected_account_id=connected_account_id,
+            )
+            imported += fallback["imported"]
+            updated += fallback["updated"]
+            skipped += fallback["skipped"]
+            fetched = max(fetched, fallback["fetched"])
+        except tweepy.TweepyException:
+            fallback_limited = True
 
     db.flush()
 
@@ -403,6 +412,7 @@ def import_x_pool_posts(
         "active_posts": active_posts,
         "total_posts": total_posts,
         "fetched": fetched,
+        "fallback_limited": fallback_limited,
     }
 
 

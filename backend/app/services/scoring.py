@@ -248,6 +248,48 @@ def _select_next_x_post(db: Session, connected_account_id: int):
     if not account:
         return None
 
+    db_posts = (
+        db.query(Post)
+        .filter(
+            Post.connected_account_id == connected_account_id,
+            Post.state == "active",
+        )
+        .order_by(Post.score.desc(), Post.id.asc())
+        .all()
+    )
+    if db_posts:
+        fresh_posts: list[dict] = []
+        cooled_posts: list[dict] = []
+
+        for post in db_posts:
+            score = _safe_score(getattr(post, "score", 0))
+            tier = _score_tier(score)
+            item = {
+                "obj": post,
+                "score": score,
+                "tier": tier,
+                "reason": f"tier_{tier.lower()}",
+            }
+
+            if _recently_resurfaced(getattr(post, "last_resurfaced_at", None)):
+                cooled_posts.append(item)
+            else:
+                fresh_posts.append(item)
+
+        chosen_item = _choose_from_tiers(fresh_posts) or _choose_from_tiers(cooled_posts)
+        if chosen_item:
+            post = chosen_item["obj"]
+            score = chosen_item["score"]
+            tier = chosen_item["tier"]
+
+            return SimpleNamespace(
+                provider_post_id=str(post.provider_post_id).strip(),
+                text=str(post.text or post.provider_post_id).strip(),
+                strategy=f"x_db_tier_{tier.lower()}",
+                reason=f"db tier rotation score={int(score)} cooldown={COOLDOWN_DAYS}d",
+                raw={"source": "x_db", "post_id": getattr(post, "id", None)},
+            )
+
     handle = account.handle
     rows = eligible_rows(read_pool_rows(handle))
     rows = [row for row in rows if _x_row_is_original(row)]

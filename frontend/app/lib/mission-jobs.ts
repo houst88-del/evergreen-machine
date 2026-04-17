@@ -8,6 +8,7 @@ export type JobItem = {
   updated_at?: string
   message?: unknown
   result?: unknown
+  error?: unknown
   connected_account_id?: number
 }
 
@@ -15,6 +16,7 @@ export type JobPayload = {
   provider?: string
   handle?: string
   message?: string
+  error?: string
   next_step?: string
   last_action_at?: string | null
   next_cycle_at?: string | null
@@ -84,6 +86,7 @@ export function parseJobPayload(job: JobItem): JobPayload {
     provider: typeof merged.provider === 'string' ? merged.provider : undefined,
     handle: typeof merged.handle === 'string' ? merged.handle : undefined,
     message: typeof merged.message === 'string' ? merged.message : safeText(job.message || job.result),
+    error: safeText(job.error),
     next_step: typeof merged.next_step === 'string' ? merged.next_step : undefined,
     last_action_at: typeof merged.last_action_at === 'string' ? merged.last_action_at : null,
     next_cycle_at: typeof merged.next_cycle_at === 'string' ? merged.next_cycle_at : null,
@@ -100,6 +103,13 @@ export function headlineForJob(job: JobItem, payload: JobPayload) {
   const provider = providerLabel(payload.provider)
   const lowerMessage = String(payload.message || '').toLowerCase()
   const type = String(job.type || '').toLowerCase()
+  const state = String(job.state || job.status || '').toLowerCase()
+
+  if (state.includes('fail') || state.includes('error')) {
+    if (type.includes('analytics')) return `${provider} analytics failed`
+    if (type.includes('refresh')) return `${provider} refresh failed`
+    return `${provider} mission failure`
+  }
 
   if (lowerMessage.includes('importer complete')) return `${provider} import complete`
   if (lowerMessage.includes('resurfaced') || lowerMessage.includes('retweeted')) {
