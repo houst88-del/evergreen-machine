@@ -51,8 +51,8 @@ type JobItem = {
   status?: string
   created_at?: string
   updated_at?: string
-  message?: string
-  result?: string
+  message?: unknown
+  result?: unknown
   connected_account_id?: number
 }
 
@@ -132,6 +132,18 @@ function statusPillStyle(kind: 'good' | 'warn' | 'neutral' | 'bad'): React.CSSPr
     border: '1px solid rgba(255,255,255,0.12)',
     background: 'rgba(255,255,255,0.04)',
     color: 'rgba(236,253,245,0.88)',
+  }
+}
+
+function safeText(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
   }
 }
 
