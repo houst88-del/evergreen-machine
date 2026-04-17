@@ -1,30 +1,300 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { me, logout } from '../lib/auth'
+import { getToken, logout, me } from '../lib/auth'
+
+type SystemStatus = {
+  backend?: { ok?: boolean }
+  worker?: {
+    ok?: boolean
+    heartbeat?: {
+      status?: string
+      timestamp?: string
+      queued?: number
+      processed?: number
+      synced_accounts?: number
+      repaired_jobs?: number
+      startup_burst_done?: boolean
+      error?: string | null
+      poll_seconds?: number
+    }
+  }
+  frontend_hint?: string
+}
+
+type ConnectedAccount = {
+  id: number
+  provider: string
+  handle: string
+}
+
+type AccountStatus = {
+  connected_account_id?: number | null
+  running?: boolean
+  connected?: boolean
+  provider?: string
+  account_handle?: string
+  posts_in_rotation?: number
+  last_post_text?: string | null
+  last_action_at?: string | null
+  next_cycle_at?: string | null
+  metadata?: Record<string, unknown>
+}
+
+type JobItem = {
+  id?: string
+  job_id?: string
+  type?: string
+  state?: string
+  status?: string
+  created_at?: string
+  updated_at?: string
+  message?: string
+  result?: string
+}
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
+  'https://backend-fixed-production.up.railway.app'
+
+function fmtWhen(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
+}
+
+function relativeWhen(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const diffMs = d.getTime() - Date.now()
+  const mins = Math.round(Math.abs(diffMs) / 60000)
+
+  if (mins < 1) return diffMs >= 0 ? 'now' : 'just now'
+  if (mins < 60) return diffMs >= 0 ? `in ${mins}m` : `${mins}m ago`
+
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return diffMs >= 0 ? `in ${hrs}h` : `${hrs}h ago`
+
+  const days = Math.round(hrs / 24)
+  return diffMs >= 0 ? `in ${days}d` : `${days}d ago`
+}
+
+async function apiFetch(path: string, init: RequestInit = {}) {
+  const token = getToken()
+  const headers = new Headers(init.headers || {})
+
+  if (!headers.has('Content-Type') && init.method && init.method !== 'GET') {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    cache: 'no-store',
+  })
+}
 
 export default function DashboardPage() {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
+  const [system, setSystem] = useState<SystemStatus | null>(null)
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
+  const [statusMap, setStatusMap] = useState<Record<number, AccountStatus>>({})
+  const [jobs, setJobs] = useState<JobItem[]>([])
+  const [busyAction, setBusyAction] = useState<'refresh' | 'analytics' | null>(null)
+  const [actionMessage, setActionMessage] = useState('')
+  const [error, setError] = useState('')
+
   useEffect(() => {
+    let mounted = true
+
     async function checkSession() {
-      const data = await me()
-      setSession(data)
-      setLoading(false)
+      try {
+        const data = await me()
+        if (!mounted) return
+        setSession(data)
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
 
     checkSession()
+
+    return () => {
+      mounted = false
+    }
   }, [])
+
+  useEffect(() => {
+    if (!session?.user) return
+
+    let mounted = true
+
+    async function loadMissionControl() {
+      try {
+        const userId = session.user.id || 1
+
+        const [systemRes, accountsRes, jobsRes] = await Promise.all([
+          apiFetch('/api/system-status'),
+          apiFetch(`/api/connected-accounts?user_id=${userId}`),
+          apiFetch(`/api/jobs?user_id=${userId}`),
+        ])
+
+        const systemJson = await systemRes.json()
+        const accountsJson = await accountsRes.json()
+        const jobsJson = await jobsRes.json()
+
+        const nextAccounts = Array.isArray(accountsJson.accounts)
+          ? accountsJson.accounts
+          : Array.isArray(accountsJson)
+            ? accountsJson
+            : []
+
+        const nextStatusMap: Record<number, AccountStatus> = {}
+        await Promise.all(
+          nextAccounts.map(async (account: ConnectedAccount) => {
+            try {
+              const res = await apiFetch(
+                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+              )
+              if (!res.ok) return
+              nextStatusMap[account.id] = await res.json()
+            } catch {
+              // ignore per-account failures
+            }
+          })
+        )
+
+        const nextJobs = Array.isArray(jobsJson.jobs)
+          ? jobsJson.jobs
+          : Array.isArray(jobsJson)
+            ? jobsJson
+            : []
+
+        if (!mounted) return
+        setSystem(systemJson)
+        setAccounts(nextAccounts)
+        setStatusMap(nextStatusMap)
+        setJobs(nextJobs)
+        setError('')
+      } catch (err) {
+        if (!mounted) return
+        setError(err instanceof Error ? err.message : 'Could not load mission control')
+      }
+    }
+
+    loadMissionControl()
+    const id = window.setInterval(loadMissionControl, 12000)
+
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+    }
+  }, [session])
+
+  const summary = useMemo(() => {
+    const heartbeat = system?.worker?.heartbeat || {}
+    const accountStatuses = Object.values(statusMap)
+
+    const postsInRotation = accountStatuses.reduce(
+      (sum, item) => sum + (item.posts_in_rotation || 0),
+      0
+    )
+
+    const connectedCount = accountStatuses.filter((item) => item.connected).length
+    const runningCount = accountStatuses.filter((item) => item.running).length
+
+    const nextCycleCandidates = accountStatuses
+      .map((item) => item.next_cycle_at)
+      .filter(Boolean) as string[]
+
+    const nextCycle =
+      nextCycleCandidates.length > 0
+        ? nextCycleCandidates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
+        : null
+
+    return {
+      backendOnline: !!system?.backend?.ok,
+      workerState: heartbeat.status || (system?.worker?.ok ? 'running' : 'offline'),
+      queued: heartbeat.queued ?? 0,
+      processed: heartbeat.processed ?? 0,
+      syncedAccounts: heartbeat.synced_accounts ?? accounts.length,
+      repairedJobs: heartbeat.repaired_jobs ?? 0,
+      pollSeconds: heartbeat.poll_seconds ?? 0,
+      heartbeatAt: heartbeat.timestamp ?? null,
+      workerError: heartbeat.error || null,
+      postsInRotation,
+      connectedCount,
+      runningCount,
+      nextCycle,
+    }
+  }, [system, statusMap, accounts.length])
+
+  async function handleRefreshNow() {
+    if (!session?.user) return
+    setBusyAction('refresh')
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch('/api/jobs/refresh-now', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: session.user.id || 1 }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not queue refresh')
+      }
+
+      setActionMessage('Refresh job queued.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not queue refresh')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleRunAnalytics() {
+    if (!session?.user) return
+    setBusyAction('analytics')
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch('/api/jobs/run-analytics', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: session.user.id || 1 }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new Error(json.detail || json.message || 'Could not queue analytics')
+      }
+
+      setActionMessage('Analytics job queued.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not queue analytics')
+    } finally {
+      setBusyAction(null)
+    }
+  }
 
   if (loading) {
     return (
       <main className="page">
         <div className="shell">
-          <section className="card">
-            Checking session...
-          </section>
+          <section className="card">Checking session...</section>
         </div>
       </main>
     )
@@ -50,12 +320,16 @@ export default function DashboardPage() {
   }
 
   const user = session.user
+  const recentJobs = jobs.slice(0, 5)
 
   return (
     <main className="page">
       <div className="shell">
         <header className="header">
-          <div className="wordmark">Evergreen Mission Control</div>
+          <div>
+            <div className="wordmark">Evergreen Mission Control</div>
+            <div className="subtle">Live command deck for your resurfacing engine.</div>
+          </div>
 
           <button
             className="btn"
@@ -68,14 +342,67 @@ export default function DashboardPage() {
           </button>
         </header>
 
+        {error ? (
+          <section className="card" style={{ borderColor: 'rgba(248,113,113,0.35)' }}>
+            <div style={{ color: '#fecaca' }}>{error}</div>
+          </section>
+        ) : null}
+
+        {actionMessage ? (
+          <section className="card" style={{ borderColor: 'rgba(52,211,153,0.28)' }}>
+            <div style={{ color: '#bbf7d0' }}>{actionMessage}</div>
+          </section>
+        ) : null}
+
         <section className="card">
-          <h2>Welcome back</h2>
+          <h2 style={{ marginTop: 0 }}>Welcome back</h2>
           <p>Email: {user.email}</p>
           <p>Handle: {user.handle}</p>
         </section>
 
+        <section
+          className="card"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Backend</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>
+              {summary.backendOnline ? 'Online' : 'Offline'}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Worker</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.workerState}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Connected Accounts</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.connectedCount}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Posts in Rotation</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.postsInRotation}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Queued</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.queued}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Processed</div>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.processed}</div>
+          </div>
+        </section>
+
         <section className="card">
-          <h3>Control Center</h3>
+          <h3 style={{ marginTop: 0 }}>Control Center</h3>
 
           <div
             style={{
@@ -96,7 +423,187 @@ export default function DashboardPage() {
             <Link className="btn" href="/analytics">
               📈 Analytics
             </Link>
+
+            <button
+              className="btn"
+              onClick={handleRefreshNow}
+              disabled={busyAction !== null}
+            >
+              {busyAction === 'refresh' ? 'Queueing Refresh...' : '⚡ Refresh Now'}
+            </button>
+
+            <button
+              className="btn"
+              onClick={handleRunAnalytics}
+              disabled={busyAction !== null}
+            >
+              {busyAction === 'analytics' ? 'Queueing Analytics...' : '🧠 Run Analytics'}
+            </button>
           </div>
+        </section>
+
+        <section
+          className="card"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Last Heartbeat</div>
+            <div>{fmtWhen(summary.heartbeatAt)}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Poll Interval</div>
+            <div>{summary.pollSeconds ? `${summary.pollSeconds}s` : '—'}</div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Next Cycle</div>
+            <div>
+              {fmtWhen(summary.nextCycle)}{' '}
+              <span style={{ opacity: 0.7 }}>
+                {summary.nextCycle ? `(${relativeWhen(summary.nextCycle)})` : ''}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Worker Error</div>
+            <div>{summary.workerError || 'No worker error reported.'}</div>
+          </div>
+        </section>
+
+        <section className="card">
+          <h3 style={{ marginTop: 0 }}>Connected Accounts Snapshot</h3>
+
+          {accounts.length === 0 ? (
+            <div>No connected accounts yet.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+              {accounts.map((account) => {
+                const status = statusMap[account.id]
+                return (
+                  <div
+                    key={account.id}
+                    style={{
+                      border: '1px solid rgba(52,211,153,0.18)',
+                      borderRadius: 18,
+                      padding: 16,
+                      background: 'rgba(16,185,129,0.04)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.4fr repeat(4, minmax(110px, 1fr))',
+                        gap: 12,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            color: 'rgba(236,253,245,0.62)',
+                            fontSize: 11,
+                            letterSpacing: '0.14em',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {account.provider}
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>
+                          {account.handle}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Connected</div>
+                        <div>{status?.connected ? 'Yes' : 'No'}</div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Autopilot</div>
+                        <div>{status?.running ? 'Running' : 'Idle'}</div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Rotation</div>
+                        <div>{status?.posts_in_rotation ?? 0}</div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Next Cycle</div>
+                        <div>{relativeWhen(status?.next_cycle_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="card">
+          <h3 style={{ marginTop: 0 }}>Recent Jobs</h3>
+
+          {recentJobs.length === 0 ? (
+            <div>No jobs found yet.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+              {recentJobs.map((job, index) => (
+                <div
+                  key={job.id || job.job_id || `${job.type}-${index}`}
+                  style={{
+                    border: '1px solid rgba(52,211,153,0.18)',
+                    borderRadius: 18,
+                    padding: 16,
+                    background: 'rgba(16,185,129,0.04)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{job.type || 'Job'}</div>
+                      <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13 }}>
+                        ID: {job.id || job.job_id || '—'}
+                      </div>
+                    </div>
+
+                    <div className="btn" style={{ cursor: 'default' }}>
+                      {job.state || job.status || 'unknown'}
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 12, color: 'rgba(236,253,245,0.88)' }}>
+                    {job.message || job.result || 'No message provided.'}
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                      gap: 12,
+                      marginTop: 12,
+                      fontSize: 13,
+                      color: 'rgba(236,253,245,0.72)',
+                    }}
+                  >
+                    <div>Created: {fmtWhen(job.created_at)}</div>
+                    <div>Updated: {fmtWhen(job.updated_at)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </main>
