@@ -5,7 +5,6 @@ import os
 import tweepy
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from urllib.parse import urlencode
 
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount, User
@@ -55,7 +54,11 @@ def resolve_local_dev_user_id() -> int:
         db.close()
 
 
-def get_or_create_account_scoped_autopilot(db, user: User, account: ConnectedAccount) -> AutopilotStatus:
+def get_or_create_account_scoped_autopilot(
+    db,
+    user: User,
+    account: ConnectedAccount,
+) -> AutopilotStatus:
     autopilot = (
         db.query(AutopilotStatus)
         .filter(AutopilotStatus.connected_account_id == account.id)
@@ -106,14 +109,17 @@ def save_or_update_x_account(
             .first()
         )
 
-        metadata = encrypt_metadata({
-            "api_key": api_key,
-            "api_secret": api_secret,
-            "access_token_secret": access_token_secret,
-            "source": "x_oauth",
-        })
+        metadata = encrypt_metadata(
+            {
+                "api_key": api_key,
+                "api_secret": api_secret,
+                "access_token_secret": access_token_secret,
+                "source": "x_oauth",
+            }
+        )
 
         encrypted_access_token = encrypt_secret(access_token)
+        encrypted_access_token_secret = encrypt_secret(access_token_secret)
 
         if not account:
             account = ConnectedAccount(
@@ -122,6 +128,7 @@ def save_or_update_x_account(
                 provider_account_id=provider_account_id,
                 handle=handle,
                 access_token=encrypted_access_token,
+                access_token_secret=encrypted_access_token_secret,
                 refresh_token=None,
                 token_expires_at=None,
                 connection_status="connected",
@@ -133,6 +140,7 @@ def save_or_update_x_account(
             account.provider_account_id = provider_account_id
             account.handle = handle
             account.access_token = encrypted_access_token
+            account.access_token_secret = encrypted_access_token_secret
             account.refresh_token = None
             account.token_expires_at = None
             account.connection_status = "connected"
@@ -201,6 +209,7 @@ def oauth_callback(request: Request):
 
     try:
         access_token, access_token_secret = auth.get_access_token(oauth_verifier)
+
         client = tweepy.Client(
             consumer_key=api_key,
             consumer_secret=api_secret,
@@ -229,7 +238,7 @@ def oauth_callback(request: Request):
         )
 
         redirect_url = f"{dashboard_redirect_url()}?provider=x&connected=1"
-        html = f'''
+        html = f"""
         <html>
           <head><meta http-equiv="refresh" content="0; url={redirect_url}" /></head>
           <body style="font-family: sans-serif; background: #0b1220; color: #d7f7ff;">
@@ -237,7 +246,7 @@ def oauth_callback(request: Request):
             <p><a href="{redirect_url}" style="color:#8be9ff;">Continue</a></p>
           </body>
         </html>
-        '''
+        """
         return HTMLResponse(content=html)
     finally:
         OAUTH_REQUEST_SECRETS.pop(oauth_token, None)
