@@ -2,7 +2,17 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { getApiBase, getToken } from '../lib/auth'
+import { getToken } from '../lib/auth'
+import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
+import {
+  compactNumber,
+  headlineForJob,
+  jobStateTone,
+  parseJobPayload,
+  providerLabel,
+  startCase,
+  type JobItem,
+} from '../lib/mission-jobs'
 
 type ConnectedAccount = {
   id: number
@@ -21,18 +31,6 @@ type AccountStatus = {
   last_action_at?: string | null
   next_cycle_at?: string | null
   metadata?: Record<string, unknown>
-}
-
-type JobItem = {
-  id?: string
-  job_id?: string
-  type?: string
-  state?: string
-  status?: string
-  created_at?: string
-  updated_at?: string
-  message?: string
-  result?: string
 }
 
 const API_BASE =
@@ -225,48 +223,145 @@ export default function PostsPage() {
             <div>No jobs found yet.</div>
           ) : (
             <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-              {jobs.map((job, index) => (
-                <div
-                  key={job.id || job.job_id || `${job.type}-${index}`}
-                  style={{
-                    border: '1px solid rgba(52,211,153,0.18)',
-                    borderRadius: 18,
-                    padding: 16,
-                    background: 'rgba(16,185,129,0.04)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{job.type || 'Job'}</div>
-                      <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13 }}>
-                        ID: {job.id || job.job_id || '—'}
+              {jobs.map((job, index) => {
+                const payload = parseJobPayload(job)
+                const state = job.state || job.status || 'unknown'
+                const badges = [
+                  payload.pacing_mode ? `Pacing ${startCase(payload.pacing_mode)}` : '',
+                  typeof payload.next_delay_minutes === 'number'
+                    ? `Delay ${payload.next_delay_minutes}m`
+                    : '',
+                  payload.rotation_health?.pool_size != null
+                    ? `Pool ${compactNumber(payload.rotation_health.pool_size)}`
+                    : '',
+                  payload.rotation_health?.velocity_stack_active ? 'Velocity active' : '',
+                ].filter(Boolean)
+
+                return (
+                  <div
+                    key={job.id || job.job_id || `${job.type}-${index}`}
+                    style={{
+                      border: '1px solid rgba(52,211,153,0.18)',
+                      borderRadius: 18,
+                      padding: 18,
+                      background:
+                        'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(3,18,15,0.62))',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <div>
+                        <div style={missionEyebrowStyle}>Mission Report</div>
+                        <div style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>
+                          {headlineForJob(job, payload)}
+                        </div>
+                        <div
+                          style={{
+                            color: 'rgba(236,253,245,0.7)',
+                            fontSize: 14,
+                            marginTop: 8,
+                          }}
+                        >
+                          {providerLabel(payload.provider)} · @{payload.handle || 'unknown'} · ID{' '}
+                          {job.id || job.job_id || '—'}
+                        </div>
+                      </div>
+
+                      <span style={missionBadgeStyle(jobStateTone(state))}>{startCase(state)}</span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: 12,
+                        marginTop: 16,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Next Step</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {payload.next_step || 'Awaiting next worker instruction'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Last Action</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {fmtWhen(payload.last_action_at || job.updated_at)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Rotation Health</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {payload.rotation_health?.last_strategy ||
+                            payload.rotation_health?.mix_hint ||
+                            'Stable'}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="btn" style={{ cursor: 'default' }}>
-                      {job.state || job.status || 'unknown'}
+                    {payload.cycle_events && payload.cycle_events.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                        {payload.cycle_events.map((event) => (
+                          <span key={event} style={missionBadgeStyle('mint')}>
+                            {event}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {badges.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                        {badges.map((badge) => (
+                          <span key={badge} style={missionBadgeStyle('gold')}>
+                            {badge}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div
+                      style={{
+                        marginTop: 14,
+                        padding: '12px 14px',
+                        borderRadius: 14,
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'rgba(255,255,255,0.03)',
+                        color: 'rgba(236,253,245,0.76)',
+                        fontSize: 13,
+                        lineHeight: 1.65,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {payload.message || payload.rotation_health?.selection_reason || 'No message provided.'}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: 12,
+                        marginTop: 12,
+                        fontSize: 13,
+                        color: 'rgba(236,253,245,0.72)',
+                      }}
+                    >
+                      <div>Created: {fmtWhen(job.created_at)}</div>
+                      <div>Updated: {fmtWhen(job.updated_at)}</div>
+                      <div>Next cycle: {fmtWhen(payload.next_cycle_at)}</div>
                     </div>
                   </div>
-
-                  <div style={{ marginTop: 12, color: 'rgba(236,253,245,0.88)' }}>
-                    {job.message || job.result || 'No message provided.'}
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                      gap: 12,
-                      marginTop: 12,
-                      fontSize: 13,
-                      color: 'rgba(236,253,245,0.72)',
-                    }}
-                  >
-                    <div>Created: {fmtWhen(job.created_at)}</div>
-                    <div>Updated: {fmtWhen(job.updated_at)}</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>
