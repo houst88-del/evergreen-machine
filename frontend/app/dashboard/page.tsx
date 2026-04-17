@@ -27,6 +27,7 @@ type ConnectedAccount = {
   id: number
   provider: string
   handle: string
+  connection_status?: string
 }
 
 type AccountStatus = {
@@ -52,6 +53,7 @@ type JobItem = {
   updated_at?: string
   message?: string
   result?: string
+  connected_account_id?: number
 }
 
 const API_BASE =
@@ -89,10 +91,7 @@ function cycleLabel(value?: string | null) {
   if (Number.isNaN(d.getTime())) return 'No cycle scheduled'
 
   const diffMs = d.getTime() - Date.now()
-
-  if (diffMs < -5 * 60 * 1000) {
-    return 'Overdue'
-  }
+  if (diffMs < -5 * 60 * 1000) return 'Overdue'
 
   return relativeWhen(value)
 }
@@ -187,6 +186,65 @@ export default function DashboardPage() {
     }
   }, [])
 
+  async function refreshMissionControlNow() {
+    if (!session?.user) return
+
+    try {
+      const userId = session.user.id || 1
+
+      const [systemRes, accountsRes, jobsRes] = await Promise.all([
+        apiFetch('/api/system-status'),
+        apiFetch(`/api/connected-accounts?user_id=${userId}`),
+        apiFetch(`/api/jobs?user_id=${userId}`),
+      ])
+
+      const systemJson = await systemRes.json()
+      const accountsJson = await accountsRes.json()
+      const jobsJson = await jobsRes.json()
+
+      const nextAccounts = Array.isArray(accountsJson.accounts)
+        ? accountsJson.accounts
+        : Array.isArray(accountsJson)
+          ? accountsJson
+          : []
+
+      const nextStatusMap: Record<number, AccountStatus> = {}
+      await Promise.all(
+        nextAccounts.map(async (account: ConnectedAccount) => {
+          try {
+            const res = await apiFetch(
+              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+            )
+            if (!res.ok) return
+            nextStatusMap[account.id] = await res.json()
+          } catch {
+            // ignore account-specific failures
+          }
+        })
+      )
+
+      const nextJobs = Array.isArray(jobsJson.jobs)
+        ? jobsJson.jobs
+        : Array.isArray(jobsJson)
+          ? jobsJson
+          : []
+
+      setSystem(systemJson)
+      setAccounts(nextAccounts)
+      setStatusMap(nextStatusMap)
+      setJobs(nextJobs)
+      setError('')
+    } catch {
+      // ignore silent refresh failures
+    }
+  }
+
+  function scheduleFollowupRefreshes() {
+    window.setTimeout(refreshMissionControlNow, 1200)
+    window.setTimeout(refreshMissionControlNow, 4000)
+    window.setTimeout(refreshMissionControlNow, 8000)
+  }
+
   useEffect(() => {
     if (!session?.user) return
 
@@ -247,7 +305,7 @@ export default function DashboardPage() {
     }
 
     loadMissionControl()
-    const id = window.setInterval(loadMissionControl, 12000)
+    const id = window.setInterval(loadMissionControl, 6000)
 
     return () => {
       mounted = false
@@ -291,57 +349,6 @@ export default function DashboardPage() {
     }
   }, [system, statusMap, accounts.length])
 
-  async function refreshMissionControlNow() {
-    if (!session?.user) return
-    try {
-      const userId = session.user.id || 1
-
-      const [systemRes, accountsRes, jobsRes] = await Promise.all([
-        apiFetch('/api/system-status'),
-        apiFetch(`/api/connected-accounts?user_id=${userId}`),
-        apiFetch(`/api/jobs?user_id=${userId}`),
-      ])
-
-      const systemJson = await systemRes.json()
-      const accountsJson = await accountsRes.json()
-      const jobsJson = await jobsRes.json()
-
-      const nextAccounts = Array.isArray(accountsJson.accounts)
-        ? accountsJson.accounts
-        : Array.isArray(accountsJson)
-          ? accountsJson
-          : []
-
-      const nextStatusMap: Record<number, AccountStatus> = {}
-      await Promise.all(
-        nextAccounts.map(async (account: ConnectedAccount) => {
-          try {
-            const res = await apiFetch(
-              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-            )
-            if (!res.ok) return
-            nextStatusMap[account.id] = await res.json()
-          } catch {
-            // ignore account-specific failures
-          }
-        })
-      )
-
-      const nextJobs = Array.isArray(jobsJson.jobs)
-        ? jobsJson.jobs
-        : Array.isArray(jobsJson)
-          ? jobsJson
-          : []
-
-      setSystem(systemJson)
-      setAccounts(nextAccounts)
-      setStatusMap(nextStatusMap)
-      setJobs(nextJobs)
-    } catch {
-      // ignore silent refresh failures
-    }
-  }
-
   async function handleRefreshNow() {
     if (!session?.user) return
     setBusyAction('refresh')
@@ -361,9 +368,7 @@ export default function DashboardPage() {
       }
 
       setActionMessage('Refresh job queued.')
-      window.setTimeout(() => {
-        refreshMissionControlNow()
-      }, 1200)
+      scheduleFollowupRefreshes()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
     } finally {
@@ -390,9 +395,7 @@ export default function DashboardPage() {
       }
 
       setActionMessage('Analytics job queued.')
-      window.setTimeout(() => {
-        refreshMissionControlNow()
-      }, 1200)
+      scheduleFollowupRefreshes()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
     } finally {
@@ -400,10 +403,12 @@ export default function DashboardPage() {
     }
   }
 
-
   async function handleConnectX() {
     if (!session?.user) return
-    const handle = window.prompt('Enter your X handle (example: @jockulus)', session.user.handle || '@creator')
+    const handle = window.prompt(
+      'Enter your X handle (example: @jockulus)',
+      session.user.handle || '@creator'
+    )
     if (!handle) return
 
     setActionMessage('')
@@ -425,6 +430,8 @@ export default function DashboardPage() {
 
       setActionMessage(`Connected X for ${json.account_handle || handle}.`)
       await refreshMissionControlNow()
+      window.setTimeout(refreshMissionControlNow, 2000)
+      window.setTimeout(refreshMissionControlNow, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect X')
     }
@@ -457,6 +464,8 @@ export default function DashboardPage() {
 
       setActionMessage(`Connected Bluesky for ${json.account_handle || handle}.`)
       await refreshMissionControlNow()
+      window.setTimeout(refreshMissionControlNow, 2000)
+      window.setTimeout(refreshMissionControlNow, 5000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
     }
@@ -482,6 +491,8 @@ export default function DashboardPage() {
 
       setActionMessage(`Disconnected ${json.account_handle || 'account'}.`)
       await refreshMissionControlNow()
+      window.setTimeout(refreshMissionControlNow, 1500)
+      window.setTimeout(refreshMissionControlNow, 4000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not disconnect account')
     }
@@ -506,8 +517,11 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || 'Could not update autopilot')
       }
 
-      setActionMessage(`${enabled ? 'Started' : 'Paused'} autopilot for ${json.account_handle || 'account'}.`)
+      setActionMessage(
+        `${enabled ? 'Started' : 'Paused'} autopilot for ${json.account_handle || 'account'}.`
+      )
       await refreshMissionControlNow()
+      window.setTimeout(refreshMissionControlNow, 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update autopilot')
     }
@@ -647,19 +661,11 @@ export default function DashboardPage() {
               📈 Analytics
             </Link>
 
-            <button
-              className="btn"
-              onClick={handleRefreshNow}
-              disabled={busyAction !== null}
-            >
+            <button className="btn" onClick={handleRefreshNow} disabled={busyAction !== null}>
               {busyAction === 'refresh' ? 'Queueing Refresh...' : '⚡ Refresh Now'}
             </button>
 
-            <button
-              className="btn"
-              onClick={handleRunAnalytics}
-              disabled={busyAction !== null}
-            >
+            <button className="btn" onClick={handleRunAnalytics} disabled={busyAction !== null}>
               {busyAction === 'analytics' ? 'Queueing Analytics...' : '🧠 Run Analytics'}
             </button>
           </div>
@@ -842,6 +848,20 @@ export default function DashboardPage() {
                       <Link className="btn" href="/galaxy">
                         Open in Galaxy
                       </Link>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                        gap: 12,
+                        marginTop: 12,
+                        fontSize: 13,
+                        color: 'rgba(236,253,245,0.72)',
+                      }}
+                    >
+                      <div>Last action: {fmtWhen(status?.last_action_at)}</div>
+                      <div>Next cycle: {fmtWhen(status?.next_cycle_at)}</div>
                     </div>
                   </div>
                 )
