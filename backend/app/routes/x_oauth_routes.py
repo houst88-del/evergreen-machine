@@ -3,10 +3,11 @@ from __future__ import annotations
 import os
 
 import tweepy
-from fastapi import APIRouter, Cookie, HTTPException, Request
+from fastapi import APIRouter, Cookie, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.db import SessionLocal
+from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, User
 from app.services.secret_crypto import encrypt_metadata, encrypt_secret
 
@@ -18,7 +19,7 @@ def oauth_config():
     api_secret = os.getenv("X_API_SECRET", "").strip()
     callback = os.getenv(
         "X_CALLBACK_URL",
-        "https://evergreen-machine-production.up.railway.app/api/providers/x/callback",
+        "https://backend-fixed-production.up.railway.app/api/providers/x/callback",
     ).strip()
 
     if not api_key or not api_secret:
@@ -34,19 +35,16 @@ def dashboard_redirect_url() -> str:
     ).strip()
 
 
-def resolve_local_dev_user_id() -> int:
-    env_value = os.getenv("EVERGREEN_DEV_USER_ID", "").strip()
-    if env_value.isdigit():
-        return int(env_value)
+def resolve_user_id_from_auth_header(authorization: str | None) -> int:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
 
-    db = SessionLocal()
-    try:
-        user = db.query(User).order_by(User.id.asc()).first()
-        if not user:
-            raise HTTPException(status_code=400, detail="No users exist yet")
-        return int(user.id)
-    finally:
-        db.close()
+    token = authorization.split(" ", 1)[1].strip()
+    payload = verify_token(token)
+    if not payload or not payload.get("user_id"):
+        raise HTTPException(status_code=401, detail="Invalid auth token")
+
+    return int(payload["user_id"])
 
 
 def get_or_create_account_scoped_autopilot(db, user: User, account: ConnectedAccount) -> AutopilotStatus:
@@ -150,8 +148,9 @@ def save_or_update_x_account(
 
 
 @router.get("/start")
-def start_oauth():
+def start_oauth(authorization: str | None = Header(default=None)):
     api_key, api_secret, callback = oauth_config()
+    user_id = resolve_user_id_from_auth_header(authorization)
 
     auth = tweepy.OAuth1UserHandler(
         api_key,
@@ -189,6 +188,15 @@ def start_oauth():
             max_age=600,
             path="/",
         )
+        response.set_cookie(
+            key="x_oauth_user_id",
+            value=str(user_id),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=600,
+            path="/",
+        )
         return response
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to start X OAuth: {exc}")
@@ -199,6 +207,7 @@ def oauth_callback(
     request: Request,
     x_oauth_request_secret: str | None = Cookie(default=None),
     x_oauth_request_token: str | None = Cookie(default=None),
+    x_oauth_user_id: str | None = Cookie(default=None),
 ):
     oauth_token = str(request.query_params.get("oauth_token", "")).strip()
     oauth_verifier = str(request.query_params.get("oauth_verifier", "")).strip()
@@ -209,6 +218,8 @@ def oauth_callback(
         raise HTTPException(status_code=400, detail="Missing OAuth request cookie")
     if oauth_token != x_oauth_request_token:
         raise HTTPException(status_code=400, detail="OAuth token mismatch")
+    if not x_oauth_user_id or not x_oauth_user_id.isdigit():
+        raise HTTPException(status_code=400, detail="Missing OAuth user cookie")
 
     api_key, api_secret, callback = oauth_config()
     auth = tweepy.OAuth1UserHandler(api_key, api_secret, callback=callback)
@@ -236,9 +247,8 @@ def oauth_callback(
         if not provider_account_id or not username:
             raise HTTPException(status_code=500, detail="Missing X account id or username")
 
-        user_id = resolve_local_dev_user_id()
         save_or_update_x_account(
-            user_id=user_id,
+            user_id=int(x_oauth_user_id),
             provider_account_id=provider_account_id,
             handle=f"@{username}",
             access_token=access_token,
@@ -260,6 +270,7 @@ def oauth_callback(
         response = HTMLResponse(content=html)
         response.delete_cookie("x_oauth_request_secret", path="/")
         response.delete_cookie("x_oauth_request_token", path="/")
+        response.delete_cookie("x_oauth_user_id", path="/")
         return response
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to complete X OAuth: {exc}")
