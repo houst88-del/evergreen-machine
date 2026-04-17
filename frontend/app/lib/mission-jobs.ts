@@ -76,6 +76,42 @@ export function compactNumber(value: unknown) {
   return Number.isFinite(num) ? String(num) : '—'
 }
 
+export function humanizeStrategyLabel(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Stable'
+
+  const normalized = raw.toLowerCase()
+  if (normalized === 'x_db_tier_a') return 'X priority orbit'
+  if (normalized === 'constellation circulation') return 'Constellation circulation'
+
+  return startCase(raw)
+}
+
+export function humanizeNextStep(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Standing by for the next cycle window'
+
+  const normalized = raw.toLowerCase()
+  if (normalized === 'awaiting next worker instruction') {
+    return 'Standing by for the next cycle window'
+  }
+
+  return raw
+}
+
+export function humanizeCycleEvent(value: string) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'mission update'
+
+  const normalized = raw.toLowerCase()
+  if (normalized.startsWith('selected via ')) {
+    const strategy = raw.slice('selected via '.length)
+    return `selected via ${humanizeStrategyLabel(strategy)}`
+  }
+
+  return raw
+}
+
 export function parseJobPayload(job: JobItem): JobPayload {
   const result = asRecord(job.result)
   const message = asRecord(job.message)

@@ -222,6 +222,40 @@ function compactNumber(value: unknown) {
   return Number.isFinite(num) ? String(num) : '—'
 }
 
+function humanizeStrategyLabel(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Stable'
+
+  const normalized = raw.toLowerCase()
+  if (normalized === 'x_db_tier_a') return 'X priority orbit'
+  if (normalized === 'constellation circulation') return 'Constellation circulation'
+
+  return startCase(raw)
+}
+
+function humanizeNextStep(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Standing by for the next cycle window'
+
+  if (raw.toLowerCase() === 'awaiting next worker instruction') {
+    return 'Standing by for the next cycle window'
+  }
+
+  return raw
+}
+
+function humanizeCycleEvent(value: string) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'mission update'
+
+  const normalized = raw.toLowerCase()
+  if (normalized.startsWith('selected via ')) {
+    return `selected via ${humanizeStrategyLabel(raw.slice('selected via '.length))}`
+  }
+
+  return raw
+}
+
 function headlineForJob(job: JobItem, payload: JobPayload) {
   const provider = providerLabel(payload.provider)
   const lowerMessage = String(payload.message || '').toLowerCase()
@@ -1138,7 +1172,7 @@ export default function DashboardPage() {
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Next Step</div>
                         <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
-                          {payload.next_step || 'Awaiting next worker instruction'}
+                          {humanizeNextStep(payload.next_step)}
                         </div>
                       </div>
                       <div>
@@ -1150,7 +1184,7 @@ export default function DashboardPage() {
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Rotation Health</div>
                         <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
-                          {rotationHealth.last_strategy || rotationHealth.mix_hint || 'Stable'}
+                          {humanizeStrategyLabel(rotationHealth.last_strategy || rotationHealth.mix_hint)}
                         </div>
                       </div>
                     </div>
@@ -1162,7 +1196,7 @@ export default function DashboardPage() {
                             key={event}
                             style={missionBadgeStyle('mint')}
                           >
-                            {event}
+                            {humanizeCycleEvent(event)}
                           </span>
                         ))}
                       </div>

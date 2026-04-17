@@ -7,6 +7,9 @@ import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 import {
   compactNumber,
   headlineForJob,
+  humanizeCycleEvent,
+  humanizeNextStep,
+  humanizeStrategyLabel,
   jobStateTone,
   parseJobPayload,
   providerLabel,
@@ -312,7 +315,7 @@ export default function PostsPage() {
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Next Step</div>
                         <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
-                          {payload.next_step || 'Awaiting next worker instruction'}
+                          {humanizeNextStep(payload.next_step)}
                         </div>
                       </div>
                       <div>
@@ -324,9 +327,9 @@ export default function PostsPage() {
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Rotation Health</div>
                         <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
-                          {payload.rotation_health?.last_strategy ||
-                            payload.rotation_health?.mix_hint ||
-                            'Stable'}
+                          {humanizeStrategyLabel(
+                            payload.rotation_health?.last_strategy || payload.rotation_health?.mix_hint,
+                          )}
                         </div>
                       </div>
                     </div>
@@ -335,7 +338,7 @@ export default function PostsPage() {
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                         {payload.cycle_events.map((event) => (
                           <span key={event} style={missionBadgeStyle('mint')}>
-                            {event}
+                            {humanizeCycleEvent(event)}
                           </span>
                         ))}
                       </div>
