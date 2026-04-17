@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import json
 import socket
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from app.core.db import SessionLocal
+from app.models.models import JobQueueItem
 
 
 RUNNING_TIMEOUT_MINUTES = 20
@@ -14,8 +16,10 @@ def _utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _iso_now() -> str:
-    return _utc_now_naive().isoformat(timespec="seconds")
+def _iso_or_none(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat(timespec="seconds")
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -23,62 +27,6 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(float(str(value).strip() or default))
     except Exception:
         return default
-
-
-def platform_dir() -> Path:
-    return Path.home() / "Applications" / "evergreen-system" / "platform"
-
-
-def queue_dir() -> Path:
-    path = platform_dir() / "queue"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def queue_file() -> Path:
-    return queue_dir() / "jobs.json"
-
-
-def ensure_queue_file() -> None:
-    path = queue_file()
-    if not path.exists():
-        path.write_text("[]", encoding="utf-8")
-
-
-def _normalize_job(job: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(job or {})
-    normalized.setdefault("id", "")
-    normalized.setdefault("connected_account_id", None)
-    normalized.setdefault("job_type", "")
-    normalized.setdefault("payload", {})
-    normalized.setdefault("status", "queued")
-    normalized.setdefault("created_at", "")
-    normalized.setdefault("started_at", None)
-    normalized.setdefault("finished_at", None)
-    normalized.setdefault("result", None)
-    normalized.setdefault("error", None)
-    normalized.setdefault("worker_id", None)
-    normalized.setdefault("attempt_count", 0)
-    normalized.setdefault("last_heartbeat_at", None)
-    return normalized
-
-
-def load_jobs() -> list[dict[str, Any]]:
-    ensure_queue_file()
-    path = queue_file()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, list):
-            return []
-        return [_normalize_job(job) for job in raw if isinstance(job, dict)]
-    except Exception:
-        return []
-
-
-def save_jobs(jobs: list[dict[str, Any]]) -> None:
-    ensure_queue_file()
-    normalized = [_normalize_job(job) for job in jobs]
-    queue_file().write_text(json.dumps(normalized, indent=2), encoding="utf-8")
 
 
 def _make_job_id(job_type: str, connected_account_id: int) -> str:
@@ -89,195 +37,243 @@ def _worker_identity() -> str:
     return f"{socket.gethostname()}:{Path.cwd().name}"
 
 
+def _serialize_job(job: JobQueueItem) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "connected_account_id": job.connected_account_id,
+        "job_type": job.job_type,
+        "payload": dict(job.payload_json or {}),
+        "status": job.status,
+        "created_at": _iso_or_none(job.created_at) or "",
+        "started_at": _iso_or_none(job.started_at),
+        "finished_at": _iso_or_none(job.finished_at),
+        "result": job.result_json,
+        "error": job.error,
+        "worker_id": job.worker_id,
+        "attempt_count": int(job.attempt_count or 0),
+        "last_heartbeat_at": _iso_or_none(job.last_heartbeat_at),
+    }
+
+
+def load_jobs() -> list[dict[str, Any]]:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(JobQueueItem)
+            .order_by(JobQueueItem.created_at.asc(), JobQueueItem.id.asc())
+            .all()
+        )
+        return [_serialize_job(row) for row in rows]
+    finally:
+        db.close()
+
+
 def enqueue_job(
     job_type: str,
     *,
     connected_account_id: int,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    jobs = load_jobs()
-    job = {
-        "id": _make_job_id(job_type, connected_account_id),
-        "connected_account_id": int(connected_account_id),
-        "job_type": str(job_type).strip(),
-        "payload": dict(payload or {}),
-        "status": "queued",
-        "created_at": _iso_now(),
-        "started_at": None,
-        "finished_at": None,
-        "result": None,
-        "error": None,
-        "worker_id": None,
-        "attempt_count": 0,
-        "last_heartbeat_at": None,
-    }
-    jobs.append(job)
-    save_jobs(jobs)
-    return job
+    db = SessionLocal()
+    try:
+        job = JobQueueItem(
+            id=_make_job_id(job_type, connected_account_id),
+            connected_account_id=int(connected_account_id),
+            job_type=str(job_type).strip(),
+            payload_json=dict(payload or {}),
+            status="queued",
+            created_at=_utc_now_naive(),
+            started_at=None,
+            finished_at=None,
+            result_json=None,
+            error=None,
+            worker_id=None,
+            attempt_count=0,
+            last_heartbeat_at=None,
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        return _serialize_job(job)
+    finally:
+        db.close()
 
 
 def start_job(job_id: str, worker_id: str | None = None) -> bool:
-    jobs = load_jobs()
-    claimed = False
-    now = _iso_now()
-    effective_worker_id = worker_id or _worker_identity()
+    db = SessionLocal()
+    try:
+        job = db.query(JobQueueItem).filter(JobQueueItem.id == str(job_id).strip()).first()
+        if not job:
+            return False
+        if str(job.status or "").strip().lower() != "queued":
+            return False
 
-    for job in jobs:
-        if str(job.get("id", "")).strip() != str(job_id).strip():
-            continue
-        status = str(job.get("status", "")).strip().lower()
-        if status != "queued":
-            break
-        job["status"] = "running"
-        job["started_at"] = now
-        job["finished_at"] = None
-        job["error"] = None
-        job["worker_id"] = effective_worker_id
-        job["attempt_count"] = _safe_int(job.get("attempt_count", 0), 0) + 1
-        job["last_heartbeat_at"] = now
-        claimed = True
-        break
+        now = _utc_now_naive()
+        job.status = "running"
+        job.started_at = now
+        job.finished_at = None
+        job.error = None
+        job.worker_id = worker_id or _worker_identity()
+        job.attempt_count = int(job.attempt_count or 0) + 1
+        job.last_heartbeat_at = now
 
-    if claimed:
-        save_jobs(jobs)
-    return claimed
+        db.commit()
+        return True
+    finally:
+        db.close()
 
 
 def heartbeat_job(job_id: str) -> bool:
-    jobs = load_jobs()
-    touched = False
-    now = _iso_now()
+    db = SessionLocal()
+    try:
+        job = db.query(JobQueueItem).filter(JobQueueItem.id == str(job_id).strip()).first()
+        if not job:
+            return False
+        if str(job.status or "").strip().lower() != "running":
+            return False
 
-    for job in jobs:
-        if str(job.get("id", "")).strip() != str(job_id).strip():
-            continue
-        if str(job.get("status", "")).strip().lower() != "running":
-            break
-        job["last_heartbeat_at"] = now
-        touched = True
-        break
-
-    if touched:
-        save_jobs(jobs)
-    return touched
+        job.last_heartbeat_at = _utc_now_naive()
+        db.commit()
+        return True
+    finally:
+        db.close()
 
 
 def complete_job(job_id: str, result: Any) -> bool:
-    jobs = load_jobs()
-    changed = False
-    now = _iso_now()
+    db = SessionLocal()
+    try:
+        job = db.query(JobQueueItem).filter(JobQueueItem.id == str(job_id).strip()).first()
+        if not job:
+            return False
 
-    for job in jobs:
-        if str(job.get("id", "")).strip() != str(job_id).strip():
-            continue
-        job["status"] = "completed"
-        job["finished_at"] = now
-        job["result"] = result
-        job["error"] = None
-        job["last_heartbeat_at"] = now
-        changed = True
-        break
+        now = _utc_now_naive()
+        job.status = "completed"
+        job.finished_at = now
+        job.result_json = result
+        job.error = None
+        job.last_heartbeat_at = now
 
-    if changed:
-        save_jobs(jobs)
-    return changed
+        db.commit()
+        return True
+    finally:
+        db.close()
 
 
 def fail_job(job_id: str, error: str) -> bool:
-    jobs = load_jobs()
-    changed = False
-    now = _iso_now()
+    db = SessionLocal()
+    try:
+        job = db.query(JobQueueItem).filter(JobQueueItem.id == str(job_id).strip()).first()
+        if not job:
+            return False
 
-    for job in jobs:
-        if str(job.get("id", "")).strip() != str(job_id).strip():
-            continue
-        job["status"] = "failed"
-        job["finished_at"] = now
-        job["error"] = str(error)
-        job["last_heartbeat_at"] = now
-        changed = True
-        break
+        now = _utc_now_naive()
+        job.status = "failed"
+        job.finished_at = now
+        job.error = str(error)
+        job.last_heartbeat_at = now
 
-    if changed:
-        save_jobs(jobs)
-    return changed
+        db.commit()
+        return True
+    finally:
+        db.close()
 
 
 def claim_next_jobs(limit: int = 25, worker_id: str | None = None) -> list[dict[str, Any]]:
-    jobs = load_jobs()
-    claimed: list[dict[str, Any]] = []
-    effective_worker_id = worker_id or _worker_identity()
-    now = _iso_now()
+    db = SessionLocal()
+    try:
+        effective_limit = max(1, int(limit))
+        effective_worker_id = worker_id or _worker_identity()
+        now = _utc_now_naive()
 
-    for job in jobs:
-        if len(claimed) >= max(1, int(limit)):
-            break
-        if str(job.get("status", "")).strip().lower() != "queued":
-            continue
-        job["status"] = "running"
-        job["started_at"] = now
-        job["finished_at"] = None
-        job["error"] = None
-        job["worker_id"] = effective_worker_id
-        job["attempt_count"] = _safe_int(job.get("attempt_count", 0), 0) + 1
-        job["last_heartbeat_at"] = now
-        claimed.append(dict(job))
+        rows = (
+            db.query(JobQueueItem)
+            .filter(JobQueueItem.status == "queued")
+            .order_by(JobQueueItem.created_at.asc(), JobQueueItem.id.asc())
+            .limit(effective_limit)
+            .all()
+        )
 
-    if claimed:
-        save_jobs(jobs)
+        claimed: list[JobQueueItem] = []
+        for job in rows:
+            if str(job.status or "").strip().lower() != "queued":
+                continue
+            job.status = "running"
+            job.started_at = now
+            job.finished_at = None
+            job.error = None
+            job.worker_id = effective_worker_id
+            job.attempt_count = int(job.attempt_count or 0) + 1
+            job.last_heartbeat_at = now
+            claimed.append(job)
 
-    return claimed
+        if claimed:
+            db.commit()
+            for job in claimed:
+                db.refresh(job)
+
+        return [_serialize_job(job) for job in claimed]
+    finally:
+        db.close()
 
 
 def repair_stale_running_jobs(timeout_minutes: int = RUNNING_TIMEOUT_MINUTES) -> int:
-    jobs = load_jobs()
-    repaired = 0
-    now = _utc_now_naive()
-    timeout_delta = timedelta(minutes=max(1, int(timeout_minutes)))
+    db = SessionLocal()
+    try:
+        repaired = 0
+        now = _utc_now_naive()
+        timeout_delta = timedelta(minutes=max(1, int(timeout_minutes)))
 
-    for job in jobs:
-        if str(job.get("status", "")).strip().lower() != "running":
-            continue
+        rows = (
+            db.query(JobQueueItem)
+            .filter(JobQueueItem.status == "running")
+            .all()
+        )
 
-        marker = str(job.get("last_heartbeat_at") or job.get("started_at") or "").strip()
-        if not marker:
-            job["status"] = "queued"
-            job["started_at"] = None
-            job["worker_id"] = None
-            job["last_heartbeat_at"] = None
-            repaired += 1
-            continue
+        for job in rows:
+            marker = job.last_heartbeat_at or job.started_at
+            if marker is None:
+                job.status = "queued"
+                job.started_at = None
+                job.worker_id = None
+                job.last_heartbeat_at = None
+                repaired += 1
+                continue
 
-        try:
-            started_dt = datetime.fromisoformat(marker)
-        except Exception:
-            job["status"] = "queued"
-            job["started_at"] = None
-            job["worker_id"] = None
-            job["last_heartbeat_at"] = None
-            repaired += 1
-            continue
+            if now - marker >= timeout_delta:
+                job.status = "queued"
+                job.started_at = None
+                job.worker_id = None
+                job.last_heartbeat_at = None
+                repaired += 1
 
-        if now - started_dt >= timeout_delta:
-            job["status"] = "queued"
-            job["started_at"] = None
-            job["worker_id"] = None
-            job["last_heartbeat_at"] = None
-            repaired += 1
+        if repaired:
+            db.commit()
 
-    if repaired:
-        save_jobs(jobs)
-
-    return repaired
+        return repaired
+    finally:
+        db.close()
 
 
 def get_job(job_id: str) -> dict[str, Any] | None:
-    for job in load_jobs():
-        if str(job.get("id", "")).strip() == str(job_id).strip():
-            return job
-    return None
+    db = SessionLocal()
+    try:
+        job = db.query(JobQueueItem).filter(JobQueueItem.id == str(job_id).strip()).first()
+        if not job:
+            return None
+        return _serialize_job(job)
+    finally:
+        db.close()
 
 
 def list_jobs(limit: int = 100) -> list[dict[str, Any]]:
-    jobs = load_jobs()
-    return list(reversed(jobs))[:limit]
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(JobQueueItem)
+            .order_by(JobQueueItem.created_at.desc(), JobQueueItem.id.desc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+        return [_serialize_job(row) for row in rows]
+    finally:
+        db.close()

@@ -48,6 +48,7 @@ class ConnectedAccount(Base):
     user: Mapped["User"] = relationship(back_populates="connected_accounts")
     autopilot_statuses: Mapped[list["AutopilotStatus"]] = relationship(back_populates="connected_account")
     posts: Mapped[list["Post"]] = relationship(back_populates="connected_account")
+    job_queue_items: Mapped[list["JobQueueItem"]] = relationship(back_populates="connected_account")
 
 
 class AutopilotStatus(Base):
@@ -100,3 +101,31 @@ class Post(Base):
 
     user: Mapped["User"] = relationship(back_populates="posts")
     connected_account: Mapped["ConnectedAccount | None"] = relationship(back_populates="posts")
+
+
+class JobQueueItem(Base):
+    __tablename__ = "job_queue_items"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    connected_account_id: Mapped[int] = mapped_column(
+        ForeignKey("connected_accounts.id"),
+        index=True,
+    )
+
+    job_type: Mapped[str] = mapped_column(String(100), index=True)
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    result_json: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    worker_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    connected_account: Mapped["ConnectedAccount"] = relationship(back_populates="job_queue_items")
