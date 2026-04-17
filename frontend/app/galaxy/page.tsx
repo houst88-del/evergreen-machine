@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
 
@@ -99,6 +100,39 @@ const providerColor = (provider?: string) => {
   if (p === "bluesky" || p === "bsky") return "rgba(125, 211, 252, 0.95)";
   if (p === "x" || p === "twitter") return "rgba(187, 247, 208, 0.96)";
   return "rgba(196, 181, 253, 0.95)";
+};
+
+const providerLabel = (provider?: string) => {
+  const p = (provider || "").toLowerCase();
+  if (p === "bluesky" || p === "bsky") return "Bluesky";
+  if (p === "x" || p === "twitter") return "X";
+  return provider || "Provider";
+};
+
+const providerTheme = (provider?: string) => {
+  const p = (provider || "").toLowerCase();
+  if (p === "bluesky" || p === "bsky") {
+    return {
+      glow: "rgba(125,211,252,0.28)",
+      border: "rgba(125,211,252,0.48)",
+      fill: "rgba(125,211,252,0.10)",
+      text: "rgba(224,242,254,0.98)",
+    };
+  }
+  if (p === "x" || p === "twitter") {
+    return {
+      glow: "rgba(187,247,208,0.28)",
+      border: "rgba(167,243,208,0.44)",
+      fill: "rgba(16,185,129,0.10)",
+      text: "rgba(220,252,231,0.98)",
+    };
+  }
+  return {
+    glow: "rgba(196,181,253,0.24)",
+    border: "rgba(196,181,253,0.38)",
+    fill: "rgba(196,181,253,0.08)",
+    text: "rgba(243,232,255,0.98)",
+  };
 };
 
 const parseMeta = (meta?: GalaxyMeta) => {
@@ -219,6 +253,13 @@ const highlightOpacity = (
     return hit ? 1 : 0.14;
   }
   return 1;
+};
+
+const isFreshPulse = (value?: string | null) => {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  return Date.now() - d.getTime() <= 1000 * 60 * 45;
 };
 
 export default function GalaxyPage() {
@@ -543,6 +584,39 @@ export default function GalaxyPage() {
     [workingNodes, intelligenceView]
   );
 
+  const labeledStarIds = useMemo(() => {
+    const picked = [...workingNodes]
+      .sort(
+        (a, b) =>
+          intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)
+      )
+      .filter(
+        (node, index) =>
+          index < 10 &&
+          (safeNum(node.predicted_velocity, 0) >= 0.55 ||
+            rankGravity(node) >= 240 ||
+            !!node.current_cycle)
+      )
+      .map((node) => node.id);
+    return new Set(picked);
+  }, [workingNodes, intelligenceView]);
+
+  const providerCounts = useMemo(() => {
+    return workingNodes.reduce(
+      (acc, node) => {
+        const key =
+          node.provider?.toLowerCase() === "bluesky" || node.provider?.toLowerCase() === "bsky"
+            ? "bluesky"
+            : node.provider?.toLowerCase() === "x" || node.provider?.toLowerCase() === "twitter"
+              ? "x"
+              : "other";
+        acc[key] += 1;
+        return acc;
+      },
+      { bluesky: 0, x: 0, other: 0 }
+    );
+  }, [workingNodes]);
+
   const nodeCount = workingNodes.length;
   const densityScale =
     nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
@@ -738,6 +812,26 @@ export default function GalaxyPage() {
                 <div>Zoom: {zoom.toFixed(1)}x</div>
                 <div>Focus: {highlightMode === "off" ? "Balanced" : highlightMode}</div>
               </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {[
+                  `X ${providerCounts.x}`,
+                  `Bluesky ${providerCounts.bluesky}`,
+                  counts.currentCycle ? `${counts.currentCycle} active now` : "Standby sweep",
+                ].map((label, index) => (
+                      <span
+                        key={label}
+                        style={
+                          index === 0
+                            ? missionBadgeStyle("mint", true)
+                            : index === 1
+                              ? missionBadgeStyle("sky", true)
+                              : missionBadgeStyle("gold", true)
+                        }
+                      >
+                        {label}
+                      </span>
+                ))}
+              </div>
             </div>
 
             <div style={cardStyle()}>
@@ -850,12 +944,30 @@ export default function GalaxyPage() {
               </div>
               <div style={{ fontSize: 12, color: "rgba(236,253,245,0.58)", marginTop: 6 }}>
                 {selectedStar
-                  ? `${selectedStar.provider || "provider"} · intelligence ${intelligenceScore(
+                  ? `${providerLabel(selectedStar.provider)} · intelligence ${intelligenceScore(
                       selectedStar,
                       intelligenceView
                     ).toFixed(0)}`
                   : "Click any star to lock focus."}
               </div>
+              {selectedStar ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  {[
+                    selectedStar.current_cycle ? "Current cycle" : "",
+                    isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
+                    safeNum(selectedStar.predicted_velocity, 0) >= 0.65 ? "Likely next" : "",
+                  ]
+                    .filter(Boolean)
+                    .map((label) => (
+                      <span
+                        key={label}
+                        style={missionBadgeStyle("gold", true)}
+                      >
+                        {label}
+                      </span>
+                    ))}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -878,20 +990,7 @@ export default function GalaxyPage() {
                   ).map(([label, accent]) => (
                     <span
                       key={label}
-                      style={{
-                        borderRadius: 999,
-                        padding: "6px 12px",
-                        fontSize: 12,
-                        border: accent
-                          ? "1px solid rgba(253,224,71,0.35)"
-                          : "1px solid rgba(110,231,183,0.2)",
-                        background: accent
-                          ? "rgba(253,224,71,0.12)"
-                          : "rgba(16,185,129,0.10)",
-                        color: accent
-                          ? "rgba(254,249,195,1)"
-                          : "rgba(236,253,245,0.9)",
-                      }}
+                      style={missionBadgeStyle(accent ? "gold" : "mint")}
                     >
                       {label}
                     </span>
@@ -920,14 +1019,7 @@ export default function GalaxyPage() {
                   ].map((label) => (
                     <span
                       key={label}
-                      style={{
-                        borderRadius: 999,
-                        padding: "6px 12px",
-                        fontSize: 12,
-                        border: "1px solid rgba(110,231,183,0.2)",
-                        background: "rgba(16,185,129,0.10)",
-                        color: "rgba(236,253,245,0.9)",
-                      }}
+                      style={missionBadgeStyle("mint")}
                     >
                       {label}
                     </span>
@@ -1027,49 +1119,145 @@ export default function GalaxyPage() {
                 {workingNodes.map((node, index) => {
                   const accent = rarityAccent(node);
                   const selectedNow = selectedStarId === node.id;
+                  const freshPulse = isFreshPulse(node.last_resurfaced_at);
                   const opacity = highlightOpacity(node, highlightMode);
                   const starScale =
-                    selectedNow ? 1.18 : node.current_cycle ? 1.1 : node.candidate ? 1.04 : 1;
+                    selectedNow
+                      ? 1.26
+                      : freshPulse
+                        ? 1.14
+                        : node.current_cycle
+                          ? 1.1
+                          : node.candidate
+                            ? 1.04
+                            : 1;
                   const twinkle = 1 + Math.sin(liveTick * 0.04 + index * 0.8) * 0.08;
                   const size = ((node as any)._r || 6) * starScale * twinkle;
-                  const glow = Math.max(10, size * 5.2);
+                  const glow = Math.max(10, size * (selectedNow ? 7.6 : freshPulse ? 6.4 : 5.2));
+                  const theme = providerTheme(node.provider);
 
                   return (
-                    <button
-                      key={node.id}
-                      onClick={() => setSelectedStarId(node.id)}
-                      onMouseEnter={() => setHovered(node)}
-                      onMouseLeave={() =>
-                        setHovered((current) => (current?.id === node.id ? null : current))
-                      }
-                      style={{
-                        position: "absolute",
-                        left: `${(node as any)._px}%`,
-                        top: `${(node as any)._py}%`,
-                        width: `${size * 2}px`,
-                        height: `${size * 2}px`,
-                        transform: "translate(-50%, -50%)",
-                        borderRadius: "9999px",
-                        border: `1px solid ${accent.border}`,
-                        background: accent.fill,
-                        boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.7}px ${accent.aura}`,
-                        cursor: "pointer",
-                        opacity,
-                        zIndex: selectedNow ? 4 : node.current_cycle ? 3 : 2,
-                      }}
-                      aria-label={shortText(node.label || node.id, 64)}
-                    >
-                      {node.current_cycle ? (
-                        <span
+                    <React.Fragment key={node.id}>
+                      {(selectedNow || freshPulse) && (
+                        <>
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: `${(node as any)._px}%`,
+                              top: `${(node as any)._py}%`,
+                              width: `${size * (selectedNow ? 6.8 : 5.2)}px`,
+                              height: `${size * (selectedNow ? 6.8 : 5.2)}px`,
+                              transform: "translate(-50%, -50%)",
+                              borderRadius: "9999px",
+                              border: `1px solid ${
+                                selectedNow ? "rgba(255,240,170,0.42)" : theme.border
+                              }`,
+                              boxShadow: `0 0 30px ${
+                                selectedNow ? "rgba(255,240,170,0.18)" : theme.glow
+                              }`,
+                              opacity: 0.9 - ((flashTick + index * 7) % 14) * 0.045,
+                              pointerEvents: "none",
+                              zIndex: selectedNow ? 5 : 4,
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: `${(node as any)._px}%`,
+                              top: `${(node as any)._py}%`,
+                              width: `${size * (selectedNow ? 9.4 : 7.2)}px`,
+                              height: `${size * (selectedNow ? 9.4 : 7.2)}px`,
+                              transform: "translate(-50%, -50%)",
+                              borderRadius: "9999px",
+                              border: `1px solid ${
+                                selectedNow ? "rgba(255,248,210,0.18)" : "rgba(255,255,255,0.12)"
+                              }`,
+                              opacity: 0.42 - ((flashTick + index * 11) % 16) * 0.02,
+                              pointerEvents: "none",
+                              zIndex: selectedNow ? 5 : 4,
+                            }}
+                          />
+                        </>
+                      )}
+                      <button
+                        onClick={() => setSelectedStarId(node.id)}
+                        onMouseEnter={() => setHovered(node)}
+                        onMouseLeave={() =>
+                          setHovered((current) => (current?.id === node.id ? null : current))
+                        }
+                        style={{
+                          position: "absolute",
+                          left: `${(node as any)._px}%`,
+                          top: `${(node as any)._py}%`,
+                          width: `${size * 2}px`,
+                          height: `${size * 2}px`,
+                          transform: "translate(-50%, -50%)",
+                          borderRadius: "9999px",
+                          border: `1px solid ${accent.border}`,
+                          background: accent.fill,
+                          boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.7}px ${accent.aura}`,
+                          cursor: "pointer",
+                          opacity,
+                          zIndex: selectedNow ? 6 : node.current_cycle ? 4 : 3,
+                        }}
+                        aria-label={shortText(node.label || node.id, 64)}
+                      >
+                        {node.current_cycle ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: -8,
+                              borderRadius: "9999px",
+                              border: "1px solid rgba(255,240,170,0.38)",
+                            }}
+                          />
+                        ) : null}
+                        {node.provider?.toLowerCase() === "bluesky" ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: 2,
+                              borderRadius: "9999px",
+                              border: "1px solid rgba(125,211,252,0.28)",
+                            }}
+                          />
+                        ) : node.provider?.toLowerCase() === "x" ||
+                          node.provider?.toLowerCase() === "twitter" ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: 2,
+                              borderRadius: "9999px",
+                              borderTop: "1px solid rgba(187,247,208,0.34)",
+                              borderLeft: "1px solid rgba(187,247,208,0.18)",
+                              borderRight: "1px solid transparent",
+                              borderBottom: "1px solid transparent",
+                            }}
+                          />
+                        ) : null}
+                      </button>
+                      {labeledStarIds.has(node.id) ? (
+                        <div
                           style={{
                             position: "absolute",
-                            inset: -8,
-                            borderRadius: "9999px",
-                            border: "1px solid rgba(255,240,170,0.38)",
+                            left: `calc(${(node as any)._px}% + 12px)`,
+                            top: `calc(${(node as any)._py}% - 10px)`,
+                            padding: "4px 8px",
+                            borderRadius: 999,
+                            border: `1px solid ${theme.border}`,
+                            background: "rgba(1,10,10,0.72)",
+                            color: theme.text,
+                            fontSize: 11,
+                            lineHeight: 1.2,
+                            whiteSpace: "nowrap",
+                            pointerEvents: "none",
+                            zIndex: 6,
                           }}
-                        />
+                        >
+                          {shortText(node.label || node.id, 24)}
+                        </div>
                       ) : null}
-                    </button>
+                    </React.Fragment>
                   );
                 })}
 
@@ -1124,14 +1312,9 @@ export default function GalaxyPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
                     <div>
                       <div
-                        style={{
-                          fontSize: 11,
-                          letterSpacing: "0.18em",
-                          textTransform: "uppercase",
-                          color: "rgba(236,253,245,0.58)",
-                        }}
+                        style={missionEyebrowStyle}
                       >
-                        {hovered.provider || "provider"} · {hovered.handle || "handle"}
+                        Mission Brief · {providerLabel(hovered.provider)} · {hovered.handle || "handle"}
                       </div>
                       <div
                         style={{
@@ -1147,9 +1330,9 @@ export default function GalaxyPage() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <div
                         style={{
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          fontSize: 12,
+                          ...missionBadgeStyle(
+                            hovered.provider?.toLowerCase() === "bluesky" ? "sky" : "mint"
+                          ),
                           background: providerColor(hovered.provider).replace("0.95", "0.14"),
                           border: `1px solid ${providerColor(hovered.provider).replace("0.95", "0.28")}`,
                         }}
@@ -1157,18 +1340,50 @@ export default function GalaxyPage() {
                         {hovered.gravity || "standard"}
                       </div>
                       <div
-                        style={{
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          fontSize: 12,
-                          background: "rgba(250,228,120,0.1)",
-                          border: "1px solid rgba(250,228,120,0.22)",
-                          color: "rgba(255,248,210,0.94)",
-                        }}
+                        style={missionBadgeStyle("gold")}
                       >
                         {rarityAccent(hovered).tag}
                       </div>
+                      <div
+                        style={{
+                          ...missionBadgeStyle(
+                            safeNum(hovered.predicted_velocity, 0) >= 0.65 ? "gold" : "neutral"
+                          ),
+                          background:
+                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                              ? "rgba(250,228,120,0.1)"
+                              : "rgba(255,255,255,0.05)",
+                          border:
+                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                              ? "1px solid rgba(250,228,120,0.22)"
+                              : "1px solid rgba(255,255,255,0.1)",
+                          color:
+                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                              ? "rgba(255,248,210,0.94)"
+                              : "rgba(236,253,245,0.8)",
+                        }}
+                      >
+                        {safeNum(hovered.predicted_velocity, 0) >= 0.65 ? "Likely next" : "Monitoring"}
+                      </div>
                     </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                    {[
+                      hovered.current_cycle ? "Current cycle" : "",
+                      hovered.candidate ? "Candidate" : "",
+                      isFreshPulse(hovered.last_resurfaced_at) ? "Fresh pulse" : "",
+                      `Account ${hovered.connected_account_id ?? "—"}`,
+                    ]
+                      .filter(Boolean)
+                      .map((label) => (
+                        <span
+                          key={label}
+                          style={missionBadgeStyle("mint", true)}
+                        >
+                          {label}
+                        </span>
+                      ))}
                   </div>
 
                   <div
@@ -1194,18 +1409,53 @@ export default function GalaxyPage() {
                   <div
                     style={{
                       marginTop: 14,
-                      fontSize: 13,
-                      lineHeight: 1.7,
-                      color: "rgba(236,253,245,0.68)",
+                      display: "grid",
+                      gap: 10,
                     }}
                   >
                     <div>
-                      <span style={{ color: "rgba(236,253,245,0.58)" }}>Strategy:</span>{" "}
-                      <span>{hovered.selection_strategy || "Standard circulation"}</span>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          letterSpacing: "0.14em",
+                          textTransform: "uppercase",
+                          color: "rgba(236,253,245,0.54)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        Strategy
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          lineHeight: 1.65,
+                          color: "rgba(236,253,245,0.9)",
+                        }}
+                      >
+                        {hovered.selection_strategy || "Standard circulation"}
+                      </div>
                     </div>
                     <div>
-                      <span style={{ color: "rgba(236,253,245,0.58)" }}>Reason:</span>{" "}
-                      <span>{hovered.selection_reason || "No selection reason recorded."}</span>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          letterSpacing: "0.14em",
+                          textTransform: "uppercase",
+                          color: "rgba(236,253,245,0.54)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        Why It Stands Out
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          lineHeight: 1.7,
+                          color: "rgba(236,253,245,0.78)",
+                        }}
+                      >
+                        {hovered.selection_reason || "No selection reason recorded."}
+                      </div>
                     </div>
                     {hovered.url ? (
                       <div style={{ marginTop: 8 }}>
@@ -1248,20 +1498,65 @@ export default function GalaxyPage() {
                       gap: 8,
                       alignItems: "center",
                       fontSize: 12,
+                      padding: "8px 10px",
+                      borderRadius: 14,
+                      border:
+                        i === 0
+                          ? "1px solid rgba(250,228,120,0.26)"
+                          : "1px solid rgba(255,255,255,0.06)",
+                      background:
+                        i === 0 ? "rgba(250,228,120,0.08)" : "rgba(255,255,255,0.02)",
                     }}
                   >
                     <div style={{ color: "rgba(255,248,210,0.95)", fontWeight: 700 }}>
                       {i + 1}
                     </div>
-                    <div
-                      style={{
-                        color: "rgba(236,253,245,0.9)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {shortText(n.label || n.id, 34)}
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          color: "rgba(236,253,245,0.9)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {shortText(n.label || n.id, 34)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          color: "rgba(236,253,245,0.58)",
+                        }}
+                      >
+                        <span>{providerLabel(n.provider)}</span>
+                        <span>v {safeNum(n.predicted_velocity, 0).toFixed(2)}</span>
+                        <span>{n.current_cycle ? "active now" : n.candidate ? "candidate" : "watch"}</span>
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 7,
+                          height: 5,
+                          borderRadius: 999,
+                          background: "rgba(255,255,255,0.08)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(12, safeNum(n.predicted_velocity, 0) * 100)
+                            )}%`,
+                            height: "100%",
+                            borderRadius: 999,
+                            background:
+                              "linear-gradient(90deg, rgba(125,211,252,0.9), rgba(250,228,120,0.95))",
+                          }}
+                        />
+                      </div>
                     </div>
                     <div style={{ color: "rgba(236,253,245,0.58)" }}>
                       {intelligenceScore(n, intelligenceView).toFixed(0)}
@@ -1287,6 +1582,22 @@ export default function GalaxyPage() {
                 <div>Velocity: {engine.velocity ? "Active" : "Inactive"}</div>
                 <div>Queued pair: {engine.pairTarget || "None"}</div>
                 <div>Last action: {minutesAgo(engine.lastSelectedAt)}</div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {[
+                  engine.strategy ? `Strategy ${engine.strategy}` : "",
+                  engine.reason ? "Reason logged" : "",
+                  engine.velocity ? "Velocity stack" : "",
+                ]
+                  .filter(Boolean)
+                  .map((label) => (
+                    <span
+                      key={label}
+                      style={missionBadgeStyle("gold", true)}
+                    >
+                      {label}
+                    </span>
+                  ))}
               </div>
             </div>
 

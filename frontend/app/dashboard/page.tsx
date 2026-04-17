@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { getToken, logout, me } from '../lib/auth'
+import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
   backend?: { ok?: boolean }
@@ -54,6 +55,29 @@ type JobItem = {
   message?: unknown
   result?: unknown
   connected_account_id?: number
+}
+
+type JobPayload = {
+  provider?: string
+  handle?: string
+  message?: string
+  next_step?: string
+  last_action_at?: string | null
+  next_cycle_at?: string | null
+  cycle_events?: unknown
+  pacing_mode?: string
+  pacing_reason?: string
+  next_delay_minutes?: number
+  rotation_health?: {
+    pool_size?: number
+    refreshes_last_24h?: number
+    last_strategy?: string
+    mix_hint?: string
+    selection_reason?: string
+    momentum_stack_remaining?: number
+    velocity_stack_active?: boolean
+    pending_pair_post_id?: string
+  }
 }
 
 const API_BASE =
@@ -145,6 +169,80 @@ function safeText(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function parseJobPayload(job: JobItem): JobPayload {
+  const result = asRecord(job.result)
+  const message = asRecord(job.message)
+  const merged = { ...(message || {}), ...(result || {}) }
+
+  return {
+    provider: typeof merged.provider === 'string' ? merged.provider : undefined,
+    handle: typeof merged.handle === 'string' ? merged.handle : undefined,
+    message: typeof merged.message === 'string' ? merged.message : safeText(job.message),
+    next_step: typeof merged.next_step === 'string' ? merged.next_step : undefined,
+    last_action_at: typeof merged.last_action_at === 'string' ? merged.last_action_at : null,
+    next_cycle_at: typeof merged.next_cycle_at === 'string' ? merged.next_cycle_at : null,
+    cycle_events: merged.cycle_events,
+    pacing_mode: typeof merged.pacing_mode === 'string' ? merged.pacing_mode : undefined,
+    pacing_reason: typeof merged.pacing_reason === 'string' ? merged.pacing_reason : undefined,
+    next_delay_minutes:
+      typeof merged.next_delay_minutes === 'number' ? merged.next_delay_minutes : undefined,
+    rotation_health: asRecord(merged.rotation_health) as JobPayload['rotation_health'],
+  }
+}
+
+function startCase(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Unknown'
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function compactNumber(value: unknown) {
+  const num = Number(value)
+  return Number.isFinite(num) ? String(num) : '—'
+}
+
+function headlineForJob(job: JobItem, payload: JobPayload) {
+  const provider = providerLabel(payload.provider)
+  const lowerMessage = String(payload.message || '').toLowerCase()
+  const type = String(job.type || '').toLowerCase()
+
+  if (lowerMessage.includes('importer complete')) {
+    return `${provider} import complete`
+  }
+
+  if (lowerMessage.includes('resurfaced') || lowerMessage.includes('retweeted')) {
+    return `${provider} resurfaced post`
+  }
+
+  if (type.includes('analytics')) {
+    return `${provider} analytics sweep`
+  }
+
+  if (type.includes('refresh')) {
+    return `${provider} refresh cycle`
+  }
+
+  return `${provider} mission update`
+}
+
+function jobStateKind(value?: string) {
+  const state = String(value || '').toLowerCase()
+  if (state.includes('fail') || state.includes('error')) return 'bad'
+  if (state.includes('complete') || state.includes('success') || state.includes('done')) {
+    return 'good'
+  }
+  if (state.includes('run') || state.includes('queue') || state.includes('process')) return 'warn'
+  return 'neutral'
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
@@ -594,6 +692,7 @@ export default function DashboardPage() {
 
   const user = session.user
   const recentJobs = jobs.slice(0, 5)
+  const accountMap = new Map(accounts.map((account) => [account.id, account]))
 
   return (
     <main className="page">
@@ -929,77 +1028,175 @@ export default function DashboardPage() {
             <div>No jobs found yet.</div>
           ) : (
             <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-              {recentJobs.map((job, index) => (
-                <div
-                  key={job.id || job.job_id || `${job.type}-${index}`}
-                  style={{
-                    border: '1px solid rgba(52,211,153,0.18)',
-                    borderRadius: 18,
-                    padding: 16,
-                    background: 'rgba(16,185,129,0.04)',
-                  }}
-                >
+              {recentJobs.map((job, index) => {
+                const payload = parseJobPayload(job)
+                const account = job.connected_account_id
+                  ? accountMap.get(job.connected_account_id)
+                  : undefined
+                const provider = providerLabel(payload.provider || account?.provider)
+                const handle = payload.handle || account?.handle || 'Unknown handle'
+                const state = job.state || job.status || 'unknown'
+                const events = Array.isArray(payload.cycle_events)
+                  ? payload.cycle_events.filter((item): item is string => typeof item === 'string')
+                  : []
+                const rotationHealth = payload.rotation_health || {}
+                const missionBadges = [
+                  payload.pacing_mode ? `Pacing ${startCase(payload.pacing_mode)}` : '',
+                  typeof payload.next_delay_minutes === 'number'
+                    ? `Delay ${payload.next_delay_minutes}m`
+                    : '',
+                  rotationHealth.pool_size != null
+                    ? `Pool ${compactNumber(rotationHealth.pool_size)}`
+                    : '',
+                  rotationHealth.refreshes_last_24h != null
+                    ? `24h ${compactNumber(rotationHealth.refreshes_last_24h)} refreshes`
+                    : '',
+                  rotationHealth.velocity_stack_active ? 'Velocity active' : '',
+                  rotationHealth.momentum_stack_remaining
+                    ? `Momentum ${compactNumber(rotationHealth.momentum_stack_remaining)}`
+                    : '',
+                ].filter(Boolean)
+
+                return (
                   <div
+                    key={job.id || job.job_id || `${job.type}-${index}`}
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                      flexWrap: 'wrap',
+                      border: '1px solid rgba(52,211,153,0.18)',
+                      borderRadius: 18,
+                      padding: 18,
+                      background:
+                        'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(3,18,15,0.62))',
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{job.type || 'Job'}</div>
-                      <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13 }}>
-                        ID: {job.id || job.job_id || '—'}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={missionEyebrowStyle}
+                        >
+                          Mission Report
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>
+                          {headlineForJob(job, payload)}
+                        </div>
+                        <div
+                          style={{
+                            color: 'rgba(236,253,245,0.7)',
+                            fontSize: 14,
+                            marginTop: 8,
+                          }}
+                        >
+                          {provider} · @{handle} · account {job.connected_account_id ?? '—'}
+                        </div>
                       </div>
-                      <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13, marginTop: 4 }}>
-                        Account: {job.connected_account_id ?? '—'}
+
+                      <div
+                        className="btn"
+                        style={{
+                          cursor: 'default',
+                          ...statusPillStyle(jobStateKind(state)),
+                        }}
+                      >
+                        {startCase(state)}
                       </div>
                     </div>
 
                     <div
-                      className="btn"
                       style={{
-                        cursor: 'default',
-                        ...statusPillStyle(
-                          String(job.state || job.status || '').toLowerCase().includes('fail')
-                            ? 'bad'
-                            : String(job.state || job.status || '').toLowerCase().includes('complete')
-                              ? 'good'
-                              : 'neutral'
-                        ),
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                        gap: 12,
+                        marginTop: 16,
+                        fontSize: 13,
                       }}
                     >
-                      {job.state || job.status || 'unknown'}
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Next Step</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {payload.next_step || 'Awaiting next worker instruction'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Last Action</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {fmtWhen(payload.last_action_at || job.updated_at)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.54)', fontSize: 11 }}>Rotation Health</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.88)' }}>
+                          {rotationHealth.last_strategy || rotationHealth.mix_hint || 'Stable'}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div
-                    style={{
-                      marginTop: 12,
-                      color: 'rgba(236,253,245,0.88)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {safeText(job.message) || safeText(job.result) || 'No message provided.'}
-                  </div>
+                    {events.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                        {events.map((event) => (
+                          <span
+                            key={event}
+                            style={missionBadgeStyle('mint')}
+                          >
+                            {event}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
-                      gap: 12,
-                      marginTop: 12,
-                      fontSize: 13,
-                      color: 'rgba(236,253,245,0.72)',
-                    }}
-                  >
-                    <div>Created: {fmtWhen(job.created_at)}</div>
-                    <div>Updated: {fmtWhen(job.updated_at)}</div>
+                    {missionBadges.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                        {missionBadges.map((badge) => (
+                          <span
+                            key={badge}
+                            style={missionBadgeStyle('gold')}
+                          >
+                            {badge}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                        gap: 12,
+                        marginTop: 14,
+                        fontSize: 13,
+                        color: 'rgba(236,253,245,0.72)',
+                      }}
+                    >
+                      <div>Created: {fmtWhen(job.created_at)}</div>
+                      <div>Updated: {fmtWhen(job.updated_at)}</div>
+                      <div>Next cycle: {fmtWhen(payload.next_cycle_at)}</div>
+                    </div>
+
+                    {(payload.message || rotationHealth.selection_reason) && (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: '12px 14px',
+                          borderRadius: 14,
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: 'rgba(255,255,255,0.03)',
+                          color: 'rgba(236,253,245,0.76)',
+                          fontSize: 13,
+                          lineHeight: 1.65,
+                        }}
+                      >
+                        {payload.message || rotationHealth.selection_reason}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>
