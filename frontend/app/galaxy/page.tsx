@@ -7,6 +7,7 @@ type ConnectedAccount = { id: number; provider: string; handle: string };
 type GalaxyNode = {
   id: string;
   post_id?: number;
+  provider_post_id?: string;
   url?: string;
   label?: string;
   score?: number;
