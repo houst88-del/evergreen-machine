@@ -162,7 +162,7 @@ export default function DashboardPage() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [statusMap, setStatusMap] = useState<Record<number, AccountStatus>>({})
   const [jobs, setJobs] = useState<JobItem[]>([])
-  const [busyAction, setBusyAction] = useState<'refresh' | 'analytics' | null>(null)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -349,16 +349,20 @@ export default function DashboardPage() {
     }
   }, [system, statusMap, accounts.length])
 
-  async function handleRefreshNow() {
+  async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
-    setBusyAction('refresh')
+    const busyKey = connectedAccountId ? `refresh-${connectedAccountId}` : 'refresh-global'
+    setBusyAction(busyKey)
     setActionMessage('')
     setError('')
 
     try {
-      const res = await apiFetch('/api/jobs/refresh-now', {
+      const query = connectedAccountId
+        ? `/api/jobs/refresh-now?user_id=${session.user.id || 1}&connected_account_id=${connectedAccountId}`
+        : `/api/jobs/refresh-now?user_id=${session.user.id || 1}`
+
+      const res = await apiFetch(query, {
         method: 'POST',
-        body: JSON.stringify({ user_id: session.user.id || 1 }),
       })
 
       const json = await res.json().catch(() => ({}))
@@ -367,7 +371,11 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || 'Could not queue refresh')
       }
 
-      setActionMessage('Refresh job queued.')
+      setActionMessage(
+        connectedAccountId
+          ? `Refresh job queued for ${accountHandle || 'account'}.`
+          : 'Refresh job queued.'
+      )
       scheduleFollowupRefreshes()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
@@ -376,16 +384,20 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleRunAnalytics() {
+  async function handleRunAnalytics(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
-    setBusyAction('analytics')
+    const busyKey = connectedAccountId ? `analytics-${connectedAccountId}` : 'analytics-global'
+    setBusyAction(busyKey)
     setActionMessage('')
     setError('')
 
     try {
-      const res = await apiFetch('/api/jobs/run-analytics', {
+      const query = connectedAccountId
+        ? `/api/jobs/run-analytics?user_id=${session.user.id || 1}&connected_account_id=${connectedAccountId}`
+        : `/api/jobs/run-analytics?user_id=${session.user.id || 1}`
+
+      const res = await apiFetch(query, {
         method: 'POST',
-        body: JSON.stringify({ user_id: session.user.id || 1 }),
       })
 
       const json = await res.json().catch(() => ({}))
@@ -394,7 +406,11 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || 'Could not queue analytics')
       }
 
-      setActionMessage('Analytics job queued.')
+      setActionMessage(
+        connectedAccountId
+          ? `Analytics job queued for ${accountHandle || 'account'}.`
+          : 'Analytics job queued.'
+      )
       scheduleFollowupRefreshes()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
@@ -660,14 +676,6 @@ export default function DashboardPage() {
             <Link className="btn" href="/analytics">
               📈 Analytics
             </Link>
-
-            <button className="btn" onClick={handleRefreshNow} disabled={busyAction !== null}>
-              {busyAction === 'refresh' ? 'Queueing Refresh...' : '⚡ Refresh Now'}
-            </button>
-
-            <button className="btn" onClick={handleRunAnalytics} disabled={busyAction !== null}>
-              {busyAction === 'analytics' ? 'Queueing Analytics...' : '🧠 Run Analytics'}
-            </button>
           </div>
         </section>
 
@@ -841,6 +849,22 @@ export default function DashboardPage() {
                         {status?.running ? 'Pause Autopilot' : 'Start Autopilot'}
                       </button>
 
+                      <button
+                        className="btn"
+                        onClick={() => handleRefreshNow(account.id, account.handle)}
+                        disabled={busyAction === `refresh-${account.id}`}
+                      >
+                        {busyAction === `refresh-${account.id}` ? 'Queueing Refresh...' : '⚡ Refresh Now'}
+                      </button>
+
+                      <button
+                        className="btn"
+                        onClick={() => handleRunAnalytics(account.id, account.handle)}
+                        disabled={busyAction === `analytics-${account.id}`}
+                      >
+                        {busyAction === `analytics-${account.id}` ? 'Queueing Analytics...' : '🧠 Run Analytics'}
+                      </button>
+
                       <button className="btn" onClick={() => handleDisconnectAccount(account.id)}>
                         Disconnect
                       </button>
@@ -899,6 +923,9 @@ export default function DashboardPage() {
                       <div style={{ fontWeight: 700 }}>{job.type || 'Job'}</div>
                       <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13 }}>
                         ID: {job.id || job.job_id || '—'}
+                      </div>
+                      <div style={{ color: 'rgba(236,253,245,0.65)', fontSize: 13, marginTop: 4 }}>
+                        Account: {job.connected_account_id ?? '—'}
                       </div>
                     </div>
 
