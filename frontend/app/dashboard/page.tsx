@@ -315,12 +315,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+
     if (params.get('provider') === 'x' && params.get('connected') === '1') {
       setActionMessage('X account connected.')
       refreshMissionControlNow()
       scheduleFollowupRefreshes()
       params.delete('provider')
       params.delete('connected')
+      const next = params.toString()
+      const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
+      window.history.replaceState({}, '', url)
+    }
+
+    if (params.get('provider') === 'x' && params.get('error')) {
+      setError(params.get('error') || 'X OAuth failed.')
+      params.delete('provider')
+      params.delete('error')
       const next = params.toString()
       const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
       window.history.replaceState({}, '', url)
@@ -437,7 +447,7 @@ export default function DashboardPage() {
     setActionMessage('')
     setError('')
     setBusyAction('connect-x')
-    window.location.href = `${API_BASE}/api/providers/x/start`
+    window.location.assign(`${API_BASE}/api/providers/x/start`)
   }
 
   async function handleConnectBluesky() {
@@ -683,7 +693,7 @@ export default function DashboardPage() {
               marginTop: 20,
             }}
           >
-              <button
+            <button
               className="btn"
               onClick={handleConnectXOAuth}
               disabled={busyAction === 'connect-x'}
@@ -909,7 +919,7 @@ export default function DashboardPage() {
                     background: 'rgba(16,185,129,0.04)',
                   }}
                 >
-                    <div
+                  <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
