@@ -5,7 +5,7 @@ const comparisonRows = [
   { label: 'Platforms', standard: 'Choose X or Bluesky', pro: 'X + Bluesky' },
   { label: 'Refresh engine', standard: 'Yes', pro: 'Yes' },
   { label: 'Refresh settings', standard: 'Fixed', pro: 'Flexible' },
-  { label: 'Galaxy', standard: 'No', pro: 'Yes' },
+  { label: 'Starden', standard: 'No', pro: 'Yes' },
   { label: 'User control', standard: 'Simple defaults', pro: 'More control' },
 ]
 
@@ -35,7 +35,7 @@ export default function HomePage() {
             <h1>Build once. Refresh forever.</h1>
             <p>
               Evergreen Machine keeps your best content moving. Start with a focused refresh
-              engine, or unlock the full system with Galaxy and flexible controls.
+              engine, or unlock the full system with Starden and flexible controls.
             </p>
 
             <div className="actions" style={{ marginTop: 10 }}>
@@ -59,7 +59,7 @@ export default function HomePage() {
               <div className="feedItem">
                 <strong>Pro</strong>
                 <div className="small">
-                  Flexible refresh control, multi-platform publishing, and Galaxy included.
+                  Flexible refresh control, multi-platform publishing, and Starden included.
                 </div>
               </div>
               <div className="feedItem">
@@ -81,7 +81,7 @@ export default function HomePage() {
           </div>
           <div className="mini-card">
             <div className="small caps">Scale intentionally</div>
-            <p>Start simple, then add Galaxy and broader publishing control when you need it.</p>
+            <p>Start simple, then add Starden and broader publishing control when you need it.</p>
           </div>
         </section>
 
@@ -91,7 +91,7 @@ export default function HomePage() {
             <h2>Simple plans for evergreen growth</h2>
             <p>
               Start with a focused refresh engine or unlock the full Evergreen Machine system
-              for more control, more reach, and Galaxy access.
+              for more control, more reach, and Starden access.
             </p>
           </div>
 
@@ -111,7 +111,7 @@ export default function HomePage() {
                 ))}
               </ul>
 
-              <div className="small muted-list">No Galaxy. No flexible controls. One platform only.</div>
+              <div className="small muted-list">No Starden. No flexible controls. One platform only.</div>
 
               <Link className="btn" href={PLANS.standard.href}>
                 {PLANS.standard.cta}
@@ -170,7 +170,7 @@ export default function HomePage() {
               </div>
               <div className="feedItem">
                 Choose <strong>Pro</strong> if you want flexible refresh settings, both
-                platforms, and Galaxy.
+                platforms, and Starden.
               </div>
               <div className="feedItem">
                 You can start with Standard and upgrade later.
@@ -182,7 +182,7 @@ export default function HomePage() {
             <h2>What happens after checkout?</h2>
             <div className="feed">
               <div className="feedItem">Standard activates your refresh engine and lets you choose one platform.</div>
-              <div className="feedItem">Pro activates the full Evergreen Machine system with Galaxy access.</div>
+              <div className="feedItem">Pro activates the full Evergreen Machine system with Starden access.</div>
               <div className="feedItem">Both plans can flow into account creation and onboarding.</div>
             </div>
           </article>

@@ -152,7 +152,7 @@ export default function PostsPage() {
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Link className="btn" href="/dashboard">← Dashboard</Link>
-            <Link className="btn primary" href="/galaxy">Open Galaxy</Link>
+            <Link className="btn primary" href="/galaxy">Open Starden</Link>
           </div>
         </header>
 

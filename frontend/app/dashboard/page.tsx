@@ -1244,7 +1244,7 @@ export default function DashboardPage() {
             }}
           >
             <Link className="btn primary" href="/galaxy">
-              🌌 Open Galaxy
+              🌌 Open Starden
             </Link>
 
             <Link className="btn" href="/posts">
@@ -1481,7 +1481,7 @@ export default function DashboardPage() {
                       </button>
 
                       <Link className="btn" href="/galaxy">
-                        Open in Galaxy
+                        Open in Starden
                       </Link>
                     </div>
 
