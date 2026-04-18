@@ -841,9 +841,12 @@ export default function GalaxyPage() {
               style={{
                 marginTop: 12,
                 color: "rgba(236,253,245,0.8)",
-                fontSize: 18,
-                lineHeight: 1.5,
-                maxWidth: 780,
+                fontSize: "clamp(12px, 0.9vw, 15px)",
+                lineHeight: 1.35,
+                maxWidth: "100%",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               Your star garden for seeing which ideas are still alive, which ones are beginning to glow
