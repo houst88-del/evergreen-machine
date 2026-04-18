@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [checkingSession, setCheckingSession] = useState(true)
+  const [checkingSession, setCheckingSession] = useState(!clerkEnabled)
 
   useEffect(() => {
     if (clerkEnabled) {
@@ -26,12 +26,7 @@ export default function LoginPage() {
         return
       }
 
-      if (!clerkLoaded) {
-        setCheckingSession(true)
-        return
-      }
-
-      if (!userId) {
+      if (!clerkLoaded || !userId) {
         setCheckingSession(false)
         return
       }
@@ -102,7 +97,7 @@ export default function LoginPage() {
       <main className="page">
         <div className="shell">
           <section className="card" style={{ maxWidth: 560 }}>
-            {clerkEnabled && userId
+            {clerkEnabled && clerkLoaded && userId
               ? 'Finalizing your login...'
               : 'Checking session...'}
           </section>
