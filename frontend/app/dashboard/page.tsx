@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { getToken, logout, me } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
@@ -399,6 +400,7 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -451,6 +453,11 @@ export default function DashboardPage() {
       window.clearInterval(id)
     }
   }, [])
+
+  useEffect(() => {
+    if (loading || session?.user) return
+    router.replace('/signup')
+  }, [loading, router, session])
 
   async function refreshMissionControlNow() {
     if (!session?.user) return
@@ -1010,8 +1017,8 @@ export default function DashboardPage() {
 
           <section className="card">
             <p>No active login found.</p>
-            <Link className="btn primary" href="/login">
-              Go to Login
+            <Link className="btn primary" href="/signup">
+              Go to Signup
             </Link>
           </section>
         </div>
