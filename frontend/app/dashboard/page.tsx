@@ -1436,26 +1436,6 @@ export default function DashboardPage() {
                           flex: '0 1 430px',
                         }}
                       >
-                        <div>
-                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                            Autopilot
-                          </div>
-                          <span
-                            className="btn"
-                            style={{
-                              cursor: 'default',
-                              ...statusPillStyle(status?.running ? 'good' : 'neutral'),
-                            }}
-                          >
-                            {status?.running ? 'Running' : 'Idle'}
-                          </span>
-                        </div>
-
-                        <div>
-                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Rotation</div>
-                          <div style={{ marginTop: 6 }}>{status?.posts_in_rotation ?? 0}</div>
-                        </div>
-
                       </div>
                     </div>
 
@@ -1562,6 +1542,35 @@ export default function DashboardPage() {
                             </button>
                           )
                         })}
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                          marginTop: 10,
+                        }}
+                      >
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle(status?.running ? 'good' : 'neutral'),
+                          }}
+                        >
+                          Autopilot {status?.running ? 'Running' : 'Idle'}
+                        </span>
+
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle('neutral'),
+                          }}
+                        >
+                          Rotation {status?.posts_in_rotation ?? 0}
+                        </span>
                       </div>
 
                       <div
