@@ -419,14 +419,14 @@ export default function DashboardPage() {
 
     async function checkSession() {
       try {
-        const attempts = clerkEnabled ? 5 : 1
+        const attempts = clerkEnabled ? 10 : 1
         let data = null
 
         for (let attempt = 0; attempt < attempts; attempt += 1) {
           data = await me()
           if (data?.user) break
           if (clerkEnabled && attempt < attempts - 1) {
-            await new Promise((resolve) => window.setTimeout(resolve, 700))
+            await new Promise((resolve) => window.setTimeout(resolve, 900))
           }
         }
 
@@ -448,9 +448,9 @@ export default function DashboardPage() {
     if (!loading) return
 
     const timeoutId = window.setTimeout(async () => {
-      await resetAuthState({ includeClerk: true })
-      window.location.replace('/signup?fresh=1')
-    }, 5000)
+      await resetAuthState()
+      window.location.replace('/signup')
+    }, 12000)
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -469,8 +469,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (loading || session?.user) return
-    void resetAuthState({ includeClerk: true }).finally(() => {
-      window.location.replace('/signup?fresh=1')
+    void resetAuthState().finally(() => {
+      window.location.replace('/signup')
     })
   }, [loading, router, session])
 
