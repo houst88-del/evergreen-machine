@@ -15,6 +15,12 @@ def _safe_bool(v):
     return str(v).lower() in {"1", "true", "yes", "y"}
 
 
+def _serialize_utc(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    return f"{dt.isoformat()}Z"
+
+
 @router.get("")
 def get_status(
     user_id: int = Query(...),
@@ -61,12 +67,8 @@ def get_status(
             "provider": status.provider,
             "posts_in_rotation": status.posts_in_rotation,
             "last_post_text": status.last_post_text,
-            "last_action_at": (
-                status.last_action_at.isoformat() if status.last_action_at else None
-            ),
-            "next_cycle_at": (
-                status.next_cycle_at.isoformat() if status.next_cycle_at else None
-            ),
+            "last_action_at": _serialize_utc(status.last_action_at),
+            "next_cycle_at": _serialize_utc(status.next_cycle_at),
             "metadata": account_metadata,
             **pacing,
         }
@@ -153,7 +155,7 @@ def set_pacing(
 
         return {
             "ok": True,
-            "next_cycle_at": next_cycle_at.isoformat(),
+            "next_cycle_at": _serialize_utc(next_cycle_at),
             "next_delay_minutes": next_delay_minutes,
             **pacing_payload(status.provider, metadata["pacing_mode"]),
         }
