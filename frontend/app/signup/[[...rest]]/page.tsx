@@ -4,7 +4,7 @@ import { SignUp } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { me, resetAuthState, signup } from '../lib/auth'
+import { me, resetAuthState, signup } from '../../lib/auth'
 
 export default function SignupPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -93,7 +93,7 @@ export default function SignupPage() {
           <section className="card auth-card" style={{ maxWidth: 560 }}>
             <h2>Create your account</h2>
             <div className="small" style={{ marginTop: 10, marginBottom: 18 }}>
-              Sign up with Google, Apple, or email and we’ll lock in your account flow from there.
+              Sign up with Google, Apple, or email and we&apos;ll lock in your account flow from there.
             </div>
             <SignUp
               routing="path"
@@ -110,57 +110,57 @@ export default function SignupPage() {
             />
           </section>
         ) : (
-        <section className="card" style={{ maxWidth: 560 }}>
-          <h2>Sign Up</h2>
+          <section className="card" style={{ maxWidth: 560 }}>
+            <h2>Sign Up</h2>
 
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 20 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>Email</span>
-              <input
-                className="input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@evergreen.com"
-                required
-              />
-            </label>
+            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 20 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Email</span>
+                <input
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@evergreen.com"
+                  required
+                />
+              </label>
 
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>X Handle</span>
-              <input
-                className="input"
-                type="text"
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                placeholder="@yourhandle"
-                required
-              />
-            </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>X Handle</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="@yourhandle"
+                  required
+                />
+              </label>
 
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>Password</span>
-              <input
-                className="input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                required
-              />
-            </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Password</span>
+                <input
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  required
+                />
+              </label>
 
-            {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
+              {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
 
-            <button className="btn primary" type="submit" disabled={loading}>
-              {loading ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
+              <button className="btn primary" type="submit" disabled={loading}>
+                {loading ? 'Creating account...' : 'Create Account'}
+              </button>
+            </form>
 
-          <div style={{ marginTop: 20 }}>
-            <Link href="/login">Already have an account? Log in</Link>
-          </div>
-        </section>
+            <div style={{ marginTop: 20 }}>
+              <Link href="/login">Already have an account? Log in</Link>
+            </div>
+          </section>
         )}
       </div>
     </main>

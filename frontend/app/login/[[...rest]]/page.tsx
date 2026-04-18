@@ -4,7 +4,7 @@ import { SignIn } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { login, me, resetAuthState } from '../lib/auth'
+import { login, me, resetAuthState } from '../../lib/auth'
 
 export default function LoginPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -109,45 +109,45 @@ export default function LoginPage() {
             />
           </section>
         ) : (
-        <section className="card" style={{ maxWidth: 560 }}>
-          <h2>Log In</h2>
+          <section className="card" style={{ maxWidth: 560 }}>
+            <h2>Log In</h2>
 
-          <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 20 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>Email</span>
-              <input
-                className="input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@evergreen.com"
-                required
-              />
-            </label>
+            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14, marginTop: 20 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Email</span>
+                <input
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@evergreen.com"
+                  required
+                />
+              </label>
 
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>Password</span>
-              <input
-                className="input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Your password"
-                required
-              />
-            </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Password</span>
+                <input
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  required
+                />
+              </label>
 
-            {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
+              {error ? <div style={{ color: '#fca5a5' }}>{error}</div> : null}
 
-            <button className="btn primary" type="submit" disabled={loading}>
-              {loading ? 'Logging in...' : 'Log In'}
-            </button>
-          </form>
+              <button className="btn primary" type="submit" disabled={loading}>
+                {loading ? 'Logging in...' : 'Log In'}
+              </button>
+            </form>
 
-          <div style={{ marginTop: 20 }}>
-            <Link href="/signup">Create an account</Link>
-          </div>
-        </section>
+            <div style={{ marginTop: 20 }}>
+              <Link href="/signup">Create an account</Link>
+            </div>
+          </section>
         )}
       </div>
     </main>
