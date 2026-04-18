@@ -1317,6 +1317,10 @@ export default function DashboardPage() {
                   activePacingOption?.label ||
                   status?.pacing_window_label ||
                   'Standard · 24–49 min'
+                const pacingDisplayLabel =
+                  activePacingOption?.display_name ||
+                  status?.pacing_label ||
+                  'Moderate'
                 const nextCycleText = cycleLabel(status?.next_cycle_at)
                 const nextRefreshCountdown = countdownUntil(status?.next_cycle_at, nowMs)
                 const isOverdue = nextCycleText === 'Overdue'
@@ -1418,7 +1422,7 @@ export default function DashboardPage() {
                               ...statusPillStyle(pacingModeTone(status?.pacing_mode)),
                             }}
                           >
-                            {status?.pacing_label || 'Moderate'}
+                            {pacingDisplayLabel}
                           </span>
                         </div>
 
