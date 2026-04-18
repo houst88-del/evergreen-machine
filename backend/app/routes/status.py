@@ -5,8 +5,8 @@ from fastapi import APIRouter, Query, Body
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.models.models import AutopilotStatus
-from app.services.pacing import pacing_payload
+from app.models.models import AutopilotStatus, ConnectedAccount
+from app.services.pacing import normalize_mode, pacing_payload
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -35,7 +35,23 @@ def get_status(
         if not status:
             return {"running": False, "connected": False}
 
-        pacing = pacing_payload(status.provider, getattr(status, "pacing_mode", None))
+        account = None
+        if status.connected_account_id:
+            account = (
+                db.query(ConnectedAccount)
+                .filter(ConnectedAccount.id == status.connected_account_id)
+                .first()
+            )
+
+        account_metadata = (
+            dict(account.metadata_json or {})
+            if account and isinstance(account.metadata_json, dict)
+            else {}
+        )
+        pacing = pacing_payload(
+            status.provider,
+            account_metadata.get("pacing_mode") or getattr(status, "pacing_mode", None),
+        )
 
         return {
             "user_id": status.user_id,
@@ -51,6 +67,7 @@ def get_status(
             "next_cycle_at": (
                 status.next_cycle_at.isoformat() if status.next_cycle_at else None
             ),
+            "metadata": account_metadata,
             **pacing,
         }
 
@@ -94,7 +111,7 @@ def toggle_autopilot(
 def set_pacing(
     user_id: int = Query(...),
     connected_account_id: int | None = Query(default=None),
-    mode: str = Body(...),
+    payload: dict = Body(...),
 ):
     db: Session = SessionLocal()
 
@@ -111,12 +128,29 @@ def set_pacing(
         if not status:
             return {"ok": False, "error": "Autopilot not found"}
 
-        status.pacing_mode = str(mode).lower().strip()
+        account = None
+        if status.connected_account_id:
+            account = (
+                db.query(ConnectedAccount)
+                .filter(ConnectedAccount.id == status.connected_account_id)
+                .first()
+            )
+
+        if not account:
+            return {"ok": False, "error": "Connected account not found"}
+
+        mode = str(payload.get("mode", "")).strip()
+        metadata = dict(account.metadata_json or {}) if isinstance(account.metadata_json, dict) else {}
+        metadata["pacing_mode"] = normalize_mode(mode)
+        account.metadata_json = metadata
         status.updated_at = datetime.utcnow()
 
         db.commit()
 
-        return {"ok": True}
+        return {
+            "ok": True,
+            **pacing_payload(status.provider, metadata["pacing_mode"]),
+        }
 
     finally:
         db.close()

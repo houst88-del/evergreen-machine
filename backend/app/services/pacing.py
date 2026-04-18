@@ -9,6 +9,8 @@ class PacingProfile:
     min_minutes: int
     max_minutes: int
     label: str
+    display_name: str
+    description: str
 
 
 LIGHT_X = PacingProfile(
@@ -16,6 +18,8 @@ LIGHT_X = PacingProfile(
     min_minutes=45,
     max_minutes=90,
     label="Light · 45–90 min",
+    display_name="Conservative",
+    description="Softer repost cadence for a lighter X footprint.",
 )
 
 STANDARD_X = PacingProfile(
@@ -23,6 +27,8 @@ STANDARD_X = PacingProfile(
     min_minutes=24,
     max_minutes=49,
     label="Standard · 24–49 min",
+    display_name="Moderate",
+    description="Balanced X cadence for steady resurfacing.",
 )
 
 HEAVY_X = PacingProfile(
@@ -30,6 +36,8 @@ HEAVY_X = PacingProfile(
     min_minutes=12,
     max_minutes=24,
     label="Heavy · 12–24 min",
+    display_name="Active",
+    description="Faster X cadence for stronger circulation pressure.",
 )
 
 LIGHT_BLUESKY = PacingProfile(
@@ -37,6 +45,8 @@ LIGHT_BLUESKY = PacingProfile(
     min_minutes=60,
     max_minutes=120,
     label="Light · 60–120 min",
+    display_name="Conservative",
+    description="Longer Bluesky spacing for softer recirculation.",
 )
 
 STANDARD_BLUESKY = PacingProfile(
@@ -44,6 +54,8 @@ STANDARD_BLUESKY = PacingProfile(
     min_minutes=35,
     max_minutes=75,
     label="Standard · 35–75 min",
+    display_name="Moderate",
+    description="Balanced Bluesky cadence for regular resurfacing.",
 )
 
 HEAVY_BLUESKY = PacingProfile(
@@ -51,6 +63,8 @@ HEAVY_BLUESKY = PacingProfile(
     min_minutes=18,
     max_minutes=36,
     label="Heavy · 18–36 min",
+    display_name="Active",
+    description="Faster Bluesky cadence for aggressive recycling.",
 )
 
 BALANCED = STANDARD_X
@@ -115,9 +129,22 @@ def pacing_options_for_provider(provider: str | None) -> list[dict]:
             "min_minutes": p.min_minutes,
             "max_minutes": p.max_minutes,
             "label": p.label,
+            "display_name": p.display_name,
+            "description": p.description,
         }
         for p in profiles
     ]
+
+
+def pacing_payload(provider: str | None, mode: str | None) -> dict:
+    profile = get_profile_for_mode(provider, mode)
+    return {
+        "pacing_mode": profile.mode,
+        "pacing_label": profile.display_name,
+        "pacing_description": profile.description,
+        "pacing_window_label": profile.label,
+        "pacing_options": pacing_options_for_provider(provider),
+    }
 
 
 def choose_pacing_profile(

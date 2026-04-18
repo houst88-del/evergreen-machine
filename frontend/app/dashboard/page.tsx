@@ -41,6 +41,18 @@ type AccountStatus = {
   last_post_text?: string | null
   last_action_at?: string | null
   next_cycle_at?: string | null
+  pacing_mode?: string
+  pacing_label?: string
+  pacing_description?: string
+  pacing_window_label?: string
+  pacing_options?: Array<{
+    mode: string
+    min_minutes: number
+    max_minutes: number
+    label: string
+    display_name: string
+    description: string
+  }>
   metadata?: Record<string, unknown>
 }
 
@@ -149,6 +161,12 @@ function providerLabel(provider?: string) {
   if (p === 'x' || p === 'twitter') return 'X'
   if (p === 'bluesky' || p === 'bsky') return 'Bluesky'
   return provider || 'Provider'
+}
+
+function pacingModeTone(mode?: string): 'good' | 'warn' | 'neutral' {
+  if (mode === 'heavy') return 'warn'
+  if (mode === 'light') return 'neutral'
+  return 'good'
 }
 
 function statusPillStyle(kind: 'good' | 'warn' | 'neutral' | 'bad'): React.CSSProperties {
@@ -860,6 +878,37 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleSetPacing(accountId: number, mode: string) {
+    if (!session?.user) return
+    const busyKey = `pacing-${accountId}`
+    setBusyAction(busyKey)
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(
+        `/api/status/pacing?user_id=${session.user.id || 1}&connected_account_id=${accountId}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ mode }),
+        }
+      )
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.detail || json.message || json.error || 'Could not update refresh window')
+      }
+
+      setActionMessage(`Refresh window updated to ${json.pacing_label || mode}.`)
+      await refreshMissionControlNow()
+      window.setTimeout(refreshMissionControlNow, 1500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update refresh window')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   if (loading) {
     return (
       <main className="page">
@@ -1263,7 +1312,7 @@ export default function DashboardPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1.4fr repeat(4, minmax(110px, 1fr))',
+                        gridTemplateColumns: '1.4fr repeat(5, minmax(110px, 1fr))',
                         gap: 12,
                         alignItems: 'center',
                       }}
@@ -1321,6 +1370,21 @@ export default function DashboardPage() {
 
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                          Refresh Window
+                        </div>
+                        <span
+                          className="btn"
+                          style={{
+                            cursor: 'default',
+                            ...statusPillStyle(pacingModeTone(status?.pacing_mode)),
+                          }}
+                        >
+                          {status?.pacing_label || 'Moderate'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
                           Next Cycle
                         </div>
                         <span
@@ -1373,6 +1437,70 @@ export default function DashboardPage() {
                       <Link className="btn" href="/galaxy">
                         Open in Galaxy
                       </Link>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: '12px 14px',
+                        borderRadius: 14,
+                        border: '1px solid rgba(52,211,153,0.12)',
+                        background: 'rgba(6,24,18,0.65)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: 'rgba(236,253,245,0.62)',
+                          fontSize: 11,
+                          letterSpacing: '0.14em',
+                          textTransform: 'uppercase',
+                          marginBottom: 8,
+                        }}
+                      >
+                        Refresh Window
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {(status?.pacing_options || []).map((option) => {
+                          const selected = option.mode === status?.pacing_mode
+                          return (
+                            <button
+                              key={option.mode}
+                              className="btn"
+                              onClick={() => handleSetPacing(account.id, option.mode)}
+                              disabled={busyAction === `pacing-${account.id}`}
+                              style={{
+                                ...(selected
+                                  ? statusPillStyle(pacingModeTone(option.mode))
+                                  : statusPillStyle('neutral')),
+                                opacity: busyAction === `pacing-${account.id}` && !selected ? 0.7 : 1,
+                              }}
+                            >
+                              {option.display_name}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 8,
+                          fontSize: 13,
+                          color: 'rgba(236,253,245,0.76)',
+                        }}
+                      >
+                        {status?.pacing_description || 'Balanced refresh cadence.'}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: 'rgba(236,253,245,0.56)',
+                        }}
+                      >
+                        {status?.pacing_window_label || 'Standard · 24–49 min'}
+                      </div>
                     </div>
 
                     <div
