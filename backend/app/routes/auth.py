@@ -324,7 +324,10 @@ def me(auth_user: dict = Depends(get_current_auth_user)):
 
 @router.post("/bootstrap-clerk")
 def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Header(default=None)):
-    expected_secret = os.getenv("EVERGREEN_INTERNAL_BOOTSTRAP_SECRET", "evergreen-bootstrap-dev-secret")
+    expected_secret = os.getenv("EVERGREEN_INTERNAL_BOOTSTRAP_SECRET")
+    if not expected_secret:
+        raise HTTPException(status_code=500, detail="missing bootstrap secret")
+
     if x_evergreen_internal_secret != expected_secret:
         raise HTTPException(status_code=401, detail="invalid bootstrap secret")
 

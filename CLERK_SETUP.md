@@ -39,7 +39,7 @@ Set these in Vercel for the frontend project:
 
 ### Backend
 
-Set this in the backend environment:
+Set this in the backend environment. The current production API is on Railway:
 
 - `EVERGREEN_INTERNAL_BOOTSTRAP_SECRET`
 
@@ -47,6 +47,8 @@ Important:
 
 - the frontend and backend must use the exact same `EVERGREEN_INTERNAL_BOOTSTRAP_SECRET`
 - use a long random value in production
+- the Clerk keys should live only in Vercel for the frontend
+- the backend does not need the Clerk keys for the current bootstrap flow
 
 ## Clerk dashboard setup
 
