@@ -16,6 +16,11 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
+    if (clerkEnabled) {
+      setCheckingSession(false)
+      return
+    }
+
     let mounted = true
 
     async function checkSession() {
@@ -36,7 +41,7 @@ export default function LoginPage() {
     return () => {
       mounted = false
     }
-  }, [router])
+  }, [clerkEnabled, router])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
