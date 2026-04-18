@@ -1,5 +1,13 @@
 'use client'
 
+declare global {
+  interface Window {
+    Clerk?: {
+      signOut?: () => Promise<unknown>
+    }
+  }
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
@@ -19,8 +27,48 @@ export type AuthResponse = {
   token?: string
 }
 
+let bootstrapPromise: Promise<AuthResponse | null> | null = null
+
 export function getApiBase() {
   return API_BASE
+}
+
+async function bootstrapBackendSession(): Promise<AuthResponse | null> {
+  if (typeof window === 'undefined') return null
+
+  if (bootstrapPromise) {
+    return bootstrapPromise
+  }
+
+  bootstrapPromise = fetch('/api/session/bootstrap', {
+    method: 'POST',
+    cache: 'no-store',
+  })
+    .then(async (res) => {
+      if (res.status === 401 || res.status === 404) return null
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        return null
+      }
+
+      if (json.token) {
+        setToken(json.token)
+      }
+
+      if (json.user) {
+        setStoredUser(json.user)
+      }
+
+      return json as AuthResponse
+    })
+    .catch(() => null)
+    .finally(() => {
+      bootstrapPromise = null
+    })
+
+  return bootstrapPromise
 }
 
 export function getToken() {
@@ -137,7 +185,17 @@ export async function me(): Promise<AuthResponse | null> {
   const token = getToken()
   const storedUser = getStoredUser()
 
-  if (!token && !storedUser) return null
+  if (!token) {
+    const bootstrapped = await bootstrapBackendSession()
+    if (bootstrapped?.user) {
+      return bootstrapped
+    }
+  }
+
+  const freshToken = getToken()
+  const freshStoredUser = getStoredUser()
+
+  if (!freshToken && !freshStoredUser) return null
 
   const res = await apiFetch('/api/auth/me')
 
@@ -148,13 +206,15 @@ export async function me(): Promise<AuthResponse | null> {
   if (res.status === 401) {
     clearToken()
     clearStoredUser()
-    return null
+
+    const bootstrapped = await bootstrapBackendSession()
+    return bootstrapped?.user ? bootstrapped : null
   }
 
   const json = await res.json()
 
   if (!res.ok) {
-    return storedUser ? { user: storedUser, token: token || undefined } : null
+    return freshStoredUser ? { user: freshStoredUser, token: freshToken || undefined } : null
   }
 
   if (json.user) {
@@ -167,4 +227,8 @@ export async function me(): Promise<AuthResponse | null> {
 export function logout() {
   clearToken()
   clearStoredUser()
+
+  if (typeof window !== 'undefined' && typeof window.Clerk?.signOut === 'function') {
+    void window.Clerk.signOut()
+  }
 }

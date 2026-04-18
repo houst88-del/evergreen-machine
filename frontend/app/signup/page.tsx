@@ -1,11 +1,13 @@
 'use client'
 
+import { SignUp } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { me, signup } from '../lib/auth'
 
 export default function SignupPage() {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [handle, setHandle] = useState('')
@@ -74,6 +76,26 @@ export default function SignupPage() {
           </div>
         </header>
 
+        {clerkEnabled ? (
+          <section className="card auth-card" style={{ maxWidth: 560 }}>
+            <h2>Create your account</h2>
+            <div className="small" style={{ marginTop: 10, marginBottom: 18 }}>
+              Sign up with Google, Apple, or email and we’ll lock in your account flow from there.
+            </div>
+            <SignUp
+              routing="path"
+              path="/signup"
+              signInUrl="/login"
+              fallbackRedirectUrl="/dashboard"
+              appearance={{
+                elements: {
+                  card: { background: 'transparent', boxShadow: 'none', border: 'none' },
+                  rootBox: { width: '100%' },
+                },
+              }}
+            />
+          </section>
+        ) : (
         <section className="card" style={{ maxWidth: 560 }}>
           <h2>Sign Up</h2>
 
@@ -125,6 +147,7 @@ export default function SignupPage() {
             <Link href="/login">Already have an account? Log in</Link>
           </div>
         </section>
+        )}
       </div>
     </main>
   )

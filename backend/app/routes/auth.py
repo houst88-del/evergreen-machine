@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.core.auth_store import create_auth_user, get_auth_user_by_email, update_last_login
 from app.core.db import SessionLocal
@@ -318,3 +320,43 @@ def me(auth_user: dict = Depends(get_current_auth_user)):
         handle=str(stored.get("handle", "@demo_creator")),
     )
     return auth_response(user_data, stored)
+
+
+@router.post("/bootstrap-clerk")
+def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Header(default=None)):
+    expected_secret = os.getenv("EVERGREEN_INTERNAL_BOOTSTRAP_SECRET", "evergreen-bootstrap-dev-secret")
+    if x_evergreen_internal_secret != expected_secret:
+        raise HTTPException(status_code=401, detail="invalid bootstrap secret")
+
+    email = str(payload.get("email", "")).strip().lower()
+    handle = str(payload.get("handle", "")).strip().lstrip("@")
+
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    if not handle:
+        handle = email.split("@")[0] or "creator"
+
+    existing = get_auth_user_by_email(email)
+    if not existing:
+        existing = create_auth_user(
+            email=email,
+            handle=f"@{handle}",
+            password_hash=hash_password(secrets.token_urlsafe(24)),
+        )
+
+    ensure_client_scaffold(str(existing.get("handle", f"@{handle}")).lstrip("@"))
+
+    user_data, _autopilot = ensure_db_user(
+        email=email,
+        handle=str(existing.get("handle", f"@{handle}")),
+    )
+    update_last_login(email)
+    token = create_token(
+        {
+            "email": user_data["email"],
+            "handle": user_data["handle"],
+            "user_id": user_data["id"],
+        }
+    )
+    return auth_response(user_data, existing, token)
