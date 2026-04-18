@@ -398,7 +398,79 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   })
 }
 
+type SessionBootstrapProps = {
+  clerkEnabled: boolean
+  onResolved: (value: any) => void
+  onFinished: () => void
+}
+
+function ClerkSessionBootstrap({ clerkEnabled, onResolved, onFinished }: SessionBootstrapProps) {
+  const { useAuth } = require('@clerk/nextjs') as typeof import('@clerk/nextjs')
+  const { isLoaded: clerkLoaded, userId: clerkUserId } = useAuth()
+
+  useEffect(() => {
+    let mounted = true
+
+    async function checkSession() {
+      try {
+        if (clerkEnabled && !clerkLoaded) {
+          return
+        }
+
+        const attempts = clerkEnabled && clerkUserId ? 4 : 1
+        let data = null
+
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          data = await me()
+          if (data?.user) break
+          if (clerkEnabled && clerkUserId && attempt < attempts - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 600))
+          }
+        }
+
+        if (!mounted) return
+        onResolved(data)
+      } finally {
+        if (mounted) onFinished()
+      }
+    }
+
+    checkSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [clerkEnabled, clerkLoaded, clerkUserId, onFinished, onResolved])
+
+  return null
+}
+
+function BasicSessionBootstrap({ onResolved, onFinished }: Omit<SessionBootstrapProps, 'clerkEnabled'>) {
+  useEffect(() => {
+    let mounted = true
+
+    async function checkSession() {
+      try {
+        const data = await me()
+        if (!mounted) return
+        onResolved(data)
+      } finally {
+        if (mounted) onFinished()
+      }
+    }
+
+    checkSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [onFinished, onResolved])
+
+  return null
+}
+
 export default function DashboardPage() {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -410,26 +482,6 @@ export default function DashboardPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    let mounted = true
-
-    async function checkSession() {
-      try {
-        const data = await me()
-        if (!mounted) return
-        setSession(data)
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-
-    checkSession()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -1047,6 +1099,18 @@ export default function DashboardPage() {
 
   return (
     <main className="page">
+      {clerkEnabled ? (
+        <ClerkSessionBootstrap
+          clerkEnabled={clerkEnabled}
+          onResolved={setSession}
+          onFinished={() => setLoading(false)}
+        />
+      ) : (
+        <BasicSessionBootstrap
+          onResolved={setSession}
+          onFinished={() => setLoading(false)}
+        />
+      )}
       <div className="shell">
         <header className="header">
           <div>
