@@ -5,6 +5,8 @@
   --muted: #8aa193;
   --text: #edf6ef;
   --accent: #9ce3a9;
+  --accent-strong: #c7ff7a;
+  --glow: rgba(199, 255, 122, 0.18);
   --line: rgba(156, 227, 169, 0.18);
 }
 
@@ -21,6 +23,10 @@ button { font: inherit; }
   width: min(100%, 960px);
   margin: 0 auto;
   padding: 32px 20px 56px;
+}
+
+.marketing-page .shell {
+  width: min(100%, 1120px);
 }
 
 .header {
@@ -47,10 +53,20 @@ button { font: inherit; }
   font-size: 0.9rem;
 }
 
+.subtle {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .hero {
   display: grid;
   gap: 18px;
   margin-bottom: 44px;
+}
+
+.hero-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: stretch;
 }
 
 .hero h1 {
@@ -88,6 +104,10 @@ button { font: inherit; }
   color: #08110a;
   border-color: transparent;
   font-weight: 700;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
 }
 
 .grid {
@@ -167,6 +187,189 @@ button { font: inherit; }
   font-size: 0.94rem;
 }
 
+.caps {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.spotlight {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, var(--glow) 0%, rgba(13, 25, 18, 0) 48%),
+    rgba(13, 25, 18, 0.94);
+}
+
+.spotlight::after {
+  content: '';
+  position: absolute;
+  inset: auto -40px -55px auto;
+  width: 200px;
+  height: 200px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(199, 255, 122, 0.18) 0%, rgba(199, 255, 122, 0) 70%);
+  pointer-events: none;
+}
+
+.marketing-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 56px;
+}
+
+.mini-card {
+  border: 1px solid var(--line);
+  background: rgba(8, 17, 10, 0.55);
+  border-radius: 22px;
+  padding: 18px 18px 20px;
+}
+
+.mini-card p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+.section-heading {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4.8vw, 3.2rem);
+  letter-spacing: -0.04em;
+}
+
+.section-heading p {
+  margin: 0;
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.section-heading.compact h2 {
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+}
+
+.pricing-section {
+  margin: 8px 0 28px;
+}
+
+.pricing-grid {
+  align-items: stretch;
+}
+
+.plan-card {
+  display: grid;
+  gap: 18px;
+}
+
+.plan-card.recommended {
+  border-color: rgba(199, 255, 122, 0.35);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.plan-badge,
+.plan-topline {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.plan-badge {
+  background: rgba(199, 255, 122, 0.12);
+  color: var(--accent-strong);
+  border-color: rgba(199, 255, 122, 0.24);
+}
+
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+.plan-price span {
+  font-size: 1rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.plan-copy {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgba(237, 246, 239, 0.9);
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.feature-list li {
+  position: relative;
+  padding-left: 18px;
+  color: rgba(237, 246, 239, 0.92);
+}
+
+.feature-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 5px rgba(199, 255, 122, 0.08);
+}
+
+.muted-list {
+  margin-top: -4px;
+}
+
+.comparison-card {
+  margin: 20px 0 20px;
+}
+
+.comparison-table {
+  display: grid;
+  margin-top: 20px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.comparison-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.comparison-label {
+  color: var(--muted);
+}
+
+.info-grid {
+  margin-top: 20px;
+}
+
 
 .input {
   width: 100%;
@@ -181,4 +384,18 @@ button { font: inherit; }
 .input:focus {
   border-color: rgba(156, 227, 169, 0.6);
   box-shadow: 0 0 0 2px rgba(156, 227, 169, 0.12);
+}
+
+@media (max-width: 880px) {
+  .hero-grid,
+  .marketing-band,
+  .comparison-row {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
 }

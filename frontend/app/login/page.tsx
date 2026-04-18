@@ -68,8 +68,8 @@ export default function LoginPage() {
       <div className="shell">
         <header className="header">
           <div>
-            <div className="wordmark">Evergreen</div>
-            <div className="subtle">Log in and continue your mission control.</div>
+            <div className="wordmark">Evergreen Machine</div>
+            <div className="subtle">Log in and continue your evergreen publishing system.</div>
           </div>
         </header>
 

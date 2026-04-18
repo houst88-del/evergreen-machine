@@ -69,8 +69,8 @@ export default function SignupPage() {
       <div className="shell">
         <header className="header">
           <div>
-            <div className="wordmark">Evergreen</div>
-            <div className="subtle">Create your account and connect once.</div>
+            <div className="wordmark">Evergreen Machine</div>
+            <div className="subtle">Create your account and start your evergreen engine.</div>
           </div>
         </header>
 
