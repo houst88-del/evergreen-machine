@@ -1,12 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import {
-  ClerkProvider,
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from '@clerk/nextjs'
+import { ClerkProvider } from '@clerk/nextjs'
 
 export const metadata: Metadata = {
   title: 'Evergreen Machine',
@@ -19,30 +13,12 @@ function AuthHeader({ clerkEnabled }: { clerkEnabled: boolean }) {
       <div className="auth-header">
         <div className="wordmark">Evergreen Machine</div>
         <div className="auth-actions">
-          {clerkEnabled ? (
-            <>
-              <Show when="signed-out">
-                <SignInButton mode="modal">
-                  <button className="btn">Sign In</button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="btn primary">Sign Up</button>
-                </SignUpButton>
-              </Show>
-              <Show when="signed-in">
-                <UserButton />
-              </Show>
-            </>
-          ) : (
-            <>
-              <a className="btn" href="/login">
-                Sign In
-              </a>
-              <a className="btn primary" href="/signup">
-                Sign Up
-              </a>
-            </>
-          )}
+          <a className="btn" href="/login">
+            Sign In
+          </a>
+          <a className="btn primary" href="/signup">
+            {clerkEnabled ? 'Create Account' : 'Sign Up'}
+          </a>
         </div>
       </div>
     </header>
