@@ -19,6 +19,142 @@ button { font: inherit; }
   min-height: 100vh;
 }
 
+.mission-page,
+.starden-surface {
+  position: relative;
+  overflow: hidden;
+}
+
+.mission-page::before,
+.starden-surface::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(199, 255, 122, 0.08) 0, transparent 18%),
+    radial-gradient(circle at 86% 16%, rgba(125, 211, 252, 0.08) 0, transparent 22%),
+    radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.12) 0, transparent 26%),
+    radial-gradient(circle at 18% 72%, rgba(255,255,255,0.035) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 34% 22%, rgba(255,244,214,0.055) 0 1.3px, transparent 1.8px),
+    radial-gradient(circle at 76% 28%, rgba(221,231,255,0.05) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 68% 78%, rgba(187,247,208,0.05) 0 1.1px, transparent 1.7px),
+    radial-gradient(circle at 90% 56%, rgba(255,255,255,0.04) 0 1px, transparent 1.5px);
+}
+
+.mission-page::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), rgba(156, 227, 169, 0.08) calc(100% - 1px)),
+    linear-gradient(180deg, transparent 0, transparent calc(100% - 1px), rgba(156, 227, 169, 0.06) calc(100% - 1px));
+  background-size: 160px 160px, 160px 160px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent 78%);
+}
+
+.mission-header-block {
+  position: relative;
+  padding-top: 10px;
+}
+
+.mission-header-block::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 0;
+  width: min(320px, 62vw);
+  height: 64px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12px 18px, rgba(199, 255, 122, 0.95) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 104px 10px, rgba(125, 211, 252, 0.75) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 188px 24px, rgba(187,247,208,0.72) 0 1.4px, transparent 2px),
+    linear-gradient(115deg, transparent 0 11%, rgba(96,165,250,0.28) 11.4% 12%, transparent 12.4% 46%, rgba(96,165,250,0.2) 46.4% 47%, transparent 47.4%);
+  opacity: 0.8;
+}
+
+.telemetry-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.telemetry-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(156, 227, 169, 0.08), transparent 18%, transparent 82%, rgba(125, 211, 252, 0.08)),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 24px,
+      rgba(156, 227, 169, 0.05) 24px 25px
+    );
+  opacity: 0.45;
+}
+
+.activation-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.activation-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -120px -140px auto;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(125,211,252,0.1) 0, rgba(125,211,252,0.02) 34%, transparent 72%);
+}
+
+.starden-atlas {
+  position: relative;
+  overflow: hidden;
+}
+
+.starden-atlas::after {
+  content: '';
+  position: absolute;
+  inset: -20% 54% 22% -8%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 14% 32%, rgba(255,244,214,0.22) 0 1.6px, transparent 2.1px),
+    radial-gradient(circle at 36% 18%, rgba(125,211,252,0.18) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 62% 40%, rgba(187,247,208,0.2) 0 1.4px, transparent 2px),
+    linear-gradient(118deg, transparent 0 18%, rgba(96,165,250,0.22) 18.4% 19%, transparent 19.4% 54%, rgba(52,211,153,0.14) 54.4% 55%, transparent 55.4%);
+  opacity: 0.72;
+}
+
+.starden-stage-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.starden-stage-shell::before {
+  content: '';
+  position: absolute;
+  inset: 8% 14% auto 14%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(156,227,169,0.16), transparent);
+  opacity: 0.75;
+}
+
+.starden-stage-shell::after {
+  content: '';
+  position: absolute;
+  inset: auto 10% -18% 10%;
+  height: 180px;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, rgba(250,228,120,0.08), transparent 68%);
+}
+
 .auth-header-shell {
   position: sticky;
   top: 0;

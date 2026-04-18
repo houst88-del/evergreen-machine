@@ -779,6 +779,7 @@ export default function GalaxyPage() {
 
   return (
     <div
+      className="starden-surface"
       style={{
         minHeight: "100vh",
         color: "rgba(236,253,245,0.98)",
@@ -809,6 +810,7 @@ export default function GalaxyPage() {
       `}</style>
       <div style={{ maxWidth: 2600, margin: "0 auto", padding: 22 }}>
         <div
+          className="starden-atlas"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1.3fr) auto",
@@ -1188,6 +1190,7 @@ export default function GalaxyPage() {
 
           <div style={{ display: "grid", gap: 12 }}>
             <div
+              className="starden-stage-shell"
               style={{
                 position: "relative",
                 height: paneHeight,

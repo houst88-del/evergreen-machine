@@ -1093,9 +1093,9 @@ export default function DashboardPage() {
   ] as const
 
   return (
-    <main className="page">
+    <main className="page mission-page">
       <div className="shell">
-        <header className="header">
+        <header className="header mission-header-block">
           <div>
             <div className="wordmark">Evergreen Mission Control</div>
             <div className="subtle">Live command deck for your resurfacing engine.</div>
@@ -1125,7 +1125,7 @@ export default function DashboardPage() {
         ) : null}
 
         <section
-          className="card"
+          className="card telemetry-card"
           style={{
             padding: '10px 16px',
             background: 'rgba(8, 26, 18, 0.82)',
@@ -1172,7 +1172,7 @@ export default function DashboardPage() {
         </div>
 
         <section
-          className="card"
+          className="card activation-card"
           style={{
             display: 'grid',
             gap: 18,
