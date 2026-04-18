@@ -1739,58 +1739,36 @@ export default function GalaxyPage() {
               ) : null}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 12 }}>
-              <div style={cardStyle()}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  {(
-                    [
-                      ["Gravity wells", true],
-                      ["Strong", false],
-                      ["Standard", false],
-                      ["Glow", false],
-                      ["Inline labels", false],
-                      ["Live motion", false],
-                      ["Constellations", false],
-                      ["Forecast", false],
-                      ["Nebulae", false],
-                    ] as [string, boolean][]
-                  ).map(([label, accent]) => (
-                    <span key={label} style={missionBadgeStyle(accent ? "gold" : "mint")}>
-                      {label}
-                    </span>
-                  ))}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                flexWrap: "wrap",
+                padding: "4px 6px 0",
+                color: "rgba(236,253,245,0.7)",
+                fontSize: 12,
+              }}
+            >
+              {[
+                ["rgba(250,228,120,0.95)", "Gravity stars"],
+                ["rgba(125,211,252,0.9)", "Bluesky stars"],
+                ["rgba(187,247,208,0.92)", "X stars"],
+              ].map(([color, label]) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "999px",
+                      background: color,
+                      boxShadow: `0 0 12px ${color}`,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span>{label}</span>
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(236,253,245,0.64)" }}>
-                  Your star garden for seeing which ideas are still alive, which ones are beginning
-                  to glow again, and where Evergreen wants to send its next pulse.
-                </div>
-              </div>
-
-              <div style={cardStyle()}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  {[
-                    "Score",
-                    "Gravity",
-                    "Gravity score",
-                    "Velocity",
-                    "Archive",
-                    "Archetype",
-                    "Revival",
-                    "Refreshes",
-                    "Strategy",
-                    "Reason",
-                    "State",
-                  ].map((label) => (
-                    <span key={label} style={missionBadgeStyle("mint")}>
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(236,253,245,0.64)" }}>
-                  Hover cards foreground engine reasons so the galaxy mirrors what the worker is
-                  most likely to choose next.
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
