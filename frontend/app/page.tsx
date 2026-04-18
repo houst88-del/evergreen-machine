@@ -46,6 +46,10 @@ export default function HomePage() {
                 Try Standard
               </Link>
             </div>
+
+            <div className="mission-note">
+              A portion of revenue supports climate-focused initiatives.
+            </div>
           </div>
 
           <section className="card spotlight">
@@ -186,6 +190,15 @@ export default function HomePage() {
               <div className="feedItem">Both plans can flow into account creation and onboarding.</div>
             </div>
           </article>
+        </section>
+
+        <section className="card mission-card">
+          <div className="tag">Mission</div>
+          <h2>Built to be evergreen in more ways than one.</h2>
+          <p>
+            A portion of Evergreen Machine revenue supports climate-focused initiatives,
+            so growth can compound in a direction that matters.
+          </p>
         </section>
       </div>
     </main>

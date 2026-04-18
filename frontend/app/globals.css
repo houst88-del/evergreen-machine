@@ -253,6 +253,13 @@ button { font: inherit; }
   font-size: clamp(1.6rem, 4vw, 2.3rem);
 }
 
+.mission-note {
+  margin-top: 16px;
+  color: rgba(237, 246, 239, 0.74);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
 .pricing-section {
   margin: 8px 0 28px;
 }
@@ -368,6 +375,24 @@ button { font: inherit; }
 
 .info-grid {
   margin-top: 20px;
+}
+
+.mission-card {
+  margin-top: 20px;
+}
+
+.mission-card h2 {
+  margin: 14px 0 10px;
+  color: var(--text);
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  letter-spacing: -0.03em;
+}
+
+.mission-card p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 
