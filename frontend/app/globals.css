@@ -160,6 +160,7 @@ button { font: inherit; }
   top: 0;
   z-index: 20;
   padding: 16px 20px 0;
+  transition: transform 180ms ease, opacity 180ms ease, padding 180ms ease;
 }
 
 .auth-header {
@@ -174,6 +175,14 @@ button { font: inherit; }
   border-radius: 18px;
   background: rgba(7, 17, 11, 0.76);
   backdrop-filter: blur(18px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.auth-header-shell.is-collapsed {
+  transform: translateY(-110%);
+  opacity: 0;
+  pointer-events: none;
+  padding-top: 0;
 }
 
 .auth-actions {

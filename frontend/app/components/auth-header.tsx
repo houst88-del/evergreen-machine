@@ -1,12 +1,33 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Show, UserButton } from '@clerk/nextjs'
+import { usePathname } from 'next/navigation'
 
 export function AuthHeader({ clerkEnabled }: { clerkEnabled: boolean }) {
+  const pathname = usePathname()
+  const [collapsed, setCollapsed] = useState(false)
+  const isAppSurface = pathname === '/dashboard' || pathname === '/galaxy'
+
+  useEffect(() => {
+    if (!isAppSurface) {
+      setCollapsed(false)
+      return
+    }
+
+    const onScroll = () => {
+      setCollapsed(window.scrollY > 120)
+    }
+
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [isAppSurface])
+
   if (!clerkEnabled) {
     return (
-      <header className="auth-header-shell">
+      <header className={`auth-header-shell${collapsed ? ' is-collapsed' : ''}`}>
         <div className="auth-header">
           <div className="wordmark">Evergreen Machine</div>
           <div className="auth-actions">
@@ -23,7 +44,7 @@ export function AuthHeader({ clerkEnabled }: { clerkEnabled: boolean }) {
   }
 
   return (
-    <header className="auth-header-shell">
+    <header className={`auth-header-shell${collapsed ? ' is-collapsed' : ''}`}>
       <div className="auth-header">
         <div className="wordmark">Evergreen Machine</div>
         <div className="auth-actions">
