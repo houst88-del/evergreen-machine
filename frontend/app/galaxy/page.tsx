@@ -456,7 +456,7 @@ export default function GalaxyPage() {
   }, [selected, userId]);
 
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
-  const viewMotionBoost = selected === "unified" ? 1 : 2.8;
+  const viewMotionBoost = selected === "unified" ? 1 : 1.16;
 
   const workingNodes = useMemo(() => {
     const nodes = [...galaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -465,6 +465,9 @@ export default function GalaxyPage() {
     const centerY = 54;
     const warp = timeWarp * 0.03;
     const temporalShift = timeTravel * 0.08;
+    const groupRotation = liveTick * (selected === "unified" ? 0.00022 : 0.00036);
+    const sinRotation = Math.sin(groupRotation);
+    const cosRotation = Math.cos(groupRotation);
 
     return nodes.map((node, index) => {
       const phase = index * 0.17;
@@ -551,12 +554,17 @@ export default function GalaxyPage() {
         (node.cold_archive ? 0.44 : 0.16) *
         Math.min(2.4, 0.9 + viewMotionBoost * 0.5);
 
+      const rotX = px - centerX;
+      const rotY = py - centerY;
+      px = centerX + rotX * cosRotation - rotY * sinRotation;
+      py = centerY + rotX * sinRotation + rotY * cosRotation;
+
       px = Math.max(4, Math.min(96, px));
       py = Math.max(12, Math.min(92, py));
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [galaxy.nodes, liveTick, timeWarp, timeTravel, viewMotionBoost]);
+  }, [galaxy.nodes, liveTick, selected, timeWarp, timeTravel, viewMotionBoost]);
 
   const gravityWells = useMemo(
     () =>
