@@ -807,42 +807,42 @@ export default function GalaxyPage() {
           50% { opacity: 0.5; filter: blur(1px); }
         }
       `}</style>
-      <div style={{ maxWidth: 2600, margin: "0 auto", padding: 28 }}>
+      <div style={{ maxWidth: 2600, margin: "0 auto", padding: 22 }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1.3fr) auto",
-            gap: 20,
+            gap: 16,
             alignItems: "end",
-            marginBottom: 22,
+            marginBottom: 14,
           }}
         >
           <div
             style={{
               border: "1px solid rgba(110,231,183,0.14)",
-              borderRadius: 28,
-              padding: "20px 22px",
+              borderRadius: 24,
+              padding: "14px 18px",
               background:
                 "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(250,228,120,0.05) 45%, rgba(125,211,252,0.04))",
               boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
               <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
               <span style={missionBadgeStyle("mint", true)}>🌿 Garden memory</span>
               <span style={missionBadgeStyle("sky", true)}>
                 {selected === "unified" ? "Unified canopy" : selectedLabel}
               </span>
             </div>
-            <h1 style={{ fontSize: 54, lineHeight: 1, margin: 0, fontWeight: 700 }}>
+            <h1 style={{ fontSize: 42, lineHeight: 1, margin: 0, fontWeight: 700 }}>
               ✦🌿 Starden
             </h1>
             <p
               style={{
-                marginTop: 12,
+                marginTop: 8,
                 color: "rgba(236,253,245,0.8)",
-                fontSize: "clamp(12px, 0.9vw, 15px)",
-                lineHeight: 1.35,
+                fontSize: "clamp(11px, 0.8vw, 13px)",
+                lineHeight: 1.2,
                 maxWidth: "100%",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
@@ -856,8 +856,8 @@ export default function GalaxyPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 10,
-                marginTop: 18,
+                gap: 8,
+                marginTop: 12,
               }}
             >
               {[
@@ -869,8 +869,8 @@ export default function GalaxyPage() {
                   key={label}
                   style={{
                     border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 18,
-                    padding: "12px 14px",
+                    borderRadius: 16,
+                    padding: "9px 12px",
                     background: "rgba(255,255,255,0.03)",
                   }}
                 >
@@ -884,7 +884,7 @@ export default function GalaxyPage() {
                   >
                     {label}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 18, fontWeight: 600 }}>{value}</div>
+                  <div style={{ marginTop: 5, fontSize: 14, fontWeight: 600 }}>{value}</div>
                 </div>
               ))}
             </div>
@@ -893,7 +893,7 @@ export default function GalaxyPage() {
           <div
             style={{
               display: "flex",
-              gap: 10,
+              gap: 8,
               alignItems: "center",
               flexWrap: "wrap",
               justifyContent: "flex-end",
@@ -906,7 +906,7 @@ export default function GalaxyPage() {
                 border: "1px solid rgba(52,211,153,0.28)",
                 background: "rgba(16,185,129,0.08)",
                 color: "white",
-                padding: "10px 16px",
+                padding: "8px 14px",
                 cursor: "pointer",
               }}
             >
@@ -918,8 +918,8 @@ export default function GalaxyPage() {
                 border: "1px solid rgba(52,211,153,0.18)",
                 background: "rgba(0,0,0,0.28)",
                 color: "rgba(236,253,245,0.78)",
-                padding: "10px 14px",
-                fontSize: 12,
+                padding: "8px 12px",
+                fontSize: 11,
               }}
             >
               Starden View
@@ -932,7 +932,7 @@ export default function GalaxyPage() {
                 border: "1px solid rgba(125,211,252,0.38)",
                 background: "#031110",
                 color: "white",
-                padding: "10px 14px",
+                padding: "8px 12px",
               }}
             >
               <option value="unified">Unified Starden</option>
@@ -964,8 +964,8 @@ export default function GalaxyPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-            gap: 12,
-            marginBottom: 14,
+            gap: 10,
+            marginBottom: 10,
           }}
         >
           {[
@@ -980,7 +980,7 @@ export default function GalaxyPage() {
             <div key={label} style={cardStyle()}>
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
                   color: "rgba(236,253,245,0.58)",
@@ -990,8 +990,8 @@ export default function GalaxyPage() {
               </div>
               <div
                 style={{
-                  marginTop: 10,
-                  fontSize: 42,
+                  marginTop: 8,
+                  fontSize: 34,
                   fontWeight: 700,
                   lineHeight: 1,
                 }}
