@@ -1319,20 +1319,16 @@ export default function DashboardPage() {
           <div
             style={{
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'baseline',
               gap: 12,
               flexWrap: 'wrap',
             }}
           >
             <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Connected Lanes</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Refresh Engine</h3>
               <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
                 Each lane handles connection, autopilot state, refresh pacing, and the next selection view in one place.
               </div>
-            </div>
-            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
-              {accounts.length > 1 ? 'X on the left, Bluesky on the right when both are connected.' : 'Single-lane view for Standard.'}
             </div>
           </div>
 
