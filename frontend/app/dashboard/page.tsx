@@ -1289,13 +1289,14 @@ export default function DashboardPage() {
                   >
                     <div
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.6fr repeat(4, minmax(90px, 1fr))',
-                        gap: 12,
-                        alignItems: 'center',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 16,
+                        flexWrap: 'wrap',
                       }}
                     >
-                      <div>
+                      <div style={{ minWidth: 0, flex: '1 1 240px' }}>
                         <div
                           style={{
                             color: 'rgba(236,253,245,0.62)',
@@ -1314,69 +1315,80 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Connected
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(96px, max-content))',
+                          gap: 10,
+                          alignItems: 'start',
+                          justifyContent: 'end',
+                          flex: '0 1 430px',
+                        }}
+                      >
+                        <div>
+                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                            Connected
+                          </div>
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
+                              ...statusPillStyle(status?.connected ? 'good' : 'neutral'),
+                            }}
+                          >
+                            {status?.connected ? 'Yes' : 'No'}
+                          </span>
                         </div>
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
-                            ...statusPillStyle(status?.connected ? 'good' : 'neutral'),
-                          }}
-                        >
-                          {status?.connected ? 'Yes' : 'No'}
-                        </span>
-                      </div>
 
-                      <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Autopilot
+                        <div>
+                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                            Autopilot
+                          </div>
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
+                              ...statusPillStyle(status?.running ? 'good' : 'neutral'),
+                            }}
+                          >
+                            {status?.running ? 'Running' : 'Idle'}
+                          </span>
                         </div>
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
-                            ...statusPillStyle(status?.running ? 'good' : 'neutral'),
-                          }}
-                        >
-                          {status?.running ? 'Running' : 'Idle'}
-                        </span>
-                      </div>
 
-                      <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Rotation</div>
-                        <div>{status?.posts_in_rotation ?? 0}</div>
-                      </div>
-
-                      <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Refresh
+                        <div>
+                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Rotation</div>
+                          <div style={{ marginTop: 6 }}>{status?.posts_in_rotation ?? 0}</div>
                         </div>
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
-                            ...statusPillStyle(pacingModeTone(status?.pacing_mode)),
-                          }}
-                        >
-                          {status?.pacing_label || 'Moderate'}
-                        </span>
-                      </div>
 
-                      <div>
-                        <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Next
+                        <div>
+                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                            Refresh
+                          </div>
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
+                              ...statusPillStyle(pacingModeTone(status?.pacing_mode)),
+                            }}
+                          >
+                            {status?.pacing_label || 'Moderate'}
+                          </span>
                         </div>
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
-                            ...statusPillStyle(isOverdue ? 'warn' : 'neutral'),
-                          }}
-                        >
-                          {nextCycleText}
-                        </span>
+
+                        <div>
+                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
+                            Next
+                          </div>
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
+                              ...statusPillStyle(isOverdue ? 'warn' : 'neutral'),
+                            }}
+                          >
+                            {nextCycleText}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
