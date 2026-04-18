@@ -881,8 +881,12 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleDisconnectAccount(accountId: number) {
+  async function handleDisconnectAccount(
+    accountId: number,
+    options?: { busyKey?: string; label?: string }
+  ) {
     if (!session?.user) return
+    if (options?.busyKey) setBusyAction(options.busyKey)
     setActionMessage('')
     setError('')
 
@@ -899,12 +903,14 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || 'Could not disconnect account')
       }
 
-      setActionMessage(`Disconnected ${json.account_handle || 'account'}.`)
+      setActionMessage(`Disconnected ${options?.label || json.account_handle || 'account'}.`)
       await refreshMissionControlNow()
       window.setTimeout(refreshMissionControlNow, 1500)
       window.setTimeout(refreshMissionControlNow, 4000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not disconnect account')
+    } finally {
+      if (options?.busyKey) setBusyAction(null)
     }
   }
 
@@ -1061,6 +1067,12 @@ export default function DashboardPage() {
   const connectedProviders = new Set(
     accounts.map((account) => String(account.provider || '').trim().toLowerCase()).filter(Boolean)
   )
+  const xAccount = accounts.find(
+    (account) => String(account.provider || '').trim().toLowerCase() === 'x'
+  )
+  const blueskyAccount = accounts.find(
+    (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
+  )
   const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
   const standardFriendly = accounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
@@ -1200,18 +1212,48 @@ export default function DashboardPage() {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
                 className="btn"
-                onClick={handleConnectXOAuth}
-                disabled={busyAction === 'connect-x'}
+                onClick={() => {
+                  if (xAccount) {
+                    handleDisconnectAccount(xAccount.id, {
+                      busyKey: 'disconnect-x',
+                      label: xAccount.handle || 'X account',
+                    })
+                    return
+                  }
+                  handleConnectXOAuth()
+                }}
+                disabled={busyAction === 'connect-x' || busyAction === 'disconnect-x'}
               >
-                {busyAction === 'connect-x' ? 'Starting X OAuth...' : '𝕏 Connect X'}
+                {busyAction === 'connect-x'
+                  ? 'Starting X OAuth...'
+                  : busyAction === 'disconnect-x'
+                    ? 'Disconnecting X...'
+                    : xAccount
+                      ? '𝕏 Disconnect X'
+                      : '𝕏 Connect X'}
               </button>
 
               <button
                 className="btn"
-                onClick={handleConnectBluesky}
-                disabled={busyAction === 'connect-bluesky'}
+                onClick={() => {
+                  if (blueskyAccount) {
+                    handleDisconnectAccount(blueskyAccount.id, {
+                      busyKey: 'disconnect-bluesky',
+                      label: blueskyAccount.handle || 'Bluesky account',
+                    })
+                    return
+                  }
+                  handleConnectBluesky()
+                }}
+                disabled={busyAction === 'connect-bluesky' || busyAction === 'disconnect-bluesky'}
               >
-                {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : '☁️ Connect Bluesky'}
+                {busyAction === 'connect-bluesky'
+                  ? 'Connecting Bluesky...'
+                  : busyAction === 'disconnect-bluesky'
+                    ? 'Disconnecting Bluesky...'
+                    : blueskyAccount
+                      ? '☁️ Disconnect Bluesky'
+                      : '☁️ Connect Bluesky'}
               </button>
 
               <button
@@ -1466,13 +1508,6 @@ export default function DashboardPage() {
                         {busyAction === `refresh-${account.id}` ? 'Queueing Refresh...' : '⚡ Refresh Now'}
                       </button>
 
-                      <button className="btn" onClick={() => handleDisconnectAccount(account.id)}>
-                        Disconnect
-                      </button>
-
-                      <Link className="btn" href="/galaxy">
-                        Open in Starden
-                      </Link>
                     </div>
 
                     <div
