@@ -72,6 +72,45 @@ def _extract_created_at(feed_item) -> datetime | None:
         return None
 
 
+def _embed_payload(feed_item):
+    try:
+        return getattr(feed_item.post, "embed", None)
+    except Exception:
+        return None
+
+
+def _embed_kind(embed: Any) -> str:
+    if embed is None:
+        return ""
+    explicit = str(getattr(embed, "$type", "") or getattr(embed, "py_type", "") or "").strip().lower()
+    if explicit:
+        return explicit
+    return str(type(embed)).lower()
+
+
+def _feed_item_has_video(feed_item) -> bool:
+    embed = _embed_payload(feed_item)
+    kind = _embed_kind(embed)
+    if "video" in kind:
+        return True
+
+    try:
+        media = getattr(embed, "media", None)
+        if media and "video" in _embed_kind(media):
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _score_post(feed_item) -> int:
+    score = 50 + _extract_like_count(feed_item) * 3 + _extract_repost_count(feed_item) * 4
+    if _feed_item_has_video(feed_item):
+        score = int(round(score * 1.28 + 14))
+    return score
+
+
 def _find_bluesky_account(db, connected_account_id: int) -> ConnectedAccount | None:
     return (
         db.query(ConnectedAccount)
@@ -140,7 +179,7 @@ def import_bluesky_posts(
                 continue
 
             text = _extract_post_text(item)
-            score = 50 + _extract_like_count(item) * 3 + _extract_repost_count(item) * 4
+            score = _score_post(item)
 
             created_at = _extract_created_at(item) or now
 

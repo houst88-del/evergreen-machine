@@ -83,6 +83,17 @@ def archive_signal_multiplier(row: dict[str, Any]) -> float:
     return 1.0
 
 
+def media_priority_multiplier(row: dict[str, Any]) -> float:
+    media_type = str(row.get("media_type", "") or "").strip().lower()
+    has_media = boolish(row.get("has_media"))
+
+    if any(token in media_type for token in ["video", "animated_gif", "gif", "clip", "reel", "mp4"]):
+        return 1.34
+    if has_media:
+        return 1.10
+    return 1.0
+
+
 def recent_archetype_distribution(rows: list[dict[str, Any]], lookback_count: int = 56) -> dict[str, float]:
     recent = sorted(
         [r for r in rows if str(r.get("last_retweeted_at", "")).strip() and not is_dead_or_retired(r)],
@@ -259,6 +270,7 @@ def row_selection_weight(row: dict[str, Any], rows: list[dict[str, Any]]) -> flo
     weight *= ghost_tweet_multiplier(row)
 
     # existing ecosystem controls
+    weight *= media_priority_multiplier(row)
     weight *= gravity_tier_multiplier(row)
     weight *= archive_signal_multiplier(row)
     weight *= archetype_mix_multiplier(row, rows)
@@ -282,6 +294,10 @@ def selection_reason_summary(row: dict[str, Any]) -> str:
 
     if funnel_stage:
         parts.append(f"stage {funnel_stage}")
+
+    media_type = str(row.get("media_type", "") or "").strip().lower()
+    if any(token in media_type for token in ["video", "animated_gif", "gif", "clip", "reel", "mp4"]):
+        parts.append("video priority")
 
     predicted_velocity = safe_float(row.get("predicted_velocity", 0), 0.0)
     bookmark_rate = safe_float(row.get("bookmark_rate", 0), 0.0)

@@ -72,7 +72,57 @@ def _tweet_metrics(tweet: Any) -> dict[str, int]:
     }
 
 
-def _score_from_metrics(metrics: dict[str, int]) -> int:
+def _response_media_lookup(response: Any) -> dict[str, str]:
+    includes = getattr(response, "includes", None) or {}
+    media_items = []
+    if isinstance(includes, dict):
+        media_items = includes.get("media", []) or []
+    else:
+        media_items = getattr(includes, "media", None) or []
+
+    lookup: dict[str, str] = {}
+    for item in media_items:
+        media_key = str(getattr(item, "media_key", "") or "").strip()
+        media_type = str(getattr(item, "type", "") or "").strip().lower()
+        if media_key and media_type:
+            lookup[media_key] = media_type
+    return lookup
+
+
+def _tweet_has_video(tweet: Any, media_lookup: dict[str, str] | None = None) -> bool:
+    attachments = getattr(tweet, "attachments", None) or {}
+    if isinstance(attachments, dict):
+        media_keys = attachments.get("media_keys", []) or []
+    else:
+        media_keys = getattr(attachments, "media_keys", None) or []
+
+    for media_key in media_keys:
+        media_type = str((media_lookup or {}).get(str(media_key).strip(), "")).strip().lower()
+        if media_type in {"video", "animated_gif"}:
+            return True
+    return False
+
+
+def _v1_tweet_has_video(tweet: Any) -> bool:
+    candidates: list[Any] = []
+    extended_entities = getattr(tweet, "extended_entities", None)
+    if isinstance(extended_entities, dict):
+        candidates.extend(extended_entities.get("media", []) or [])
+    entities = getattr(tweet, "entities", None)
+    if isinstance(entities, dict):
+        candidates.extend(entities.get("media", []) or [])
+
+    for media in candidates:
+        if isinstance(media, dict):
+            media_type = str(media.get("type", "") or "").strip().lower()
+            if media_type in {"video", "animated_gif"}:
+                return True
+            if media.get("video_info"):
+                return True
+    return False
+
+
+def _score_from_metrics(metrics: dict[str, int], *, has_video: bool = False) -> int:
     score = (
         50
         + metrics["like_count"] * 3
@@ -81,6 +131,8 @@ def _score_from_metrics(metrics: dict[str, int]) -> int:
         + metrics["quote_count"] * 3
         + min(100, int(metrics["impression_count"] / 250))
     )
+    if has_video:
+        score = int(round(score * 1.35 + 18))
     return max(10, int(score))
 
 
@@ -264,9 +316,16 @@ def _backfill_from_v1_timeline(
             retweet_count = _safe_int(getattr(tweet, "retweet_count", 0), 0)
             reply_count = _safe_int(getattr(tweet, "reply_count", 0), 0)
             quote_count = _safe_int(getattr(tweet, "quote_count", 0), 0)
-            score = max(
-                10,
-                int(50 + favorite_count * 3 + retweet_count * 4 + reply_count * 2 + quote_count * 3),
+            score = _score_from_metrics(
+                {
+                    "like_count": favorite_count,
+                    "retweet_count": retweet_count,
+                    "reply_count": reply_count,
+                    "quote_count": quote_count,
+                    "bookmark_count": 0,
+                    "impression_count": 0,
+                },
+                has_video=_v1_tweet_has_video(tweet),
             )
             created_at = _parse_v1_datetime(getattr(tweet, "created_at", None))
 
@@ -345,6 +404,8 @@ def import_x_pool_posts(
             id=x_user_id,
             max_results=page_size,
             tweet_fields=["created_at", "public_metrics"],
+            expansions=["attachments.media_keys"],
+            media_fields=["type"],
             exclude=["replies"],
             pagination_token=next_token,
             user_auth=True,
@@ -364,6 +425,7 @@ def import_x_pool_posts(
         }
 
         tweets = list(getattr(response, "data", None) or [])
+        media_lookup = _response_media_lookup(response)
         v2_page_sizes.append(len(tweets))
         if not tweets:
             break
@@ -376,7 +438,7 @@ def import_x_pool_posts(
 
             metrics = _tweet_metrics(tweet)
             text = _tweet_text(tweet)
-            score = _score_from_metrics(metrics)
+            score = _score_from_metrics(metrics, has_video=_tweet_has_video(tweet, media_lookup))
             created_at = _tweet_created_at(tweet)
 
             result = _upsert_post(
@@ -454,7 +516,7 @@ def import_x_pool_posts(
     )
 
     page_sizes_label = ", ".join(str(size) for size in v2_page_sizes) if v2_page_sizes else "0"
-    debug_notes.insert(0, "X import policy: include retweets, exclude replies.")
+    debug_notes.insert(0, "X import policy: include retweets, exclude replies, and boost video candidates.")
     debug_notes.insert(
         1,
         f"v2 timeline pages {v2_pages}; page sizes [{page_sizes_label}]; final next token {'yes' if last_meta.get('has_next_token') else 'no'}.",
