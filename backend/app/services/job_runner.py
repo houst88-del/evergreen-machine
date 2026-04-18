@@ -48,6 +48,7 @@ VELOCITY_MAX_DELAY_MINUTES = 3
 VIRAL_ENGAGEMENT_RATE_THRESHOLD = 6.0
 VIRAL_IMPRESSIONS_THRESHOLD = 15000
 PROFILE_SURGE_RATE_THRESHOLD = 0.010
+ANALYTICS_REFRESH_THRESHOLD_HOURS = 6
 
 
 def _stage(message: str, events: list[str]) -> None:
@@ -257,6 +258,101 @@ def _ensure_refresh_schedule_for_account(
     return existing_refresh_dt, False
 
 
+def _analytics_refresh_cutoff() -> datetime:
+    return _utc_now_naive() - timedelta(hours=ANALYTICS_REFRESH_THRESHOLD_HOURS)
+
+
+def _analytics_is_stale(autopilot: AutopilotStatus) -> tuple[bool, str]:
+    metadata = _get_autopilot_metadata(autopilot)
+    last_analytics_at = _parse_iso_naive(metadata.get("last_analytics_at"))
+    posts_in_rotation = max(0, int(getattr(autopilot, "posts_in_rotation", 0) or 0))
+
+    if posts_in_rotation <= 0:
+        return True, "pool empty"
+    if last_analytics_at is None:
+        return True, "analytics missing"
+    if last_analytics_at <= _analytics_refresh_cutoff():
+        return True, "analytics stale"
+    return False, ""
+
+
+def _run_analytics_sync(
+    db,
+    *,
+    connected_account_id: int,
+    source: str = "manual",
+    reason: str = "",
+) -> dict:
+    seed_demo_data(db)
+    account, user, autopilot = _get_account_context(db, connected_account_id)
+    analytics_started_at = _utc_now_naive()
+    autopilot.last_action_at = analytics_started_at
+    cycle_events = ["analytics started"]
+    message = "analytics job placeholder complete"
+    next_step = "wire import + analytics engine + pool rebuild"
+    provider = (account.provider or "").lower()
+    imported: dict[str, Any] = {}
+
+    if provider == "bluesky":
+        imported = import_bluesky_demo_posts(
+            db,
+            user_id=user.id,
+            connected_account_id=connected_account_id,
+            handle=account.handle,
+        )
+        autopilot.posts_in_rotation = int(imported["total_posts"])
+        message = f"Bluesky importer complete: +{imported['imported']} new, {imported['updated']} updated"
+        next_step = "Bluesky posts are now in the Evergreen pool"
+        cycle_events.extend(["bluesky import started", "bluesky import completed"])
+    elif provider == "x":
+        imported = import_x_pool_posts(
+            db,
+            user_id=user.id,
+            connected_account_id=connected_account_id,
+            handle=account.handle,
+        )
+        autopilot.posts_in_rotation = int(imported["active_posts"])
+        message = (
+            f"X importer complete: +{imported['imported']} new, "
+            f"{imported['updated']} updated, fetched {imported.get('fetched', 0)}"
+        )
+        if imported.get("fallback_limited"):
+            message += " (v1 fallback unavailable on current X access tier)"
+        next_step = "X posts are now in the Evergreen galaxy"
+        cycle_events.extend(["x import started", "x import completed"])
+
+    metadata = _get_autopilot_metadata(autopilot)
+    metadata["last_analytics_at"] = analytics_started_at.isoformat()
+    metadata["last_analytics_source"] = source
+    if reason:
+        metadata["last_analytics_reason"] = reason
+    _set_autopilot_metadata(autopilot, metadata)
+
+    db.commit()
+    db.refresh(autopilot)
+    return {
+        "connected_account_id": connected_account_id,
+        "user_id": user.id,
+        "handle": account.handle,
+        "provider": account.provider,
+        "message": message,
+        "next_step": next_step,
+        "last_action_at": autopilot.last_action_at.isoformat() if autopilot.last_action_at else None,
+        "cycle_events": cycle_events + ["analytics completed"],
+        "debug_notes": imported.get("debug_notes", []),
+        "pacing_mode": _effective_pacing_mode(autopilot, account),
+        "pacing_reason": "account-selected pacing",
+        "next_delay_minutes": 0,
+        "candidate_strength": "steady",
+        "rotation_health": {
+            "pool_size": int(autopilot.posts_in_rotation or 0),
+            "refreshes_last_24h": _refresh_count_last_24h(connected_account_id),
+            "last_strategy": _get_autopilot_metadata(autopilot).get("last_strategy", "Constellation circulation"),
+            "mix_hint": "Mixed media ready",
+        },
+    }
+
+
 def _record_selection_metadata(db, autopilot: AutopilotStatus, account: ConnectedAccount, post) -> dict[str, Any]:
     metadata = _get_autopilot_metadata(autopilot)
     raw = dict(getattr(post, "raw", None) or {})
@@ -408,6 +504,23 @@ def _run_refresh_job(connected_account_id: int, payload: dict | None = None) -> 
             raise ValueError(f"unsupported provider for now: {provider}")
         requested_mode = payload.get("pacing_mode")
         manual_mode = requested_mode or _effective_pacing_mode(autopilot, account)
+        analytics_required, analytics_reason = _analytics_is_stale(autopilot)
+        if analytics_required:
+            _stage(f"refreshing pool + scoring ({analytics_reason})", events)
+            analytics_result = _run_analytics_sync(
+                db,
+                connected_account_id=connected_account_id,
+                source=str(payload.get("source") or "autopilot"),
+                reason=analytics_reason,
+            )
+            events.extend(
+                [
+                    event
+                    for event in analytics_result.get("cycle_events", [])
+                    if isinstance(event, str) and event not in events
+                ]
+            )
+            account, user, autopilot = _get_account_context(db, connected_account_id)
         excluded_provider_post_ids: set[str] = set()
         post = None
         selection_metadata: dict[str, Any] | None = None
@@ -519,63 +632,13 @@ def _run_refresh_job(connected_account_id: int, payload: dict | None = None) -> 
 def _run_analytics_job(connected_account_id: int, payload: dict | None = None) -> dict:
     db = SessionLocal()
     try:
-        seed_demo_data(db)
-        account, user, autopilot = _get_account_context(db, connected_account_id)
-        autopilot.last_action_at = _utc_now_naive()
-        cycle_events = ["analytics started"]
-        message = "analytics job placeholder complete"
-        next_step = "wire import + analytics engine + pool rebuild"
-        provider = (account.provider or "").lower()
-        if provider == "bluesky":
-            imported = import_bluesky_demo_posts(
-                db,
-                user_id=user.id,
-                connected_account_id=connected_account_id,
-                handle=account.handle,
-            )
-            autopilot.posts_in_rotation = int(imported["total_posts"])
-            message = f"Bluesky importer complete: +{imported['imported']} new, {imported['updated']} updated"
-            next_step = "Bluesky posts are now in the Evergreen pool"
-            cycle_events.extend(["bluesky import started", "bluesky import completed"])
-        elif provider == "x":
-            imported = import_x_pool_posts(
-                db,
-                user_id=user.id,
-                connected_account_id=connected_account_id,
-                handle=account.handle,
-            )
-            autopilot.posts_in_rotation = int(imported["active_posts"])
-            message = (
-                f"X importer complete: +{imported['imported']} new, "
-                f"{imported['updated']} updated, fetched {imported.get('fetched', 0)}"
-            )
-            if imported.get("fallback_limited"):
-                message += " (v1 fallback unavailable on current X access tier)"
-            next_step = "X posts are now in the Evergreen galaxy"
-            cycle_events.extend(["x import started", "x import completed"])
-        db.commit()
-        db.refresh(autopilot)
-        return {
-            "connected_account_id": connected_account_id,
-            "user_id": user.id,
-            "handle": account.handle,
-            "provider": account.provider,
-            "message": message,
-            "next_step": next_step,
-            "last_action_at": autopilot.last_action_at.isoformat() if autopilot.last_action_at else None,
-            "cycle_events": cycle_events + ["analytics completed"],
-            "debug_notes": imported.get("debug_notes", []),
-            "pacing_mode": _effective_pacing_mode(autopilot, account),
-            "pacing_reason": "account-selected pacing",
-            "next_delay_minutes": 0,
-            "candidate_strength": "steady",
-            "rotation_health": {
-                "pool_size": int(autopilot.posts_in_rotation or 0),
-                "refreshes_last_24h": _refresh_count_last_24h(connected_account_id),
-                "last_strategy": _get_autopilot_metadata(autopilot).get("last_strategy", "Constellation circulation"),
-                "mix_hint": "Mixed media ready",
-            },
-        }
+        payload = payload or {}
+        return _run_analytics_sync(
+            db,
+            connected_account_id=connected_account_id,
+            source=str(payload.get("source") or "manual"),
+            reason=str(payload.get("reason") or "").strip(),
+        )
     finally:
         db.close()
 
