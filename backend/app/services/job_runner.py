@@ -379,6 +379,20 @@ def _print_engine_telemetry(post, account: ConnectedAccount, selection_metadata:
     )
 
 
+def _is_retryable_refresh_skip(message: str, provider: str) -> bool:
+    lowered = str(message or "").strip().lower()
+    provider_key = str(provider or "").strip().lower()
+
+    if provider_key != "x":
+        return False
+
+    return (
+        "state sync delay" in lowered
+        or "still thinks it is retweeted" in lowered
+        or "retweet verification never cleared" in lowered
+    )
+
+
 def _run_refresh_job(connected_account_id: int, payload: dict | None = None) -> dict:
     db = SessionLocal()
     payload = payload or {}
@@ -389,43 +403,77 @@ def _run_refresh_job(connected_account_id: int, payload: dict | None = None) -> 
         if not autopilot.connected:
             raise ValueError(f"account {account.handle} is not connected")
         _stage("cycle started", events)
-        _stage("selecting post", events)
-        post = select_next_post(db, connected_account_id)
-        if not post:
-            raise ValueError(f"no eligible post found for {account.handle}")
-        selection_metadata = _record_selection_metadata(db, autopilot, account, post)
-        _stage(f"selected via {selection_metadata.get('last_strategy', 'Constellation circulation')}", events)
-        _print_engine_telemetry(post, account, selection_metadata)
-
         provider = (autopilot.provider or account.provider or "x").lower()
         if provider not in {"x", "bluesky"}:
             raise ValueError(f"unsupported provider for now: {provider}")
         requested_mode = payload.get("pacing_mode")
         manual_mode = requested_mode or _effective_pacing_mode(autopilot, account)
-        pacing_profile, pacing_reason = choose_pacing_profile(
-            post=post,
-            payload=payload,
-            provider=provider,
-            explicit_mode=manual_mode,
-        )
-        if not pacing_profile:
-            pacing_profile = BALANCED
-            pacing_reason = "fallback to balanced"
-        provider_post_id = _sanitize_post_id(
-            getattr(post, "provider_post_id", None) or getattr(post, "text", None),
-            provider=provider,
-        )
-        if not provider_post_id:
-            raise ValueError(f"could not derive post id for {account.handle}")
-        _stage("publishing refresh", events)
-        if provider == "bluesky":
-            if bluesky_refresh_repost is None:
-                raise ValueError("Bluesky refresh service is not available yet.")
-            result = bluesky_refresh_repost(provider_post_id, account.handle)
-        else:
-            result = refresh_repost(provider_post_id, account.handle)
-        if not result.ok:
+        excluded_provider_post_ids: set[str] = set()
+        post = None
+        selection_metadata: dict[str, Any] | None = None
+        provider_post_id = ""
+        result = None
+        pacing_profile = BALANCED
+        pacing_reason = "fallback to balanced"
+
+        for selection_attempt in range(1, 5):
+            _stage("selecting post", events)
+            post = select_next_post(
+                db,
+                connected_account_id,
+                excluded_provider_post_ids=excluded_provider_post_ids,
+            )
+            if not post:
+                if excluded_provider_post_ids:
+                    raise ValueError(
+                        f"refresh candidates exhausted for {account.handle} after skip retries"
+                    )
+                raise ValueError(f"no eligible post found for {account.handle}")
+
+            selection_metadata = _record_selection_metadata(db, autopilot, account, post)
+            _stage(
+                f"selected via {selection_metadata.get('last_strategy', 'Constellation circulation')}",
+                events,
+            )
+            _print_engine_telemetry(post, account, selection_metadata)
+
+            pacing_profile, pacing_reason = choose_pacing_profile(
+                post=post,
+                payload=payload,
+                provider=provider,
+                explicit_mode=manual_mode,
+            )
+            if not pacing_profile:
+                pacing_profile = BALANCED
+                pacing_reason = "fallback to balanced"
+
+            provider_post_id = _sanitize_post_id(
+                getattr(post, "provider_post_id", None) or getattr(post, "text", None),
+                provider=provider,
+            )
+            if not provider_post_id:
+                raise ValueError(f"could not derive post id for {account.handle}")
+
+            _stage("publishing refresh", events)
+            if provider == "bluesky":
+                if bluesky_refresh_repost is None:
+                    raise ValueError("Bluesky refresh service is not available yet.")
+                result = bluesky_refresh_repost(provider_post_id, account.handle)
+            else:
+                result = refresh_repost(provider_post_id, account.handle)
+
+            if result.ok:
+                break
+
+            if _is_retryable_refresh_skip(result.message, provider):
+                excluded_provider_post_ids.add(provider_post_id)
+                _stage(f"skipped stuck post {provider_post_id}", events)
+                if selection_attempt < 4:
+                    continue
             raise ValueError(result.message)
+
+        if not result or not result.ok or not post or not selection_metadata:
+            raise ValueError(f"refresh cycle did not complete for {account.handle}")
         _stage("resurfaced post", events)
         record_resurfaced_post(db, connected_account_id, post)
         growth_metadata = _apply_growth_modes(db, autopilot, post)

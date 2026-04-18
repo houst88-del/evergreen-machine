@@ -293,7 +293,14 @@ def _bluesky_post_is_original(post: Post) -> bool:
     return True
 
 
-def _select_next_x_post(db: Session, connected_account_id: int):
+def _select_next_x_post(
+    db: Session,
+    connected_account_id: int,
+    excluded_provider_post_ids: set[str] | None = None,
+):
+    excluded_provider_post_ids = {
+        str(item).strip() for item in (excluded_provider_post_ids or set()) if str(item).strip()
+    }
     account = db.query(ConnectedAccount).filter(ConnectedAccount.id == connected_account_id).first()
     if not account:
         return None
@@ -314,6 +321,11 @@ def _select_next_x_post(db: Session, connected_account_id: int):
             if not _is_third_party_retweet_text(str(getattr(post, "text", "") or ""), account.handle)
         ]
     if db_posts:
+        if excluded_provider_post_ids:
+            db_posts = [
+                post for post in db_posts
+                if str(getattr(post, "provider_post_id", "")).strip() not in excluded_provider_post_ids
+            ]
         percentile_map = _score_percentile_map(
             [_safe_score(getattr(post, "score", 0)) for post in db_posts]
         )
@@ -362,6 +374,11 @@ def _select_next_x_post(db: Session, connected_account_id: int):
 
     handle = account.handle
     rows = eligible_rows(read_pool_rows(handle))
+    if excluded_provider_post_ids:
+        rows = [
+            row for row in rows
+            if str(row.get("tweet_id", "")).strip() not in excluded_provider_post_ids
+        ]
     rows = [row for row in rows if _x_row_is_original(row)]
     if not _allow_third_party_retweets(account):
         rows = [
@@ -425,7 +442,14 @@ def _select_next_x_post(db: Session, connected_account_id: int):
     )
 
 
-def _select_next_bluesky_post(db: Session, connected_account_id: int):
+def _select_next_bluesky_post(
+    db: Session,
+    connected_account_id: int,
+    excluded_provider_post_ids: set[str] | None = None,
+):
+    excluded_provider_post_ids = {
+        str(item).strip() for item in (excluded_provider_post_ids or set()) if str(item).strip()
+    }
     posts = (
         db.query(Post)
         .filter(
@@ -435,6 +459,11 @@ def _select_next_bluesky_post(db: Session, connected_account_id: int):
         .order_by(Post.score.desc(), Post.id.asc())
         .all()
     )
+    if excluded_provider_post_ids:
+        posts = [
+            post for post in posts
+            if str(getattr(post, "provider_post_id", "")).strip() not in excluded_provider_post_ids
+        ]
 
     valid_posts = [post for post in posts if _bluesky_post_is_original(post)]
 
@@ -480,7 +509,11 @@ def _select_next_bluesky_post(db: Session, connected_account_id: int):
     )
 
 
-def select_next_post(db: Session, connected_account_id: int):
+def select_next_post(
+    db: Session,
+    connected_account_id: int,
+    excluded_provider_post_ids: set[str] | None = None,
+):
     account = db.query(ConnectedAccount).filter(ConnectedAccount.id == connected_account_id).first()
     if not account:
         return None
@@ -488,9 +521,9 @@ def select_next_post(db: Session, connected_account_id: int):
     provider = str(account.provider or "").strip().lower()
 
     if provider == "bluesky":
-        return _select_next_bluesky_post(db, connected_account_id)
+        return _select_next_bluesky_post(db, connected_account_id, excluded_provider_post_ids)
 
-    return _select_next_x_post(db, connected_account_id)
+    return _select_next_x_post(db, connected_account_id, excluded_provider_post_ids)
 
 
 def record_resurfaced_post(db: Session, connected_account_id: int, post) -> None:
