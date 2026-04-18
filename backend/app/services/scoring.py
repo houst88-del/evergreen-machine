@@ -293,6 +293,52 @@ def _bluesky_post_is_original(post: Post) -> bool:
     return True
 
 
+def _x_post_is_original(post: Post) -> bool:
+    """
+    Keep X resurfacing limited to original standalone posts even when selecting
+    from the database-backed post table.
+
+    The DB model is intentionally lightweight, so this mirrors the CSV-side
+    defensive checks using whatever signals may be present on the ORM row.
+    """
+    provider_post_id = str(getattr(post, "provider_post_id", "") or "").strip()
+    if not provider_post_id:
+        return False
+
+    text = str(getattr(post, "text", "") or "").strip()
+    if not text:
+        return False
+
+    if text.upper().startswith("RT "):
+        return False
+
+    if text.startswith("@"):
+        return False
+
+    if getattr(post, "reply", None):
+        return False
+
+    if str(getattr(post, "in_reply_to", "") or "").strip():
+        return False
+
+    if str(getattr(post, "in_reply_to_status_id", "") or "").strip():
+        return False
+
+    if str(getattr(post, "parent_post_id", "") or "").strip():
+        return False
+
+    raw = getattr(post, "raw", None)
+    if isinstance(raw, dict):
+        if raw.get("reply"):
+            return False
+        if str(raw.get("in_reply_to_status_id", "") or "").strip():
+            return False
+        if _boolish(raw.get("is_reply")):
+            return False
+
+    return True
+
+
 def _select_next_x_post(
     db: Session,
     connected_account_id: int,
@@ -314,6 +360,7 @@ def _select_next_x_post(
         .order_by(Post.score.desc(), Post.id.asc())
         .all()
     )
+    db_posts = [post for post in db_posts if _x_post_is_original(post)]
     if not _allow_third_party_retweets(account):
         db_posts = [
             post
