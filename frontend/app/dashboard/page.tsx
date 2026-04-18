@@ -392,7 +392,9 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  return fetch(`${API_BASE}${path}`, {
+  const normalizedPath = path.startsWith('/api/') ? path.slice('/api/'.length) : path
+
+  return fetch(`/api/evergreen/${normalizedPath}`, {
     ...init,
     headers,
     cache: 'no-store',
