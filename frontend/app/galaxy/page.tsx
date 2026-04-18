@@ -628,9 +628,9 @@ export default function GalaxyPage() {
   );
 
   const selectedLabel = useMemo(() => {
-    if (selected === "unified") return "Unified Galaxy";
+    if (selected === "unified") return "Unified Starden";
     const found = accounts.find((a) => String(a.id) === selected);
-    return found ? `${found.provider} · ${found.handle}` : "Galaxy";
+    return found ? `${found.provider} · ${found.handle}` : "Starden";
   }, [accounts, selected]);
 
   const counts = useMemo(() => {
@@ -821,7 +821,7 @@ export default function GalaxyPage() {
         >
           <div>
             <h1 style={{ fontSize: 54, lineHeight: 1, margin: 0, fontWeight: 700 }}>
-              Evergreen Galaxy
+              ✦🌿 Starden
             </h1>
             <p
               style={{
@@ -830,7 +830,7 @@ export default function GalaxyPage() {
                 fontSize: 14,
               }}
             >
-              Gravity wells now reveal where your strongest resurfacing pull concentrates.
+              A star garden for seeing where your strongest resurfacing pull is gathering next.
             </p>
           </div>
 
@@ -860,7 +860,7 @@ export default function GalaxyPage() {
                 fontSize: 12,
               }}
             >
-              Galaxy View
+              Starden View
             </div>
             <select
               value={selected}
@@ -873,7 +873,7 @@ export default function GalaxyPage() {
                 padding: "10px 14px",
               }}
             >
-              <option value="unified">Unified Galaxy</option>
+              <option value="unified">Unified Starden</option>
               {accounts.map((account) => (
                 <option key={account.id} value={String(account.id)}>
                   {account.provider}: {account.handle}
@@ -1551,7 +1551,7 @@ export default function GalaxyPage() {
                   }}
                 >
                   <div style={{ fontWeight: 600 }}>
-                    Cinematic Spiral Galaxy · centered view tuned for dense unified mode
+                    Cinematic Spiral Starden · centered view tuned for dense unified mode
                   </div>
                 </div>
 
