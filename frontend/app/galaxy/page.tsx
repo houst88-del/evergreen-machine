@@ -456,6 +456,7 @@ export default function GalaxyPage() {
   }, [selected, userId]);
 
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
+  const viewMotionBoost = selected === "unified" ? 1 : 2.8;
 
   const workingNodes = useMemo(() => {
     const nodes = [...galaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -469,11 +470,12 @@ export default function GalaxyPage() {
       const phase = index * 0.17;
       const nodeSeed = stableHash(node.id || `${index}`) % 997;
       const orbitSpeed =
-        0.006 +
-        (nodeSeed / 997) * 0.008 +
-        (node.candidate ? 0.0025 : 0) +
-        (node.current_cycle ? 0.0035 : 0) +
-        (node.cold_archive ? 0.002 : 0);
+        (0.006 +
+          (nodeSeed / 997) * 0.008 +
+          (node.candidate ? 0.0025 : 0) +
+          (node.current_cycle ? 0.0035 : 0) +
+          (node.cold_archive ? 0.002 : 0)) *
+        viewMotionBoost;
       const orbitBreathe =
         0.5 + mv(0.018, liveTick + timeWarp * 2 + temporalShift, phase) * 0.8;
       const t = index * 0.42 + liveTick * orbitSpeed + warp + temporalShift * 0.03;
@@ -515,13 +517,16 @@ export default function GalaxyPage() {
 
       px +=
         mv(0.03, liveTick * (0.8 + orbitSpeed * 18) + timeWarp + temporalShift, phase) *
-        (node.candidate ? 0.7 : node.cold_archive ? 0.42 : 0.32);
+        (node.candidate ? 0.7 : node.cold_archive ? 0.42 : 0.32) *
+        Math.min(2.1, 0.92 + viewMotionBoost * 0.42);
       py +=
         mv(
           0.026,
           liveTick * (0.88 + orbitSpeed * 16) + timeWarp + temporalShift,
           phase + 1.2
-        ) * (node.current_cycle ? 0.82 : node.cold_archive ? 0.46 : 0.36);
+        ) *
+        (node.current_cycle ? 0.82 : node.cold_archive ? 0.46 : 0.36) *
+        Math.min(2.1, 0.92 + viewMotionBoost * 0.42);
 
       if (node.cold_archive || safeNum(node.archive_signal, 0) > 0.75) {
         px += (index % 2 === 0 ? 1 : -1) * 6;
@@ -537,15 +542,21 @@ export default function GalaxyPage() {
 
       // Give cooler/archive stars a visible but gentle ambient wander so the outer ring
       // never reads as frozen.
-      px += Math.cos(liveTick * (0.018 + nodeSeed * 0.00001) + phase) * (node.cold_archive ? 0.52 : 0.18);
-      py += Math.sin(liveTick * (0.02 + nodeSeed * 0.000012) + phase * 1.4) * (node.cold_archive ? 0.44 : 0.16);
+      px +=
+        Math.cos(liveTick * (0.018 + nodeSeed * 0.00001) + phase) *
+        (node.cold_archive ? 0.52 : 0.18) *
+        Math.min(2.4, 0.9 + viewMotionBoost * 0.5);
+      py +=
+        Math.sin(liveTick * (0.02 + nodeSeed * 0.000012) + phase * 1.4) *
+        (node.cold_archive ? 0.44 : 0.16) *
+        Math.min(2.4, 0.9 + viewMotionBoost * 0.5);
 
       px = Math.max(4, Math.min(96, px));
       py = Math.max(12, Math.min(92, py));
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [galaxy.nodes, liveTick, timeWarp, timeTravel]);
+  }, [galaxy.nodes, liveTick, timeWarp, timeTravel, viewMotionBoost]);
 
   const gravityWells = useMemo(
     () =>
