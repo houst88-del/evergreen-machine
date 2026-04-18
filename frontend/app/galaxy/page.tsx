@@ -827,37 +827,30 @@ export default function GalaxyPage() {
               boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 10,
+              }}
+            >
+              <h1 style={{ fontSize: 42, lineHeight: 1, margin: 0, fontWeight: 700 }}>
+                ✦🌿 Starden
+              </h1>
               <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
               <span style={missionBadgeStyle("mint", true)}>🌿 Garden memory</span>
               <span style={missionBadgeStyle("sky", true)}>
-                {selected === "unified" ? "Unified canopy" : selectedLabel}
+                {selected === "unified" ? "🌌 Unified canopy" : `🌌 ${selectedLabel}`}
               </span>
             </div>
-            <h1 style={{ fontSize: 42, lineHeight: 1, margin: 0, fontWeight: 700 }}>
-              ✦🌿 Starden
-            </h1>
-            <p
-              style={{
-                marginTop: 8,
-                color: "rgba(236,253,245,0.8)",
-                fontSize: "clamp(11px, 0.8vw, 13px)",
-                lineHeight: 1.2,
-                maxWidth: "100%",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              Your star garden for seeing which ideas are still alive, which ones are beginning to glow
-              again, and where Evergreen wants to send its next pulse.
-            </p>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                 gap: 8,
-                marginTop: 12,
+                marginTop: 0,
               }}
             >
               {[
@@ -964,8 +957,8 @@ export default function GalaxyPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-            gap: 10,
-            marginBottom: 10,
+            gap: 8,
+            marginBottom: 8,
           }}
         >
           {[
@@ -980,7 +973,7 @@ export default function GalaxyPage() {
             <div key={label} style={cardStyle()}>
               <div
                 style={{
-                  fontSize: 10,
+                  fontSize: 9,
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
                   color: "rgba(236,253,245,0.58)",
@@ -990,8 +983,8 @@ export default function GalaxyPage() {
               </div>
               <div
                 style={{
-                  marginTop: 8,
-                  fontSize: 34,
+                  marginTop: 6,
+                  fontSize: 28,
                   fontWeight: 700,
                   lineHeight: 1,
                 }}
@@ -1190,69 +1183,10 @@ export default function GalaxyPage() {
                 </div>
               ) : null}
             </div>
+
           </div>
 
           <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 12 }}>
-              <div style={cardStyle()}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                  {(
-                    [
-                      ["Gravity wells", true],
-                      ["Strong", false],
-                      ["Standard", false],
-                      ["Glow", false],
-                      ["Inline labels", false],
-                      ["Live motion", false],
-                      ["Constellations", false],
-                      ["Forecast", false],
-                      ["Nebulae", false],
-                    ] as [string, boolean][]
-                  ).map(([label, accent]) => (
-                    <span
-                      key={label}
-                      style={missionBadgeStyle(accent ? "gold" : "mint")}
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>
-                  Nebula heat zones now reveal where forecast pressure and engagement density are
-                  building. Forecast stars get faint pre-pull halos before they explode.
-                </div>
-              </div>
-
-              <div style={cardStyle()}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                  {[
-                    "Score",
-                    "Gravity",
-                    "Gravity score",
-                    "Velocity",
-                    "Archive",
-                    "Archetype",
-                    "Revival",
-                    "Refreshes",
-                    "Strategy",
-                    "Reason",
-                    "State",
-                  ].map((label) => (
-                    <span
-                      key={label}
-                      style={missionBadgeStyle("mint")}
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ fontSize: 13, lineHeight: 1.8, color: "rgba(236,253,245,0.64)" }}>
-                  Hover cards foreground engine reasons so the galaxy mirrors what the worker is
-                  most likely to choose next.
-                </div>
-              </div>
-            </div>
-
             <div
               style={{
                 position: "relative",
@@ -1803,6 +1737,60 @@ export default function GalaxyPage() {
                   </div>
                 </div>
               ) : null}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 12 }}>
+              <div style={cardStyle()}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  {(
+                    [
+                      ["Gravity wells", true],
+                      ["Strong", false],
+                      ["Standard", false],
+                      ["Glow", false],
+                      ["Inline labels", false],
+                      ["Live motion", false],
+                      ["Constellations", false],
+                      ["Forecast", false],
+                      ["Nebulae", false],
+                    ] as [string, boolean][]
+                  ).map(([label, accent]) => (
+                    <span key={label} style={missionBadgeStyle(accent ? "gold" : "mint")}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(236,253,245,0.64)" }}>
+                  Your star garden for seeing which ideas are still alive, which ones are beginning
+                  to glow again, and where Evergreen wants to send its next pulse.
+                </div>
+              </div>
+
+              <div style={cardStyle()}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  {[
+                    "Score",
+                    "Gravity",
+                    "Gravity score",
+                    "Velocity",
+                    "Archive",
+                    "Archetype",
+                    "Revival",
+                    "Refreshes",
+                    "Strategy",
+                    "Reason",
+                    "State",
+                  ].map((label) => (
+                    <span key={label} style={missionBadgeStyle("mint")}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(236,253,245,0.64)" }}>
+                  Hover cards foreground engine reasons so the galaxy mirrors what the worker is
+                  most likely to choose next.
+                </div>
+              </div>
             </div>
           </div>
 
