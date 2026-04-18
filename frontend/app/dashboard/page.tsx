@@ -1277,7 +1277,7 @@ export default function DashboardPage() {
               <button
                 className="btn"
                 onClick={handleGlobalAutopilotAction}
-                disabled={busyAction === 'start-autopilot' || accounts.length === 0}
+                disabled={busyAction === 'start-autopilot'}
               >
                 {busyAction === 'start-autopilot'
                   ? runningLaneCount === connectedLaneCount && connectedLaneCount > 0
