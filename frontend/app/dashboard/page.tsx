@@ -1736,8 +1736,8 @@ export default function DashboardPage() {
                           {busyAction === `breathing-${account.id}`
                             ? 'Updating...'
                             : freshPostProtectionEnabled
-                              ? 'Disable Protection'
-                              : 'Enable Protection'}
+                              ? 'Fresh-post protection: Enabled'
+                              : 'Fresh-post protection: Disabled'}
                         </button>
 
                         <div
@@ -1747,7 +1747,7 @@ export default function DashboardPage() {
                           }}
                         >
                           {breathingRoomActive
-                            ? `Fresh original post is still breathing. Evergreen resumes in ${breathingRoomCountdown}.`
+                            ? `Fresh original post is still breathing. Countdown: ${breathingRoomCountdown}.`
                             : freshPostProtectionEnabled
                               ? `Fresh originals get breathing room before resurfacing resumes. Latest original: ${latestOriginalText}.`
                               : 'Evergreen can refresh immediately after new live posts.'}
