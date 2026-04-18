@@ -163,6 +163,11 @@ function countdownUntil(value?: string | null, nowMs = Date.now()) {
   return `${seconds}s`
 }
 
+function selectedPacingOption(status?: AccountStatus | null) {
+  const options = status?.pacing_options || []
+  return options.find((option) => option.mode === status?.pacing_mode) || options[0] || null
+}
+
 function providerLabel(provider?: string) {
   const p = String(provider || '').toLowerCase()
   if (p === 'x' || p === 'twitter') return 'X'
@@ -906,6 +911,31 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || json.error || 'Could not update refresh window')
       }
 
+      setStatusMap((current) => {
+        const existing = current[accountId] || {}
+        return {
+          ...current,
+          [accountId]: {
+            ...existing,
+            pacing_mode: typeof json.pacing_mode === 'string' ? json.pacing_mode : existing.pacing_mode,
+            pacing_label: typeof json.pacing_label === 'string' ? json.pacing_label : existing.pacing_label,
+            pacing_description:
+              typeof json.pacing_description === 'string'
+                ? json.pacing_description
+                : existing.pacing_description,
+            pacing_window_label:
+              typeof json.pacing_window_label === 'string'
+                ? json.pacing_window_label
+                : existing.pacing_window_label,
+            pacing_options: Array.isArray(json.pacing_options)
+              ? json.pacing_options
+              : existing.pacing_options,
+            next_cycle_at:
+              typeof json.next_cycle_at === 'string' ? json.next_cycle_at : existing.next_cycle_at,
+          },
+        }
+      })
+
       setActionMessage(`Refresh window updated to ${json.pacing_label || mode}.`)
       await refreshMissionControlNow()
       window.setTimeout(refreshMissionControlNow, 1500)
@@ -1302,6 +1332,15 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
               {accounts.map((account) => {
                 const status = statusMap[account.id]
+                const activePacingOption = selectedPacingOption(status)
+                const pacingDescription =
+                  activePacingOption?.description ||
+                  status?.pacing_description ||
+                  'Balanced refresh cadence.'
+                const pacingWindowLabel =
+                  activePacingOption?.label ||
+                  status?.pacing_window_label ||
+                  'Standard · 24–49 min'
                 const nextCycleText = cycleLabel(status?.next_cycle_at)
                 const nextRefreshCountdown = countdownUntil(status?.next_cycle_at, nowMs)
                 const isOverdue = nextCycleText === 'Overdue'
@@ -1496,7 +1535,7 @@ export default function DashboardPage() {
                           color: 'rgba(236,253,245,0.76)',
                         }}
                       >
-                        {status?.pacing_description || 'Balanced refresh cadence.'}
+                        {pacingDescription}
                       </div>
 
                       <div
@@ -1506,7 +1545,7 @@ export default function DashboardPage() {
                           color: 'rgba(236,253,245,0.56)',
                         }}
                       >
-                        {status?.pacing_window_label || 'Standard · 24–49 min'}
+                        {pacingWindowLabel}
                       </div>
                     </div>
 
