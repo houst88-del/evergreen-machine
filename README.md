@@ -42,6 +42,8 @@ source .venv/bin/activate
 python -m app.workers.autopilot_worker
 ```
 
+Production worker notes live in [WORKER_DEPLOYMENT.md](/Users/houstonfry/Downloads/evergreen_scaffold/WORKER_DEPLOYMENT.md).
+
 ### Frontend
 
 ```bash

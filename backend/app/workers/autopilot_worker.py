@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import traceback
 from datetime import datetime, UTC
 from pathlib import Path
 
+from app.core.config import settings
 from app.services.account_sync_service import sync_all_connected_accounts
 from app.services.job_queue import repair_stale_running_jobs
 from app.services.job_runner import enqueue_due_autopilot_jobs, process_pending_jobs
 
 
-POLL_SECONDS = 20
-STARTUP_BURST_X_LIMIT = 200
-STARTUP_BURST_BLUESKY_LIMIT = 150
+POLL_SECONDS = max(5, int(os.getenv("EVERGREEN_WORKER_POLL_SECONDS", settings.worker_poll_seconds)))
+STARTUP_BURST_X_LIMIT = max(25, int(os.getenv("EVERGREEN_WORKER_STARTUP_X_LIMIT", "200")))
+STARTUP_BURST_BLUESKY_LIMIT = max(
+    25, int(os.getenv("EVERGREEN_WORKER_STARTUP_BLUESKY_LIMIT", "150"))
+)
 HEARTBEAT_PATH = Path(__file__).resolve().parents[2] / "worker_heartbeat.json"
 
 
