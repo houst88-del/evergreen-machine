@@ -4,7 +4,7 @@ import { SignUp } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { me, signup } from '../lib/auth'
+import { me, resetAuthState, signup } from '../lib/auth'
 
 export default function SignupPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -18,6 +18,14 @@ export default function SignupPage() {
 
   useEffect(() => {
     if (clerkEnabled) {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('fresh') === '1') {
+        void resetAuthState({ includeClerk: true }).finally(() => {
+          setCheckingSession(false)
+        })
+        return
+      }
+
       setCheckingSession(false)
       return
     }
@@ -91,6 +99,7 @@ export default function SignupPage() {
               routing="path"
               path="/signup"
               signInUrl="/login"
+              forceRedirectUrl="/dashboard"
               fallbackRedirectUrl="/dashboard"
               appearance={{
                 elements: {

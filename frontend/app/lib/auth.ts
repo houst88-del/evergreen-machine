@@ -33,6 +33,20 @@ export function getApiBase() {
   return API_BASE
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 5000) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 async function bootstrapBackendSession(): Promise<AuthResponse | null> {
   if (typeof window === 'undefined') return null
 
@@ -40,7 +54,7 @@ async function bootstrapBackendSession(): Promise<AuthResponse | null> {
     return bootstrapPromise
   }
 
-  bootstrapPromise = fetch('/api/session/bootstrap', {
+  bootstrapPromise = fetchWithTimeout('/api/session/bootstrap', {
     method: 'POST',
     cache: 'no-store',
   })
@@ -106,6 +120,20 @@ export function setStoredUser(user: AuthUser) {
 export function clearStoredUser() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(USER_KEY)
+}
+
+export async function resetAuthState(options?: { includeClerk?: boolean }) {
+  clearToken()
+  clearStoredUser()
+  bootstrapPromise = null
+
+  if (options?.includeClerk && typeof window !== 'undefined' && typeof window.Clerk?.signOut === 'function') {
+    try {
+      await window.Clerk.signOut()
+    } catch {
+      // ignore Clerk sign-out failures during hard reset
+    }
+  }
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
@@ -225,10 +253,5 @@ export async function me(): Promise<AuthResponse | null> {
 }
 
 export function logout() {
-  clearToken()
-  clearStoredUser()
-
-  if (typeof window !== 'undefined' && typeof window.Clerk?.signOut === 'function') {
-    void window.Clerk.signOut()
-  }
+  void resetAuthState({ includeClerk: true })
 }

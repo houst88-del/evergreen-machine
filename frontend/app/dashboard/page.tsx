@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getToken, logout, me } from '../lib/auth'
+import { getToken, logout, me, resetAuthState } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
@@ -445,6 +445,19 @@ export default function DashboardPage() {
   }, [clerkEnabled])
 
   useEffect(() => {
+    if (!loading) return
+
+    const timeoutId = window.setTimeout(async () => {
+      await resetAuthState({ includeClerk: true })
+      window.location.replace('/signup?fresh=1')
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [loading])
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       setNowMs(Date.now())
     }, 1000)
@@ -456,7 +469,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (loading || session?.user) return
-    router.replace('/signup')
+    void resetAuthState({ includeClerk: true }).finally(() => {
+      window.location.replace('/signup?fresh=1')
+    })
   }, [loading, router, session])
 
   async function refreshMissionControlNow() {
