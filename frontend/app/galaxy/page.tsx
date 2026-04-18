@@ -319,8 +319,7 @@ export default function GalaxyPage() {
   const [error, setError] = useState("");
   const [timeWarp, setTimeWarp] = useState(0);
   const [timeLapseOn, setTimeLapseOn] = useState(true);
-  const [timeLapseSpeed, setTimeLapseSpeed] = useState(0.25);
-  const [timeTravel, setTimeTravel] = useState(0);
+  const [timeTravel] = useState(50);
   const [intelligenceView, setIntelligenceView] = useState<
     "balanced" | "forecast" | "revival" | "gravity"
   >("balanced");
@@ -362,11 +361,11 @@ export default function GalaxyPage() {
   useEffect(() => {
     if (!timeLapseOn) return;
     const id = window.setInterval(
-      () => setTimeWarp((v) => (v + timeLapseSpeed) % 100),
+      () => setTimeWarp((v) => (v + 0.25) % 100),
       360
     );
     return () => window.clearInterval(id);
-  }, [timeLapseOn, timeLapseSpeed]);
+  }, [timeLapseOn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1031,7 +1030,7 @@ export default function GalaxyPage() {
               >
                 <div>Canopy: {selectedLabel}</div>
                 <div>Mode: {intelligenceView}</div>
-                <div>Season: {timeTravel < 34 ? "Past" : timeTravel > 66 ? "Future" : "Present"}</div>
+                <div>Motion: {timeLapseOn ? "Orbiting" : "Paused"}</div>
                 <div>Zoom: {zoom.toFixed(1)}x</div>
                 <div>Focus: {highlightMode === "off" ? "Balanced" : highlightMode}</div>
               </div>
@@ -1112,33 +1111,7 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Seasonal Drift
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={timeTravel}
-                  onChange={(e) => setTimeTravel(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
-                  {timeTravel < 34 ? "Past bias" : timeTravel > 66 ? "Future bias" : "Present"}
-                </div>
-              </div>
-            </div>
-
-            <div style={cardStyle()}>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.58)",
-                }}
-              >
-                Bloom Replay
+                Orbit Motion
               </div>
               <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
                 <button
@@ -1152,18 +1125,10 @@ export default function GalaxyPage() {
                     cursor: "pointer",
                   }}
                 >
-                  {timeLapseOn ? "Pause" : "Play"}
+                  {timeLapseOn ? "Pause Orbit" : "Resume Orbit"}
                 </button>
-                <input
-                  type="range"
-                  min={0.25}
-                  max={2}
-                  step={0.25}
-                  value={timeLapseSpeed}
-                  onChange={(e) => setTimeLapseSpeed(Number(e.target.value))}
-                />
                 <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
-                  Speed {timeLapseSpeed.toFixed(1)}x
+                  Default drift speed keeps the constellation calm and readable.
                 </div>
                 <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>Zoom</div>
                 <input
