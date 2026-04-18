@@ -673,9 +673,9 @@ export default function GalaxyPage() {
   const driftX =
     Math.sin(cameraDriftTick * 0.01) * 2.2 + Math.cos(parallaxTick * 0.008) * 1.2;
   const driftY = Math.cos(cameraDriftTick * 0.009) * 1.6;
-  const sceneTransform = `translate(${baseShiftX + driftX}px, ${
+  const sceneTransform = `translate3d(${baseShiftX + driftX}px, ${
     baseShiftY + driftY
-  }px) scale(${sceneScale})`;
+  }px, 0) scale(${sceneScale})`;
   const paneHeight = nodeCount > 700 ? "58vh" : "calc(100vh - 340px)";
 
   return (
@@ -1150,8 +1150,9 @@ export default function GalaxyPage() {
                   inset: 0,
                   transform: sceneTransform,
                   transformOrigin: "center center",
-                  transition: "transform 220ms ease-out",
                   animation: timeLapseOn ? "galaxyFloat 9s ease-in-out infinite" : undefined,
+                  willChange: "transform",
+                  backfaceVisibility: "hidden",
                 }}
               >
                 {supernovaNode
@@ -1266,7 +1267,7 @@ export default function GalaxyPage() {
                               top: `${(node as any)._py}%`,
                               width: `${size * (selectedNow ? 6.8 : 5.2)}px`,
                               height: `${size * (selectedNow ? 6.8 : 5.2)}px`,
-                              transform: "translate(-50%, -50%)",
+                              transform: "translate3d(-50%, -50%, 0)",
                               borderRadius: "9999px",
                               border: `1px solid ${
                                 selectedNow ? "rgba(255,240,170,0.42)" : theme.border
@@ -1286,7 +1287,7 @@ export default function GalaxyPage() {
                               top: `${(node as any)._py}%`,
                               width: `${size * (selectedNow ? 9.4 : 7.2)}px`,
                               height: `${size * (selectedNow ? 9.4 : 7.2)}px`,
-                              transform: "translate(-50%, -50%)",
+                              transform: "translate3d(-50%, -50%, 0)",
                               borderRadius: "9999px",
                               border: `1px solid ${
                                 selectedNow ? "rgba(255,248,210,0.18)" : "rgba(255,255,255,0.12)"
@@ -1303,7 +1304,7 @@ export default function GalaxyPage() {
                               top: `${(node as any)._py}%`,
                               width: `${size * 4.8}px`,
                               height: `${Math.max(10, size * 1.2)}px`,
-                              transform: "translate(-100%, -50%)",
+                              transform: "translate3d(-100%, -50%, 0)",
                               borderRadius: "9999px",
                               background: `linear-gradient(90deg, transparent 0%, ${
                                 selectedNow ? "rgba(255,240,170,0.18)" : theme.glow
@@ -1328,14 +1329,24 @@ export default function GalaxyPage() {
                           top: `${(node as any)._py}%`,
                           width: `${size * 2}px`,
                           height: `${size * 2}px`,
-                          transform: "translate(-50%, -50%)",
+                          transform: "translate3d(-50%, -50%, 0)",
                           borderRadius: "9999px",
                           border: `1px solid ${accent.border}`,
-                          background: accent.fill,
-                          boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.7}px ${accent.aura}`,
+                          background: `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
+                          boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.8}px ${accent.aura}, inset 0 0 ${Math.max(
+                            4,
+                            size * 0.9
+                          )}px rgba(255,255,255,0.18)`,
                           cursor: "pointer",
                           opacity,
                           zIndex: selectedNow ? 6 : node.current_cycle ? 4 : 3,
+                          padding: 0,
+                          margin: 0,
+                          appearance: "none",
+                          WebkitAppearance: "none",
+                          outline: "none",
+                          willChange: "transform, opacity",
+                          backfaceVisibility: "hidden",
                         }}
                         aria-label={shortText(node.label || node.id, 64)}
                       >
