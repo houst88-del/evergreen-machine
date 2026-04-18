@@ -456,7 +456,8 @@ export default function GalaxyPage() {
   }, [selected, userId]);
 
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
-  const viewMotionBoost = selected === "unified" ? 1 : 1.16;
+  const viewMotionBoost = selected === "unified" ? 1 : 0.72;
+  const localMotionScale = selected === "unified" ? 1 : 0.42;
 
   const workingNodes = useMemo(() => {
     const nodes = [...galaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -465,7 +466,7 @@ export default function GalaxyPage() {
     const centerY = 54;
     const warp = timeWarp * 0.03;
     const temporalShift = timeTravel * 0.08;
-    const groupRotation = liveTick * (selected === "unified" ? 0.00022 : 0.00036);
+    const groupRotation = liveTick * (selected === "unified" ? 0.00022 : 0.00012);
     const sinRotation = Math.sin(groupRotation);
     const cosRotation = Math.cos(groupRotation);
 
@@ -521,7 +522,8 @@ export default function GalaxyPage() {
       px +=
         mv(0.03, liveTick * (0.8 + orbitSpeed * 18) + timeWarp + temporalShift, phase) *
         (node.candidate ? 0.7 : node.cold_archive ? 0.42 : 0.32) *
-        Math.min(2.1, 0.92 + viewMotionBoost * 0.42);
+        Math.min(2.1, 0.92 + viewMotionBoost * 0.42) *
+        localMotionScale;
       py +=
         mv(
           0.026,
@@ -529,7 +531,8 @@ export default function GalaxyPage() {
           phase + 1.2
         ) *
         (node.current_cycle ? 0.82 : node.cold_archive ? 0.46 : 0.36) *
-        Math.min(2.1, 0.92 + viewMotionBoost * 0.42);
+        Math.min(2.1, 0.92 + viewMotionBoost * 0.42) *
+        localMotionScale;
 
       if (node.cold_archive || safeNum(node.archive_signal, 0) > 0.75) {
         px += (index % 2 === 0 ? 1 : -1) * 6;
@@ -548,11 +551,13 @@ export default function GalaxyPage() {
       px +=
         Math.cos(liveTick * (0.018 + nodeSeed * 0.00001) + phase) *
         (node.cold_archive ? 0.52 : 0.18) *
-        Math.min(2.4, 0.9 + viewMotionBoost * 0.5);
+        Math.min(2.4, 0.9 + viewMotionBoost * 0.5) *
+        localMotionScale;
       py +=
         Math.sin(liveTick * (0.02 + nodeSeed * 0.000012) + phase * 1.4) *
         (node.cold_archive ? 0.44 : 0.16) *
-        Math.min(2.4, 0.9 + viewMotionBoost * 0.5);
+        Math.min(2.4, 0.9 + viewMotionBoost * 0.5) *
+        localMotionScale;
 
       const rotX = px - centerX;
       const rotY = py - centerY;
@@ -564,7 +569,7 @@ export default function GalaxyPage() {
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [galaxy.nodes, liveTick, selected, timeWarp, timeTravel, viewMotionBoost]);
+  }, [galaxy.nodes, liveTick, localMotionScale, selected, timeWarp, timeTravel, viewMotionBoost]);
 
   const gravityWells = useMemo(
     () =>
@@ -744,9 +749,13 @@ export default function GalaxyPage() {
   const driftX =
     Math.sin(cameraDriftTick * 0.01) * 2.2 + Math.cos(parallaxTick * 0.008) * 1.2;
   const driftY = Math.cos(cameraDriftTick * 0.009) * 1.6;
+  const sceneRotateDeg =
+    selected === "unified"
+      ? Math.sin(liveTick * 0.004) * 0.16
+      : Math.sin(liveTick * 0.006) * 0.34 + Math.cos(liveTick * 0.0036) * 0.12;
   const sceneTransform = `translate3d(${baseShiftX + driftX}px, ${
     baseShiftY + driftY
-  }px, 0) scale(${sceneScale})`;
+  }px, 0) rotate(${sceneRotateDeg}deg) scale(${sceneScale})`;
   const paneHeight = nodeCount > 700 ? "58vh" : "calc(100vh - 340px)";
 
   return (
