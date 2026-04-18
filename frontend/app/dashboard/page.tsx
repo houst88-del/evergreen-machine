@@ -978,6 +978,39 @@ export default function DashboardPage() {
   const user = session.user
   const recentJobs = jobs.slice(0, 5)
   const accountMap = new Map(accounts.map((account) => [account.id, account]))
+  const connectedProviders = new Set(
+    accounts.map((account) => String(account.provider || '').trim().toLowerCase()).filter(Boolean)
+  )
+  const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
+  const standardFriendly = accounts.filter(
+    (account) => String(account.provider || '').trim().toLowerCase() === 'x'
+  ).length <= 1
+  const activationSteps = [
+    {
+      label: 'Connect X',
+      detail: connectedProviders.has('x') ? 'X is linked and ready.' : 'Best first step for Standard.',
+      kind: connectedProviders.has('x') ? 'good' : 'neutral',
+    },
+    {
+      label: 'Connect Bluesky',
+      detail: connectedProviders.has('bluesky')
+        ? 'Bluesky is linked too.'
+        : 'Optional second lane for Pro.',
+      kind: connectedProviders.has('bluesky') ? 'good' : 'neutral',
+    },
+    {
+      label: 'Start Autopilot',
+      detail: anyAutopilotRunning ? 'At least one lane is live.' : 'Turn on Evergreen after connecting.',
+      kind: anyAutopilotRunning ? 'good' : 'warn',
+    },
+    {
+      label: 'Monitor Starden',
+      detail: accounts.length > 0
+        ? 'Watch selections and refresh timing below.'
+        : 'Starden gets more useful once a lane is connected.',
+      kind: accounts.length > 0 ? 'good' : 'neutral',
+    },
+  ] as const
 
   return (
     <main className="page">
@@ -1021,40 +1054,136 @@ export default function DashboardPage() {
           className="card"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
-            gap: 16,
+            gap: 18,
           }}
         >
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Backend</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>
-              {summary.backendOnline ? 'Online' : 'Offline'}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 16,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 8 }}>Activate Evergreen</h3>
+              <div style={{ color: 'rgba(236,253,245,0.72)', maxWidth: 720 }}>
+                Move top to bottom: connect your channels, turn on the engine, then monitor the refresh flow.
+                {standardFriendly
+                  ? ' Standard can stay lean with one lane. Pro can stack both X and Bluesky.'
+                  : ' Both lanes can run side by side when you want a fuller Pro setup.'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn"
+                onClick={handleConnectXOAuth}
+                disabled={busyAction === 'connect-x'}
+              >
+                {busyAction === 'connect-x' ? 'Starting X OAuth...' : '𝕏 Connect X'}
+              </button>
+
+              <button
+                className="btn"
+                onClick={handleConnectBluesky}
+                disabled={busyAction === 'connect-bluesky'}
+              >
+                {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : '☁️ Connect Bluesky'}
+              </button>
+
+              <Link className="btn primary" href="/galaxy">
+                Open Starden
+              </Link>
+
+              <Link className="btn" href="/analytics">
+                Analytics
+              </Link>
             </div>
           </div>
 
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Worker</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.workerState}</div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+              gap: 12,
+            }}
+          >
+            {activationSteps.map((step) => (
+              <div
+                key={step.label}
+                style={{
+                  border: '1px solid rgba(52,211,153,0.14)',
+                  borderRadius: 16,
+                  padding: 14,
+                  background: 'rgba(16,185,129,0.04)',
+                }}
+              >
+                <div
+                  style={{
+                    ...missionEyebrowStyle,
+                    marginBottom: 8,
+                  }}
+                >
+                  {step.label}
+                </div>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    ...statusPillStyle(step.kind),
+                  }}
+                >
+                  {step.kind === 'good' ? 'Ready' : step.kind === 'warn' ? 'Next up' : 'Optional'}
+                </div>
+                <div style={{ marginTop: 10, color: 'rgba(236,253,245,0.76)', fontSize: 13 }}>
+                  {step.detail}
+                </div>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Connected Accounts</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.connectedCount}</div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Posts in Rotation</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.postsInRotation}</div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Queued</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.queued}</div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Processed</div>
-            <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.processed}</div>
+        <section
+          className="card"
+          style={{
+            padding: '14px 18px',
+            background: 'rgba(8, 26, 18, 0.88)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              fontSize: 13,
+              color: 'rgba(236,253,245,0.82)',
+            }}
+          >
+            <span style={missionEyebrowStyle}>Live Pulse</span>
+            <span style={statusPillStyle(summary.backendOnline ? 'good' : 'bad')}>
+              Backend {summary.backendOnline ? 'online' : 'offline'}
+            </span>
+            <span style={statusPillStyle(summary.workerState === 'running' ? 'good' : 'neutral')}>
+              Worker {startCase(summary.workerState)}
+            </span>
+            <span>{summary.connectedCount} connected</span>
+            <span>{summary.postsInRotation} in rotation</span>
+            <span>{summary.queued} queued</span>
+            <span>{summary.processed} processed</span>
+            <span>
+              Next cycle:{' '}
+              {summary.nextCycle ? `${fmtWhen(summary.nextCycle)} (${cycleLabel(summary.nextCycle)})` : 'none'}
+            </span>
+            <span>Heartbeat {fmtWhen(summary.heartbeatAt)}</span>
+            {summary.workerError ? (
+              <span style={{ color: '#fecaca' }}>Worker issue: {summary.workerError}</span>
+            ) : null}
           </div>
         </section>
 
@@ -1258,73 +1387,10 @@ export default function DashboardPage() {
         </section>
 
         <section className="card">
-          <h3 style={{ marginTop: 0 }}>Connect Accounts</h3>
-          <p style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
-            X uses real OAuth. Bluesky uses your handle and app password.
-          </p>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
-              gap: 16,
-              marginTop: 20,
-            }}
-          >
-            <button
-              className="btn"
-              onClick={handleConnectXOAuth}
-              disabled={busyAction === 'connect-x'}
-            >
-              {busyAction === 'connect-x' ? 'Starting X OAuth...' : '𝕏 Connect X with OAuth'}
-            </button>
-
-            <button
-              className="btn"
-              onClick={handleConnectBluesky}
-              disabled={busyAction === 'connect-bluesky'}
-            >
-              {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : '☁️ Connect Bluesky'}
-            </button>
-          </div>
-        </section>
-
-        <section
-          className="card"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
-            gap: 16,
-          }}
-        >
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Last Heartbeat</div>
-            <div>{fmtWhen(summary.heartbeatAt)}</div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Poll Interval</div>
-            <div>{summary.pollSeconds ? `${summary.pollSeconds}s` : '—'}</div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Next Cycle</div>
-            <div>
-              {summary.nextCycle ? fmtWhen(summary.nextCycle) : 'No cycle scheduled'}{' '}
-              <span style={{ opacity: 0.7 }}>
-                {summary.nextCycle ? `(${cycleLabel(summary.nextCycle)})` : ''}
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Worker Error</div>
-            <div>{summary.workerError || 'No worker error reported.'}</div>
-          </div>
-        </section>
-
-        <section className="card">
           <h3 style={{ marginTop: 0 }}>Connected Accounts Snapshot</h3>
+          <p style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
+            Once a lane is connected, the controls below take you through start, pace, refresh, and monitor.
+          </p>
 
           {accounts.length === 0 ? (
             <div>No connected accounts yet.</div>
