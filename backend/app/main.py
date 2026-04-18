@@ -9,6 +9,7 @@ from pathlib import Path
 from atproto import Client
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
@@ -38,6 +39,31 @@ def read_worker_heartbeat() -> dict:
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_runtime_schema() -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    statements: list[str] = []
+
+    if "welcome_email_sent_at" not in user_columns:
+        if engine.dialect.name == "sqlite":
+            statements.append("ALTER TABLE users ADD COLUMN welcome_email_sent_at DATETIME")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN welcome_email_sent_at TIMESTAMP NULL")
+
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
+
+
+ensure_runtime_schema()
 
 app.add_middleware(
     CORSMiddleware,

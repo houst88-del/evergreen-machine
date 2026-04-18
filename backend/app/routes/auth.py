@@ -13,6 +13,7 @@ from app.core.db import SessionLocal
 from app.core.security import create_token, get_current_auth_user, hash_password, verify_password
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.pool_service import active_rotation_count
+from app.services.welcome_email import maybe_send_welcome_email
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -166,6 +167,8 @@ def serialize_user(user: User) -> dict:
         "id": int(user.id),
         "email": str(user.email),
         "handle": str(user.handle),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "welcome_email_sent_at": user.welcome_email_sent_at.isoformat() if user.welcome_email_sent_at else None,
     }
 
 
@@ -270,6 +273,21 @@ def ensure_db_user(email: str, handle: str) -> tuple[dict, dict]:
         db.close()
 
 
+def trigger_welcome_email(user_id: int) -> None:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
+        try:
+            maybe_send_welcome_email(db, user)
+        except Exception as exc:
+            db.rollback()
+            print(f"[evergreen][welcome-email] failed for {user.email}: {exc}")
+    finally:
+        db.close()
+
+
 def auth_response(user_data: dict, auth_user: dict, token: str | None = None) -> dict:
     payload = {
         "user": {
@@ -309,6 +327,7 @@ def signup(payload: dict):
         password_hash=hash_password(password),
     )
     user_data, _autopilot = ensure_db_user(email=email, handle=f"@{handle}")
+    trigger_welcome_email(user_data["id"])
     token = create_token(
         {
             "email": user_data["email"],
@@ -388,6 +407,7 @@ def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Hea
         handle = email.split("@")[0] or "creator"
 
     existing = get_auth_user_by_email(email)
+    created_auth_user = existing is None
     if not existing:
         existing = create_auth_user(
             email=email,
@@ -401,6 +421,8 @@ def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Hea
         email=email,
         handle=str(existing.get("handle", f"@{handle}")),
     )
+    if created_auth_user:
+        trigger_welcome_email(user_data["id"])
     update_last_login(email)
     token = create_token(
         {

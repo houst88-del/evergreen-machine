@@ -1092,6 +1092,20 @@ export default function DashboardPage() {
         : runningLaneCount > 0
           ? '▶ Resume Autopilot'
           : '▶ Start Autopilot'
+  const onboardingCue =
+    connectedLaneCount === 0
+      ? {
+          eyebrow: 'First Flight',
+          title: 'Connect your first lane to wake up Evergreen.',
+          body: 'Start with X or Bluesky. Once one lane is linked, Evergreen can import the pool, score the rotation, and get Starden moving.',
+        }
+      : !anyAutopilotRunning
+        ? {
+            eyebrow: 'Next Move',
+            title: 'Your lanes are ready. Turn on Autopilot when you want Evergreen to begin cycling.',
+            body: 'The worker will keep importing new posts, refreshing scores, and selecting the next pulse from there.',
+          }
+        : null
   const standardFriendly = accounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   ).length <= 1
@@ -1200,6 +1214,25 @@ export default function DashboardPage() {
         >
           Signed in as {user.email} · {user.handle}
         </div>
+
+        {onboardingCue ? (
+          <section
+            className="card"
+            style={{
+              marginTop: 10,
+              borderColor: 'rgba(156,227,169,0.2)',
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.07), rgba(7,17,11,0.82))',
+            }}
+          >
+            <div style={missionEyebrowStyle}>{onboardingCue.eyebrow}</div>
+            <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              {onboardingCue.title}
+            </div>
+            <div style={{ marginTop: 8, color: 'rgba(236,253,245,0.74)', maxWidth: 760, lineHeight: 1.6 }}>
+              {onboardingCue.body}
+            </div>
+          </section>
+        ) : null}
 
         <section
           className="card activation-card"

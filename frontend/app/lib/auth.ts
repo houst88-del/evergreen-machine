@@ -20,6 +20,8 @@ export type AuthUser = {
   email: string
   handle: string
   subscription_status?: string
+  created_at?: string | null
+  welcome_email_sent_at?: string | null
 }
 
 export type AuthResponse = {

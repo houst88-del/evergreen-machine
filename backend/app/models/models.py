@@ -13,6 +13,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     handle: Mapped[str] = mapped_column(String(100), default="@creator")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    welcome_email_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     autopilot_statuses: Mapped[list["AutopilotStatus"]] = relationship(back_populates="user")
     connected_accounts: Mapped[list["ConnectedAccount"]] = relationship(back_populates="user")
