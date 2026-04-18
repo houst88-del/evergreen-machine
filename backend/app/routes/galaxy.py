@@ -78,12 +78,23 @@ def _raw_value(post: Post, *keys: str, default: Any = None) -> Any:
     return default
 
 
-def _extract_label(post: Post) -> str:
+def _extract_label(post: Post, account: ConnectedAccount | None) -> str:
     provider_post_id = str(getattr(post, "provider_post_id", "") or "").strip()
     text = str(getattr(post, "text", "") or "").strip()
+    provider = _normalize_string(getattr(account, "provider", None))
 
-    if text and not text.startswith("http"):
+    if text and not text.startswith("http") and not text.startswith("at://"):
         return text
+
+    if provider == "bluesky" and provider_post_id.startswith("at://"):
+        try:
+            parts = provider_post_id.split("/")
+            post_id = parts[-1]
+            handle = str(getattr(account, "handle", "") or "").strip()
+            label_handle = handle or "Bluesky"
+            return f"{label_handle} post · {post_id[:8]}"
+        except Exception:
+            return "Bluesky post"
 
     if provider_post_id:
         return provider_post_id
@@ -516,7 +527,7 @@ def get_galaxy(
                     "id": str(getattr(post, "provider_post_id", None) or post.id),
                     "post_id": post.id,
                     "url": _extract_url(post, account),
-                    "label": _extract_label(post),
+                    "label": _extract_label(post, account),
                     "score": score,
                     "normalized_score": round(normalized_score, 2),
                     "score_percentile": round(percentile, 4),

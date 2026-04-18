@@ -1437,6 +1437,9 @@ export default function GalaxyPage() {
                       )}
                       <button
                         onClick={() => setSelectedStarId(node.id)}
+                        onDoubleClick={() => {
+                          if (node.url) window.open(node.url, "_blank", "noopener,noreferrer");
+                        }}
                         onMouseEnter={() => setHovered(node)}
                         onMouseLeave={() =>
                           setHovered((current) => (current?.id === node.id ? null : current))
@@ -1467,6 +1470,7 @@ export default function GalaxyPage() {
                           backfaceVisibility: "hidden",
                         }}
                         aria-label={shortText(node.label || node.id, 64)}
+                        title={node.url ? "Double-click to open post" : shortText(node.label || node.id, 64)}
                       >
                         {node.current_cycle ? (
                           <span
