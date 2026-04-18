@@ -4,7 +4,7 @@ import { SignIn, useAuth } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { login, me, resetAuthState } from '../../lib/auth'
+import { getLastBootstrapError, login, me, resetAuthState } from '../../lib/auth'
 
 export default function LoginPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -42,6 +42,11 @@ export default function LoginPage() {
             router.replace('/dashboard')
             return
           }
+
+          setError(
+            getLastBootstrapError() ||
+              'We found your Clerk session, but Evergreen could not finish login.',
+          )
         } finally {
           if (mounted) setCheckingSession(false)
         }
@@ -122,6 +127,11 @@ export default function LoginPage() {
             <div className="small" style={{ marginTop: 10, marginBottom: 18 }}>
               Continue with Google, Apple, or email.
             </div>
+            {error ? (
+              <div style={{ color: '#fca5a5', marginBottom: 16 }}>
+                {error}
+              </div>
+            ) : null}
             <SignIn
               routing="path"
               path="/login"

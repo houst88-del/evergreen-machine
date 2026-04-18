@@ -28,9 +28,14 @@ export type AuthResponse = {
 }
 
 let bootstrapPromise: Promise<AuthResponse | null> | null = null
+let lastBootstrapError: string | null = null
 
 export function getApiBase() {
   return API_BASE
+}
+
+export function getLastBootstrapError() {
+  return lastBootstrapError
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 5000) {
@@ -59,11 +64,21 @@ async function bootstrapBackendSession(): Promise<AuthResponse | null> {
     cache: 'no-store',
   })
     .then(async (res) => {
-      if (res.status === 401 || res.status === 404) return null
+      let json: any = null
+      try {
+        json = await res.json()
+      } catch {
+        json = null
+      }
 
-      const json = await res.json()
+      if (res.status === 401 || res.status === 404) {
+        lastBootstrapError = json?.detail || null
+        return null
+      }
 
       if (!res.ok) {
+        lastBootstrapError =
+          json?.detail || `Evergreen session bootstrap failed (${res.status})`
         return null
       }
 
@@ -75,9 +90,15 @@ async function bootstrapBackendSession(): Promise<AuthResponse | null> {
         setStoredUser(json.user)
       }
 
+      lastBootstrapError = null
+
       return json as AuthResponse
     })
-    .catch(() => null)
+    .catch((error) => {
+      lastBootstrapError =
+        error instanceof Error ? error.message : 'Evergreen session bootstrap failed'
+      return null
+    })
     .finally(() => {
       bootstrapPromise = null
     })
@@ -126,6 +147,7 @@ export async function resetAuthState(options?: { includeClerk?: boolean }) {
   clearToken()
   clearStoredUser()
   bootstrapPromise = null
+  lastBootstrapError = null
 
   if (options?.includeClerk && typeof window !== 'undefined' && typeof window.Clerk?.signOut === 'function') {
     try {

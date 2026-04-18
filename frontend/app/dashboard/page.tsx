@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getToken, logout, me, resetAuthState } from '../lib/auth'
+import { getLastBootstrapError, getToken, logout, me, resetAuthState } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
@@ -432,6 +432,12 @@ export default function DashboardPage() {
 
         if (!mounted) return
         setSession(data)
+        if (!data?.user && clerkEnabled) {
+          setError(
+            getLastBootstrapError() ||
+              'Evergreen could not finish your account session. Please try sign-in again.',
+          )
+        }
       } finally {
         if (mounted) setLoading(false)
       }
@@ -445,6 +451,7 @@ export default function DashboardPage() {
   }, [clerkEnabled])
 
   useEffect(() => {
+    if (error) return
     if (!loading) return
 
     const timeoutId = window.setTimeout(async () => {
@@ -468,11 +475,12 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
+    if (error) return
     if (loading || session?.user) return
     void resetAuthState().finally(() => {
       window.location.replace('/signup')
     })
-  }, [loading, router, session])
+  }, [error, loading, router, session])
 
   async function refreshMissionControlNow() {
     if (!session?.user) return
@@ -1031,7 +1039,7 @@ export default function DashboardPage() {
           </header>
 
           <section className="card">
-            <p>No active login found.</p>
+            <p>{error || 'No active login found.'}</p>
             <Link className="btn primary" href="/signup">
               Go to Signup
             </Link>

@@ -4,7 +4,7 @@ import { SignUp, useAuth } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { me, resetAuthState, signup } from '../../lib/auth'
+import { getLastBootstrapError, me, resetAuthState, signup } from '../../lib/auth'
 
 export default function SignupPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -43,6 +43,11 @@ export default function SignupPage() {
             router.replace('/dashboard')
             return
           }
+
+          setError(
+            getLastBootstrapError() ||
+              'We found your Clerk session, but Evergreen could not finish account setup.',
+          )
         } finally {
           if (mounted) setCheckingSession(false)
         }
@@ -123,6 +128,11 @@ export default function SignupPage() {
             <div className="small" style={{ marginTop: 10, marginBottom: 18 }}>
               Sign up with Google, Apple, or email and we&apos;ll lock in your account flow from there.
             </div>
+            {error ? (
+              <div style={{ color: '#fca5a5', marginBottom: 16 }}>
+                {error}
+              </div>
+            ) : null}
             <SignUp
               routing="path"
               path="/signup"
