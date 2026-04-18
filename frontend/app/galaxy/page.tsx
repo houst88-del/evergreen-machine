@@ -669,21 +669,49 @@ export default function GalaxyPage() {
   }, [workingNodes]);
 
   const backgroundStars = useMemo(
-    () =>
-      Array.from({ length: 72 }, (_, index) => {
+    () => {
+      const stars: Array<{
+        x: number;
+        y: number;
+        size: number;
+        delay: number;
+        duration: number;
+        tone: string;
+        opacity: number;
+      }> = [];
+
+      for (let index = 0; stars.length < 72 && index < 220; index += 1) {
         const x = ((index * 37) % 100) + ((index * 13) % 7) * 0.18;
         const y = ((index * 23) % 100) + ((index * 7) % 5) * 0.24;
-        const size = 1 + (index % 3) * 0.8;
+
+        // Keep the static starfield away from the active galaxy band so it doesn't
+        // look like frozen galaxy nodes.
+        const inGalaxyBand = x > 18 && x < 82 && y > 26 && y < 82;
+        if (inGalaxyBand) continue;
+
+        const size = 0.8 + (index % 3) * 0.45;
         const delay = (index % 9) * 0.6;
-        const duration = 4.8 + (index % 5) * 1.2;
+        const duration = 5.2 + (index % 5) * 1.35;
         const tone =
-          index % 5 === 0
-            ? "rgba(125,211,252,0.9)"
-            : index % 4 === 0
-              ? "rgba(187,247,208,0.9)"
-              : "rgba(255,248,210,0.82)";
-        return { x, y, size, delay, duration, tone };
-      }),
+          index % 4 === 0
+            ? "rgba(255,244,214,0.82)"
+            : index % 3 === 0
+              ? "rgba(221,231,255,0.66)"
+              : "rgba(255,255,255,0.58)";
+
+        stars.push({
+          x,
+          y,
+          size,
+          delay,
+          duration,
+          tone,
+          opacity: 0.12 + (index % 4) * 0.04,
+        });
+      }
+
+      return stars;
+    },
     []
   );
 
@@ -1161,8 +1189,8 @@ export default function GalaxyPage() {
                     height: star.size,
                     borderRadius: "999px",
                     background: star.tone,
-                    opacity: 0.3,
-                    boxShadow: `0 0 ${star.size * 8}px ${star.tone}`,
+                    opacity: star.opacity,
+                    boxShadow: `0 0 ${star.size * 6}px ${star.tone}`,
                     animation: `galaxyTwinkle ${star.duration}s ease-in-out ${star.delay}s infinite`,
                     pointerEvents: "none",
                   }}
