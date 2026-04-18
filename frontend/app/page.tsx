@@ -1,5 +1,11 @@
+'use client'
+
+import { useAuth } from '@clerk/nextjs'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { PLANS } from './lib/billing'
+import { me } from './lib/auth'
 
 const comparisonRows = [
   { label: 'Platforms', standard: 'Choose X or Bluesky', pro: 'X + Bluesky' },
@@ -10,6 +16,67 @@ const comparisonRows = [
 ]
 
 export default function HomePage() {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const { isLoaded: clerkLoaded, userId } = useAuth()
+  const router = useRouter()
+  const [finalizingSession, setFinalizingSession] = useState(false)
+
+  useEffect(() => {
+    if (!clerkEnabled) {
+      return
+    }
+
+    if (!clerkLoaded || !userId) {
+      setFinalizingSession(false)
+      return
+    }
+
+    let mounted = true
+
+    async function finalizeClerkSession() {
+      setFinalizingSession(true)
+
+      try {
+        const session = await me()
+        if (!mounted) return
+
+        if (session?.user) {
+          router.replace('/dashboard')
+          return
+        }
+      } finally {
+        if (mounted) {
+          setFinalizingSession(false)
+        }
+      }
+    }
+
+    void finalizeClerkSession()
+
+    return () => {
+      mounted = false
+    }
+  }, [clerkEnabled, clerkLoaded, router, userId])
+
+  if (finalizingSession) {
+    return (
+      <main className="page marketing-page">
+        <div className="shell">
+          <header className="header">
+            <div>
+              <div className="wordmark">Evergreen Machine</div>
+              <div className="subtle">Refresh forever. Reach further.</div>
+            </div>
+          </header>
+
+          <section className="card" style={{ maxWidth: 680 }}>
+            Finalizing your account...
+          </section>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="page marketing-page">
       <div className="shell">
