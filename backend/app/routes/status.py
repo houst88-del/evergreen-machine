@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount
-from app.services.pacing import normalize_mode, pacing_payload
+from app.services.pacing import choose_next_cycle, normalize_mode, pacing_payload
 
 router = APIRouter(prefix="/api/status", tags=["status"])
 
@@ -142,13 +142,19 @@ def set_pacing(
         mode = str(payload.get("mode", "")).strip()
         metadata = dict(account.metadata_json or {}) if isinstance(account.metadata_json, dict) else {}
         metadata["pacing_mode"] = normalize_mode(mode)
+        next_cycle_at, next_delay_minutes = choose_next_cycle(status.provider, metadata["pacing_mode"])
+        metadata["next_refresh_at"] = next_cycle_at.isoformat()
+        metadata["next_refresh_delay_minutes"] = next_delay_minutes
         account.metadata_json = metadata
+        status.next_cycle_at = next_cycle_at
         status.updated_at = datetime.utcnow()
 
         db.commit()
 
         return {
             "ok": True,
+            "next_cycle_at": next_cycle_at.isoformat(),
+            "next_delay_minutes": next_delay_minutes,
             **pacing_payload(status.provider, metadata["pacing_mode"]),
         }
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+import random
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,18 @@ def pacing_payload(provider: str | None, mode: str | None) -> dict:
         "pacing_window_label": profile.label,
         "pacing_options": pacing_options_for_provider(provider),
     }
+
+
+def choose_next_cycle(
+    provider: str | None,
+    mode: str | None,
+    *,
+    from_dt: datetime | None = None,
+) -> tuple[datetime, int]:
+    profile = get_profile_for_mode(provider, mode)
+    delay_minutes = random.randint(profile.min_minutes, profile.max_minutes)
+    anchor = from_dt or datetime.utcnow()
+    return anchor + timedelta(minutes=delay_minutes), delay_minutes
 
 
 def choose_pacing_profile(
