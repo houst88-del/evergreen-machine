@@ -228,6 +228,23 @@ const mv = (speed: number, tick: number, phase: number) => Math.sin(tick * speed
 
 const rarityAccent = (node: GalaxyNode) => {
   const g = rankGravity(node);
+  if (node.cold_archive) {
+    return {
+      fill:
+        node.provider?.toLowerCase() === "bluesky"
+          ? "rgba(147,197,253,0.78)"
+          : "rgba(196,181,253,0.72)",
+      border:
+        node.provider?.toLowerCase() === "bluesky"
+          ? "rgba(147,197,253,0.42)"
+          : "rgba(196,181,253,0.36)",
+      aura:
+        node.provider?.toLowerCase() === "bluesky"
+          ? "rgba(125,211,252,0.08)"
+          : "rgba(196,181,253,0.07)",
+      tag: "Outer field",
+    };
+  }
   if (g >= 420) {
     return {
       fill: "rgba(255,250,210,0.98)",
@@ -620,12 +637,13 @@ export default function GalaxyPage() {
     const strongStars = workingNodes.filter(
       (n) => safeNum(n.normalized_score ?? n.score, 0) >= 120
     ).length;
+    const outerField = workingNodes.filter((n) => !!n.cold_archive).length;
     const candidates = workingNodes.filter((n) => !!n.candidate).length;
     const currentCycle = workingNodes.filter((n) => !!n.current_cycle).length;
     const recent = workingNodes.filter((n) =>
       minutesAgo(n.last_resurfaced_at).includes("m ago")
     ).length;
-    return { gravityStars, strongStars, candidates, currentCycle, recent };
+    return { gravityStars, strongStars, outerField, candidates, currentCycle, recent };
   }, [workingNodes]);
 
   const supernovaNode = useMemo(() => {
@@ -962,7 +980,9 @@ export default function GalaxyPage() {
                   `X ${providerCounts.x}`,
                   `Bluesky ${providerCounts.bluesky}`,
                   counts.currentCycle ? `${counts.currentCycle} active now` : "Standby sweep",
+                  counts.outerField ? `${counts.outerField} outer field` : "",
                 ].map((label, index) => (
+                  label ? (
                       <span
                         key={label}
                         style={
@@ -970,11 +990,14 @@ export default function GalaxyPage() {
                             ? missionBadgeStyle("mint", true)
                             : index === 1
                               ? missionBadgeStyle("sky", true)
-                              : missionBadgeStyle("gold", true)
+                              : index === 2
+                                ? missionBadgeStyle("gold", true)
+                                : missionBadgeStyle("neutral", true)
                         }
                       >
                         {label}
                       </span>
+                  ) : null
                 ))}
               </div>
             </div>
@@ -1002,13 +1025,17 @@ export default function GalaxyPage() {
                       selectedStar.current_cycle ? "Live now" : "",
                       isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
                       likelyNext(selectedStar) ? "High priority" : "",
+                      selectedStar.cold_archive ? "Outer field" : "",
                     ]
                   : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
                   .filter(Boolean)
                   .map((label, index) => (
                     <span
                       key={label}
-                      style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                      style={missionBadgeStyle(
+                        label === "Outer field" ? "neutral" : index === 0 ? "gold" : "mint",
+                        true
+                      )}
                     >
                       {label}
                     </span>
@@ -1307,6 +1334,8 @@ export default function GalaxyPage() {
                   const selectedNow = selectedStarId === node.id;
                   const freshPulse = isFreshPulse(node.last_resurfaced_at);
                   const opacity = highlightOpacity(node, highlightMode);
+                  const outerField = !!node.cold_archive;
+                  const circulationHot = !!node.current_cycle || !!node.candidate || rankGravity(node) >= 240;
                   const starScale =
                     selectedNow
                       ? 1.26
@@ -1318,8 +1347,15 @@ export default function GalaxyPage() {
                             ? 1.04
                             : 1;
                   const twinkle = 1 + Math.sin(liveTick * 0.04 + index * 0.8) * 0.08;
-                  const size = ((node as any)._r || 6) * starScale * twinkle;
-                  const glow = Math.max(10, size * (selectedNow ? 7.6 : freshPulse ? 6.4 : 5.2));
+                  const size =
+                    ((node as any)._r || 6) *
+                    starScale *
+                    twinkle *
+                    (outerField ? 0.88 : circulationHot ? 1.06 : 0.97);
+                  const glow = Math.max(
+                    outerField ? 5 : 10,
+                    size * (selectedNow ? 7.6 : freshPulse ? 6.4 : circulationHot ? 5.8 : outerField ? 3.2 : 4.8)
+                  );
                   const theme = providerTheme(node.provider);
 
                   return (
@@ -1420,7 +1456,7 @@ export default function GalaxyPage() {
                             size * 0.9
                           )}px rgba(255,255,255,0.18)`,
                           cursor: "pointer",
-                          opacity,
+                          opacity: opacity * (outerField ? 0.72 : circulationHot ? 1 : 0.92),
                           zIndex: selectedNow ? 6 : node.current_cycle ? 4 : 3,
                           padding: 0,
                           margin: 0,
@@ -1577,6 +1613,9 @@ export default function GalaxyPage() {
                         {hovered.current_cycle ? (
                           <span style={missionBadgeStyle("gold", true)}>Current live star</span>
                         ) : null}
+                        {hovered.cold_archive ? (
+                          <span style={missionBadgeStyle("neutral", true)}>Outer field</span>
+                        ) : null}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1624,6 +1663,7 @@ export default function GalaxyPage() {
                     {[
                       hovered.current_cycle ? "Current cycle" : "",
                       hovered.candidate ? "Candidate" : "",
+                      hovered.cold_archive ? "Peripheral field" : "",
                       isFreshPulse(hovered.last_resurfaced_at) ? "Fresh pulse" : "",
                       `Account ${hovered.connected_account_id ?? "—"}`,
                     ]
