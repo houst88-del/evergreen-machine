@@ -276,6 +276,38 @@ function humanizeCycleEvent(value: string) {
   return raw
 }
 
+function compactText(value: unknown, max = 92) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return 'No post selected yet.'
+  if (text.startsWith('at://')) {
+    const tail = text.split('/').pop() || text
+    return `Bluesky record · ${tail}`
+  }
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+function metadataValue(meta: Record<string, unknown> | null, key: string) {
+  const value = meta?.[key]
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : ''
+}
+
+function humanizeGravityTier(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const normalized = raw.toLowerCase()
+  if (normalized === 'outer_field') return 'Outer field'
+  if (normalized === 'inner_core') return 'Inner core'
+  return startCase(raw)
+}
+
+function humanizeFunnelStage(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  return startCase(raw)
+}
+
 function headlineForJob(job: JobItem, payload: JobPayload) {
   const provider = providerLabel(payload.provider)
   const lowerMessage = String(payload.message || '').toLowerCase()
@@ -566,6 +598,90 @@ export default function DashboardPage() {
     }
   }, [system, statusMap, accounts.length])
 
+  const deploymentWindows = useMemo(() => {
+    const providerOrder = ['x', 'bluesky']
+
+    return accounts
+      .slice()
+      .sort((a, b) => {
+        const providerDiff =
+          providerOrder.indexOf(String(a.provider || '').toLowerCase()) -
+          providerOrder.indexOf(String(b.provider || '').toLowerCase())
+        if (providerDiff !== 0) return providerDiff
+        return a.id - b.id
+      })
+      .map((account) => {
+        const status = statusMap[account.id]
+        const meta = asRecord(status?.metadata)
+        const latestJob = jobs.find((job) => job.connected_account_id === account.id)
+        const payload = latestJob ? parseJobPayload(latestJob) : null
+        const rotationHealth = payload?.rotation_health || {}
+
+        const latestPost =
+          status?.last_post_text ||
+          payload?.message ||
+          metadataValue(meta, 'last_candidate_provider_post_id') ||
+          ''
+
+        const strategy = humanizeStrategyLabel(
+          metadataValue(meta, 'last_strategy') ||
+            (typeof rotationHealth.last_strategy === 'string' ? rotationHealth.last_strategy : '') ||
+            (typeof rotationHealth.mix_hint === 'string' ? rotationHealth.mix_hint : ''),
+        )
+
+        const selectionReason =
+          metadataValue(meta, 'last_selection_reason') ||
+          (typeof rotationHealth.selection_reason === 'string' ? rotationHealth.selection_reason : '') ||
+          'Balanced weighted pick'
+
+        const gravityTier = humanizeGravityTier(metadataValue(meta, 'last_candidate_gravity_tier'))
+        const funnelStage = humanizeFunnelStage(metadataValue(meta, 'last_candidate_funnel_stage'))
+        const momentumReason = metadataValue(meta, 'last_momentum_reason')
+        const pendingPairReason = metadataValue(meta, 'pending_pair_reason')
+        const pendingPairId =
+          metadataValue(meta, 'pending_pair_post_id') ||
+          (typeof rotationHealth.pending_pair_post_id === 'string'
+            ? rotationHealth.pending_pair_post_id
+            : '')
+        const velocityActive =
+          metadataValue(meta, 'velocity_stack_active') === 'True' ||
+          metadataValue(meta, 'velocity_stack_active') === 'true' ||
+          Boolean(rotationHealth.velocity_stack_active)
+        const momentumRemaining = compactNumber(
+          metadataValue(meta, 'momentum_stack_remaining') || rotationHealth.momentum_stack_remaining,
+        )
+        const activeSignal = [
+          momentumReason ? `Momentum: ${startCase(momentumReason)}` : '',
+          pendingPairReason ? `Pair: ${startCase(pendingPairReason)}` : '',
+          velocityActive ? 'Velocity stack live' : '',
+        ]
+          .filter(Boolean)
+          .join(' • ')
+
+        const sourceGroup = [gravityTier, funnelStage ? `${funnelStage} lane` : '']
+          .filter(Boolean)
+          .join(' • ')
+
+        return {
+          account,
+          status,
+          latestJob,
+          latestHeadline: latestJob ? headlineForJob(latestJob, payload || {}) : 'Deployment lane idle',
+          latestState: latestJob ? String(latestJob.state || latestJob.status || 'unknown') : 'idle',
+          latestPost: compactText(latestPost),
+          strategy,
+          selectionReason,
+          sourceGroup: sourceGroup || 'Balanced pool',
+          activeSignal: activeSignal || 'No live pressure detected',
+          pendingPair: pendingPairId ? compactText(pendingPairId, 44) : 'No queued pair',
+          momentumRemaining: momentumRemaining === '—' ? '0' : momentumRemaining,
+          nextRefreshCountdown: countdownUntil(status?.next_cycle_at, nowMs),
+          nextCycleText: fmtWhen(status?.next_cycle_at),
+          lastActionText: fmtWhen(status?.last_action_at),
+        }
+      })
+  }, [accounts, jobs, nowMs, statusMap])
+
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
     const busyKey = connectedAccountId ? `refresh-${connectedAccountId}` : 'refresh-global'
@@ -854,6 +970,180 @@ export default function DashboardPage() {
             <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12 }}>Processed</div>
             <div style={{ fontSize: 34, fontWeight: 700 }}>{summary.processed}</div>
           </div>
+        </section>
+
+        <section className="card">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Live Deployment Window</h3>
+              <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
+                Compact engine lanes for what X and Bluesky are selecting, prioritizing, and preparing next.
+              </div>
+            </div>
+
+            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
+              Updates flow in with the dashboard refresh loop.
+            </div>
+          </div>
+
+          {deploymentWindows.length === 0 ? (
+            <div style={{ marginTop: 16 }}>No connected deployment lanes yet.</div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
+                gap: 14,
+                marginTop: 18,
+              }}
+            >
+              {deploymentWindows.map((lane) => {
+                const stateKind = jobStateKind(lane.latestState)
+                return (
+                  <div
+                    key={lane.account.id}
+                    style={{
+                      border: '1px solid rgba(52,211,153,0.16)',
+                      borderRadius: 18,
+                      padding: 16,
+                      background:
+                        lane.account.provider === 'x'
+                          ? 'linear-gradient(180deg, rgba(125,211,252,0.06), rgba(16,185,129,0.03))'
+                          : 'linear-gradient(180deg, rgba(110,231,183,0.06), rgba(16,185,129,0.03))',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={missionEyebrowStyle}>
+                            {providerLabel(lane.account.provider)} deployment lane
+                          </span>
+                          <span
+                            style={{
+                              ...missionBadgeStyle('neutral'),
+                              ...statusPillStyle(lane.status?.running ? 'good' : 'neutral'),
+                            }}
+                          >
+                            {lane.status?.running ? 'Autopilot live' : 'Autopilot idle'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>
+                          {lane.account.handle}
+                        </div>
+                        <div style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
+                          {lane.latestHeadline}
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          ...missionBadgeStyle('neutral'),
+                          ...statusPillStyle(stateKind),
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {startCase(lane.latestState)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 10,
+                        marginTop: 16,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Pulling From</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.sourceGroup}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Strategy / Why</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
+                          {compactText(lane.selectionReason, 72)}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Live Priority</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.activeSignal}</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
+                          Queue: {lane.pendingPair} • Momentum {lane.momentumRemaining}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+                        gap: 12,
+                        marginTop: 14,
+                        color: 'rgba(236,253,245,0.78)',
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>Last action: {lane.lastActionText}</div>
+                      <div>Next refresh in: {lane.nextRefreshCountdown}</div>
+                      <div>Next cycle: {lane.nextCycleText}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </section>
 
         <section className="card">
