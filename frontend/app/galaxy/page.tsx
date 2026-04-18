@@ -216,11 +216,11 @@ const intelligenceScore = (
 };
 
 const cardStyle = (): React.CSSProperties => ({
-  border: "1px solid rgba(52, 211, 153, 0.18)",
-  background: "rgba(16, 185, 129, 0.06)",
+  border: "1px solid rgba(52, 211, 153, 0.11)",
+  background: "rgba(16, 185, 129, 0.04)",
   borderRadius: 22,
   padding: 8,
-  boxShadow: "0 0 0 1px rgba(16,185,129,0.02)",
+  boxShadow: "0 0 0 1px rgba(16,185,129,0.012)",
   backdropFilter: "blur(10px)",
 });
 
@@ -957,8 +957,8 @@ export default function GalaxyPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-            gap: 8,
-            marginBottom: 8,
+            gap: 7,
+            marginBottom: 6,
           }}
         >
           {[
@@ -973,18 +973,18 @@ export default function GalaxyPage() {
             <div key={label} style={cardStyle()}>
               <div
                 style={{
-                  fontSize: 9,
+                  fontSize: 8,
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.58)",
+                  color: "rgba(236,253,245,0.5)",
                 }}
               >
                 {label}
               </div>
               <div
                 style={{
-                  marginTop: 6,
-                  fontSize: 28,
+                  marginTop: 4,
+                  fontSize: 24,
                   fontWeight: 700,
                   lineHeight: 1,
                 }}
@@ -1743,11 +1743,11 @@ export default function GalaxyPage() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 14,
+                gap: 12,
                 flexWrap: "wrap",
-                padding: "4px 6px 0",
-                color: "rgba(236,253,245,0.7)",
-                fontSize: 12,
+                padding: "2px 4px 0",
+                color: "rgba(236,253,245,0.52)",
+                fontSize: 11,
               }}
             >
               {[
@@ -1755,15 +1755,16 @@ export default function GalaxyPage() {
                 ["rgba(125,211,252,0.9)", "Bluesky stars"],
                 ["rgba(187,247,208,0.92)", "X stars"],
               ].map(([color, label]) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span
                     style={{
-                      width: 10,
-                      height: 10,
+                      width: 8,
+                      height: 8,
                       borderRadius: "999px",
                       background: color,
-                      boxShadow: `0 0 12px ${color}`,
+                      boxShadow: `0 0 8px ${color}`,
                       flexShrink: 0,
+                      opacity: 0.92,
                     }}
                   />
                   <span>{label}</span>
