@@ -1087,7 +1087,7 @@ export default function DashboardPage() {
                       <div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                           <span style={missionEyebrowStyle}>
-                            {providerLabel(lane.account.provider)} deployment lane
+                            {providerLabel(lane.account.provider)}
                           </span>
                           <span
                             style={{
