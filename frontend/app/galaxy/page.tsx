@@ -475,6 +475,7 @@ export default function GalaxyPage() {
   const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
   const viewMotionBoost = selected === "unified" ? 1 : 0.72;
   const localMotionScale = selected === "unified" ? 1 : 0.42;
+  const spatialTick = liveTick * 0.1;
 
   const workingNodes = useMemo(() => {
     const nodes = [...galaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -483,7 +484,7 @@ export default function GalaxyPage() {
     const centerY = 54;
     const warp = timeWarp * 0.03;
     const temporalShift = timeTravel * 0.08;
-    const groupRotation = liveTick * (selected === "unified" ? 0.00022 : 0.00012);
+    const groupRotation = spatialTick * (selected === "unified" ? 0.00022 : 0.00012);
     const sinRotation = Math.sin(groupRotation);
     const cosRotation = Math.cos(groupRotation);
 
@@ -498,8 +499,8 @@ export default function GalaxyPage() {
           (node.cold_archive ? 0.002 : 0)) *
         viewMotionBoost;
       const orbitBreathe =
-        0.5 + mv(0.018, liveTick + timeWarp * 2 + temporalShift, phase) * 0.8;
-      const t = index * 0.42 + liveTick * orbitSpeed + warp + temporalShift * 0.03;
+        0.5 + mv(0.018, spatialTick + timeWarp * 2 + temporalShift, phase) * 0.8;
+      const t = index * 0.42 + spatialTick * orbitSpeed + warp + temporalShift * 0.03;
       const temporalRadiusBias = Math.max(-8, Math.min(14, (timeTravel - 50) * 0.08));
       const contentAgeBias = Math.max(
         -10,
@@ -521,7 +522,7 @@ export default function GalaxyPage() {
       const primaryWell = wells[index % Math.max(1, wells.length)];
       if (primaryWell) {
         const wellIndex = wells.findIndex((w) => w.id === primaryWell.id);
-        const wellT = wellIndex * 1.37 + 0.7 + liveTick * 0.004 + warp * 0.6;
+        const wellT = wellIndex * 1.37 + 0.7 + spatialTick * 0.004 + warp * 0.6;
         const wellR = 10 + wellIndex * 7.5;
         const wx = centerX + Math.cos(wellT) * wellR;
         const wy = centerY + Math.sin(wellT) * (wellR * 0.5);
@@ -537,14 +538,14 @@ export default function GalaxyPage() {
       }
 
       px +=
-        mv(0.03, liveTick * (0.8 + orbitSpeed * 18) + timeWarp + temporalShift, phase) *
+        mv(0.03, spatialTick * (0.8 + orbitSpeed * 18) + timeWarp + temporalShift, phase) *
         (node.candidate ? 0.7 : node.cold_archive ? 0.42 : 0.32) *
         Math.min(2.1, 0.92 + viewMotionBoost * 0.42) *
         localMotionScale;
       py +=
         mv(
           0.026,
-          liveTick * (0.88 + orbitSpeed * 16) + timeWarp + temporalShift,
+          spatialTick * (0.88 + orbitSpeed * 16) + timeWarp + temporalShift,
           phase + 1.2
         ) *
         (node.current_cycle ? 0.82 : node.cold_archive ? 0.46 : 0.36) *
@@ -566,12 +567,12 @@ export default function GalaxyPage() {
       // Give cooler/archive stars a visible but gentle ambient wander so the outer ring
       // never reads as frozen.
       px +=
-        Math.cos(liveTick * (0.018 + nodeSeed * 0.00001) + phase) *
+        Math.cos(spatialTick * (0.018 + nodeSeed * 0.00001) + phase) *
         (node.cold_archive ? 0.52 : 0.18) *
         Math.min(2.4, 0.9 + viewMotionBoost * 0.5) *
         localMotionScale;
       py +=
-        Math.sin(liveTick * (0.02 + nodeSeed * 0.000012) + phase * 1.4) *
+        Math.sin(spatialTick * (0.02 + nodeSeed * 0.000012) + phase * 1.4) *
         (node.cold_archive ? 0.44 : 0.16) *
         Math.min(2.4, 0.9 + viewMotionBoost * 0.5) *
         localMotionScale;
@@ -586,7 +587,7 @@ export default function GalaxyPage() {
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [galaxy.nodes, liveTick, localMotionScale, selected, timeWarp, timeTravel, viewMotionBoost]);
+  }, [galaxy.nodes, localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost]);
 
   const gravityWells = useMemo(
     () =>
@@ -765,12 +766,12 @@ export default function GalaxyPage() {
   const baseShiftX = selectedStar ? (50 - (selectedStar as any)._px) * 0.12 : 0;
   const baseShiftY = selectedStar ? (52 - (selectedStar as any)._py) * 0.12 : 0;
   const driftX =
-    Math.sin(cameraDriftTick * 0.01) * 2.2 + Math.cos(parallaxTick * 0.008) * 1.2;
-  const driftY = Math.cos(cameraDriftTick * 0.009) * 1.6;
+    Math.sin(spatialTick * 0.01) * 2.2 + Math.cos(spatialTick * 0.008) * 1.2;
+  const driftY = Math.cos(spatialTick * 0.009) * 1.6;
   const sceneRotateDeg =
     selected === "unified"
-      ? Math.sin(liveTick * 0.004) * 0.16
-      : Math.sin(liveTick * 0.006) * 0.34 + Math.cos(liveTick * 0.0036) * 0.12;
+      ? Math.sin(spatialTick * 0.004) * 0.16
+      : Math.sin(spatialTick * 0.006) * 0.34 + Math.cos(spatialTick * 0.0036) * 0.12;
   const sceneTransform = `translate3d(${baseShiftX + driftX}px, ${
     baseShiftY + driftY
   }px, 0) rotate(${sceneRotateDeg}deg) scale(${sceneScale})`;
