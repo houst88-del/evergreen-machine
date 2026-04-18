@@ -1178,24 +1178,26 @@ export default function GalaxyPage() {
                   "radial-gradient(circle at 50% 52%, rgba(253,224,71,0.12), transparent 42%), radial-gradient(circle at 16% 18%, rgba(125,211,252,0.08), transparent 28%), radial-gradient(circle at 82% 16%, rgba(187,247,208,0.08), transparent 24%), linear-gradient(180deg, #03100f 0%, #010707 100%)",
               }}
             >
-              {backgroundStars.map((star, index) => (
-                <span
-                  key={`background-star-${index}`}
-                  style={{
-                    position: "absolute",
-                    left: `${star.x}%`,
-                    top: `${star.y}%`,
-                    width: star.size,
-                    height: star.size,
-                    borderRadius: "999px",
-                    background: star.tone,
-                    opacity: star.opacity,
-                    boxShadow: `0 0 ${star.size * 6}px ${star.tone}`,
-                    animation: `galaxyTwinkle ${star.duration}s ease-in-out ${star.delay}s infinite`,
-                    pointerEvents: "none",
-                  }}
-                />
-              ))}
+              {selected === "unified"
+                ? backgroundStars.map((star, index) => (
+                    <span
+                      key={`background-star-${index}`}
+                      style={{
+                        position: "absolute",
+                        left: `${star.x}%`,
+                        top: `${star.y}%`,
+                        width: star.size,
+                        height: star.size,
+                        borderRadius: "999px",
+                        background: star.tone,
+                        opacity: star.opacity,
+                        boxShadow: `0 0 ${star.size * 6}px ${star.tone}`,
+                        animation: `galaxyTwinkle ${star.duration}s ease-in-out ${star.delay}s infinite`,
+                        pointerEvents: "none",
+                      }}
+                    />
+                  ))
+                : null}
               <div
                 style={{
                   position: "absolute",
