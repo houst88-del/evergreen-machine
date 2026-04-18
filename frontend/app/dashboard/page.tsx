@@ -1094,11 +1094,7 @@ export default function DashboardPage() {
               </button>
 
               <Link className="btn primary" href="/galaxy">
-                Open Starden
-              </Link>
-
-              <Link className="btn" href="/analytics">
-                Analytics
+                ✦ Open Starden
               </Link>
             </div>
           </div>
@@ -1184,205 +1180,6 @@ export default function DashboardPage() {
             {summary.workerError ? (
               <span style={{ color: '#fecaca' }}>Worker issue: {summary.workerError}</span>
             ) : null}
-          </div>
-        </section>
-
-        <section className="card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Live Deployment Window</h3>
-              <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
-                Compact engine lanes for what X and Bluesky are selecting, prioritizing, and preparing next.
-              </div>
-            </div>
-
-            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
-              Updates flow in with the dashboard refresh loop.
-            </div>
-          </div>
-
-          {deploymentWindows.length === 0 ? (
-            <div style={{ marginTop: 16 }}>No connected deployment lanes yet.</div>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
-                gap: 14,
-                marginTop: 18,
-              }}
-            >
-              {deploymentWindows.map((lane) => {
-                const stateKind = jobStateKind(lane.latestState)
-                return (
-                  <div
-                    key={lane.account.id}
-                    style={{
-                      border: '1px solid rgba(52,211,153,0.16)',
-                      borderRadius: 18,
-                      padding: 16,
-                      background:
-                        lane.account.provider === 'x'
-                          ? 'linear-gradient(180deg, rgba(125,211,252,0.06), rgba(16,185,129,0.03))'
-                          : 'linear-gradient(180deg, rgba(110,231,183,0.06), rgba(16,185,129,0.03))',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span style={missionEyebrowStyle}>
-                            {providerLabel(lane.account.provider)}
-                          </span>
-                          <span
-                            style={{
-                              ...missionBadgeStyle('neutral'),
-                              ...statusPillStyle(lane.status?.running ? 'good' : 'neutral'),
-                            }}
-                          >
-                            {lane.status?.running ? 'Autopilot live' : 'Autopilot idle'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>
-                          {lane.account.handle}
-                        </div>
-                        <div style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
-                          {lane.latestHeadline}
-                        </div>
-                      </div>
-
-                      <span
-                        style={{
-                          ...missionBadgeStyle('neutral'),
-                          ...statusPillStyle(stateKind),
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {startCase(lane.latestState)}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 10,
-                        marginTop: 16,
-                        fontSize: 13,
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Pulling From</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.sourceGroup}</div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Strategy / Why</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
-                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
-                          {compactText(lane.selectionReason, 72)}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Live Priority</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.activeSignal}</div>
-                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
-                          Queue: {lane.pendingPair} • Momentum {lane.momentumRemaining}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
-                        gap: 12,
-                        marginTop: 14,
-                        color: 'rgba(236,253,245,0.78)',
-                        fontSize: 13,
-                      }}
-                    >
-                      <div>Last action: {lane.lastActionText}</div>
-                      <div>Next refresh in: {lane.nextRefreshCountdown}</div>
-                      <div>Next cycle: {lane.nextCycleText}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="card">
-          <h3 style={{ marginTop: 0 }}>Control Center</h3>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
-              gap: 16,
-              marginTop: 20,
-            }}
-          >
-            <Link className="btn primary" href="/galaxy">
-              🌌 Open Starden
-            </Link>
-
-            <Link className="btn" href="/posts">
-              🪐 Post Manager
-            </Link>
-
-            <Link className="btn" href="/analytics">
-              📈 Analytics
-            </Link>
           </div>
         </section>
 
@@ -1628,6 +1425,180 @@ export default function DashboardPage() {
                       <div>Last action: {fmtWhen(status?.last_action_at)}</div>
                       <div>Next refresh in: {nextRefreshCountdown}</div>
                       <div>Next cycle: {fmtWhen(status?.next_cycle_at)}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="card">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Live Deployment Window</h3>
+              <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
+                Compact engine lanes for what X and Bluesky are selecting, prioritizing, and preparing next.
+              </div>
+            </div>
+
+            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
+              Updates flow in with the dashboard refresh loop.
+            </div>
+          </div>
+
+          {deploymentWindows.length === 0 ? (
+            <div style={{ marginTop: 16 }}>No connected deployment lanes yet.</div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
+                gap: 14,
+                marginTop: 18,
+              }}
+            >
+              {deploymentWindows.map((lane) => {
+                const stateKind = jobStateKind(lane.latestState)
+                return (
+                  <div
+                    key={lane.account.id}
+                    style={{
+                      border: '1px solid rgba(52,211,153,0.16)',
+                      borderRadius: 18,
+                      padding: 16,
+                      background:
+                        lane.account.provider === 'x'
+                          ? 'linear-gradient(180deg, rgba(125,211,252,0.06), rgba(16,185,129,0.03))'
+                          : 'linear-gradient(180deg, rgba(110,231,183,0.06), rgba(16,185,129,0.03))',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={missionEyebrowStyle}>
+                            {providerLabel(lane.account.provider)}
+                          </span>
+                          <span
+                            style={{
+                              ...missionBadgeStyle('neutral'),
+                              ...statusPillStyle(lane.status?.running ? 'good' : 'neutral'),
+                            }}
+                          >
+                            {lane.status?.running ? 'Autopilot live' : 'Autopilot idle'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>
+                          {lane.account.handle}
+                        </div>
+                        <div style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
+                          {lane.latestHeadline}
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          ...missionBadgeStyle('neutral'),
+                          ...statusPillStyle(stateKind),
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {startCase(lane.latestState)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 10,
+                        marginTop: 16,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Pulling From</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.sourceGroup}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Strategy / Why</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
+                          {compactText(lane.selectionReason, 72)}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Live Priority</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.activeSignal}</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
+                          Queue: {lane.pendingPair} • Momentum {lane.momentumRemaining}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+                        gap: 12,
+                        marginTop: 14,
+                        color: 'rgba(236,253,245,0.78)',
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>Last action: {lane.lastActionText}</div>
+                      <div>Next refresh in: {lane.nextRefreshCountdown}</div>
+                      <div>Next cycle: {lane.nextCycleText}</div>
                     </div>
                   </div>
                 )
