@@ -1,6 +1,6 @@
 'use client'
 
-import { SignUp } from '@clerk/nextjs'
+import { SignUp, useAuth } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -8,6 +8,7 @@ import { me, resetAuthState, signup } from '../../lib/auth'
 
 export default function SignupPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const { isLoaded: clerkLoaded, userId } = useAuth()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [handle, setHandle] = useState('')
@@ -26,8 +27,38 @@ export default function SignupPage() {
         return
       }
 
-      setCheckingSession(false)
-      return
+      if (!clerkLoaded) {
+        setCheckingSession(true)
+        return
+      }
+
+      if (!userId) {
+        setCheckingSession(false)
+        return
+      }
+
+      let mounted = true
+
+      async function finalizeClerkSession() {
+        try {
+          const session = await me()
+          if (!mounted) return
+
+          if (session?.user) {
+            router.replace('/dashboard')
+            return
+          }
+        } finally {
+          if (mounted) setCheckingSession(false)
+        }
+      }
+
+      setCheckingSession(true)
+      void finalizeClerkSession()
+
+      return () => {
+        mounted = false
+      }
     }
 
     let mounted = true
@@ -50,7 +81,7 @@ export default function SignupPage() {
     return () => {
       mounted = false
     }
-  }, [clerkEnabled, router])
+  }, [clerkEnabled, clerkLoaded, router, userId])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -72,7 +103,9 @@ export default function SignupPage() {
       <main className="page">
         <div className="shell">
           <section className="card" style={{ maxWidth: 560 }}>
-            Checking session...
+            {clerkEnabled && userId
+              ? 'Finalizing your account...'
+              : 'Checking session...'}
           </section>
         </div>
       </main>
