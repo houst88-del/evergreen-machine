@@ -1,6 +1,5 @@
 'use client'
 
-import { useAuth } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -17,7 +16,6 @@ const comparisonRows = [
 
 export default function HomePage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { isLoaded: clerkLoaded, userId } = useAuth()
   const router = useRouter()
   const [finalizingSession, setFinalizingSession] = useState(false)
 
@@ -26,21 +24,15 @@ export default function HomePage() {
       return
     }
 
-    if (!clerkLoaded || !userId) {
-      setFinalizingSession(false)
-      return
-    }
-
     let mounted = true
 
     async function finalizeClerkSession() {
-      setFinalizingSession(true)
-
       try {
         const session = await me()
         if (!mounted) return
 
         if (session?.user) {
+          setFinalizingSession(true)
           router.replace('/dashboard')
           return
         }
@@ -56,7 +48,7 @@ export default function HomePage() {
     return () => {
       mounted = false
     }
-  }, [clerkEnabled, clerkLoaded, router, userId])
+  }, [clerkEnabled, router])
 
   if (finalizingSession) {
     return (
