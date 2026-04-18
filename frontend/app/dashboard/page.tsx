@@ -943,15 +943,14 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleStartAutopilot() {
+  async function handleGlobalAutopilotAction() {
     if (!session?.user) return
     const readyAccounts = accounts.filter((account) => statusMap[account.id]?.connected)
-    const targets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
+    const runningTargets = readyAccounts.filter((account) => statusMap[account.id]?.running)
+    const idleTargets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
 
-    if (targets.length === 0) {
-      setActionMessage(
-        readyAccounts.length > 0 ? 'Autopilot is already running on every connected lane.' : 'Connect a lane first.'
-      )
+    if (readyAccounts.length === 0) {
+      setActionMessage('Connect a lane first.')
       setError('')
       return
     }
@@ -961,16 +960,25 @@ export default function DashboardPage() {
     setError('')
 
     try {
-      await Promise.all(targets.map((account) => handleToggleAutopilot(account.id, true)))
-      setActionMessage(
-        targets.length === 1
-          ? `Started autopilot for ${targets[0].handle}.`
-          : `Started autopilot for ${targets.length} connected lanes.`
-      )
+      if (idleTargets.length === 0 && runningTargets.length > 0) {
+        await Promise.all(runningTargets.map((account) => handleToggleAutopilot(account.id, false)))
+        setActionMessage(
+          runningTargets.length === 1
+            ? `Paused autopilot for ${runningTargets[0].handle}.`
+            : `Paused autopilot for ${runningTargets.length} connected lanes.`
+        )
+      } else {
+        await Promise.all(idleTargets.map((account) => handleToggleAutopilot(account.id, true)))
+        setActionMessage(
+          idleTargets.length === 1
+            ? `Started autopilot for ${idleTargets[0].handle}.`
+            : `Started autopilot for ${idleTargets.length} connected lanes.`
+        )
+      }
       await refreshMissionControlNow()
       scheduleFollowupRefreshes()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start autopilot')
+      setError(err instanceof Error ? err.message : 'Could not update autopilot')
     } finally {
       setBusyAction(null)
     }
@@ -1074,6 +1082,16 @@ export default function DashboardPage() {
     (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
   )
   const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
+  const connectedLaneCount = accounts.filter((account) => statusMap[account.id]?.connected).length
+  const runningLaneCount = accounts.filter((account) => statusMap[account.id]?.connected && statusMap[account.id]?.running).length
+  const globalAutopilotLabel =
+    connectedLaneCount === 0
+      ? '▶ Start Autopilot'
+      : runningLaneCount === connectedLaneCount
+        ? '❚❚ Pause Autopilot'
+        : runningLaneCount > 0
+          ? '▶ Resume Autopilot'
+          : '▶ Start Autopilot'
   const standardFriendly = accounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   ).length <= 1
@@ -1258,10 +1276,14 @@ export default function DashboardPage() {
 
               <button
                 className="btn"
-                onClick={handleStartAutopilot}
+                onClick={handleGlobalAutopilotAction}
                 disabled={busyAction === 'start-autopilot' || accounts.length === 0}
               >
-                {busyAction === 'start-autopilot' ? 'Starting Autopilot...' : '▶ Start Autopilot'}
+                {busyAction === 'start-autopilot'
+                  ? runningLaneCount === connectedLaneCount && connectedLaneCount > 0
+                    ? 'Pausing Autopilot...'
+                    : 'Starting Autopilot...'
+                  : globalAutopilotLabel}
               </button>
 
               <Link className="btn primary" href="/galaxy">
@@ -1414,21 +1436,6 @@ export default function DashboardPage() {
                           flex: '0 1 430px',
                         }}
                       >
-                        <div>
-                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                            Connected
-                          </div>
-                          <span
-                            className="btn"
-                            style={{
-                              cursor: 'default',
-                              ...statusPillStyle(status?.connected ? 'good' : 'neutral'),
-                            }}
-                          >
-                            {status?.connected ? 'Yes' : 'No'}
-                          </span>
-                        </div>
-
                         <div>
                           <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
                             Autopilot
