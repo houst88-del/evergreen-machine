@@ -1044,11 +1044,17 @@ export default function DashboardPage() {
           </section>
         ) : null}
 
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Welcome back</h2>
-          <p>Email: {user.email}</p>
-          <p>Handle: {user.handle}</p>
-        </section>
+        <div
+          style={{
+            marginTop: 4,
+            marginBottom: 2,
+            color: 'rgba(236,253,245,0.62)',
+            fontSize: 13,
+            letterSpacing: '0.01em',
+          }}
+        >
+          Signed in as {user.email} · {user.handle}
+        </div>
 
         <section
           className="card"
