@@ -27,6 +27,9 @@ TIER_C_MIN_SCORE = 20
 
 # Exploration: occasionally allow lower-tier content to surface on purpose.
 EXPLORATION_CHANCE = 0.15
+DB_TIER_A_PERCENTILE = 0.92
+DB_TIER_B_PERCENTILE = 0.68
+DB_TIER_C_PERCENTILE = 0.35
 
 
 def seed_demo_data(db: Session) -> User:
@@ -102,6 +105,30 @@ def _score_tier(score: float) -> str:
     if score >= TIER_B_MIN_SCORE:
         return "B"
     if score >= TIER_C_MIN_SCORE:
+        return "C"
+    return "D"
+
+
+def _score_percentile_map(scores: list[float]) -> dict[float, float]:
+    if not scores:
+        return {}
+
+    ordered = sorted(scores)
+    total = max(1, len(ordered) - 1)
+    percentiles: dict[float, float] = {}
+
+    for index, value in enumerate(ordered):
+        percentiles.setdefault(value, index / total if total else 1.0)
+
+    return percentiles
+
+
+def _db_score_tier(score: float, percentile: float) -> str:
+    if percentile >= DB_TIER_A_PERCENTILE or score >= TIER_A_MIN_SCORE * 1.8:
+        return "A"
+    if percentile >= DB_TIER_B_PERCENTILE or score >= TIER_B_MIN_SCORE * 1.35:
+        return "B"
+    if percentile >= DB_TIER_C_PERCENTILE or score >= TIER_C_MIN_SCORE * 1.2:
         return "C"
     return "D"
 
@@ -205,6 +232,29 @@ def _x_row_is_original(row: dict) -> bool:
     return True
 
 
+def _allow_third_party_retweets(account: ConnectedAccount | None) -> bool:
+    metadata = getattr(account, "metadata_json", None) or {}
+    if not isinstance(metadata, dict):
+        return True
+    value = metadata.get("allow_retweeted_third_party_content", True)
+    return _boolish(value) if isinstance(value, str) else bool(value)
+
+
+def _is_third_party_retweet_text(text: str, handle: str | None = None) -> bool:
+    normalized_text = str(text or "").strip()
+    if not normalized_text.upper().startswith("RT @"):
+        return False
+
+    if not handle:
+        return True
+
+    handle_slug = str(handle).strip().lstrip("@").lower()
+    if not handle_slug:
+        return True
+
+    return not normalized_text.lower().startswith(f"rt @{handle_slug}")
+
+
 def _bluesky_post_is_original(post: Post) -> bool:
     """
     Keep Bluesky resurfacing limited to original standalone posts.
@@ -257,16 +307,27 @@ def _select_next_x_post(db: Session, connected_account_id: int):
         .order_by(Post.score.desc(), Post.id.asc())
         .all()
     )
+    if not _allow_third_party_retweets(account):
+        db_posts = [
+            post
+            for post in db_posts
+            if not _is_third_party_retweet_text(str(getattr(post, "text", "") or ""), account.handle)
+        ]
     if db_posts:
+        percentile_map = _score_percentile_map(
+            [_safe_score(getattr(post, "score", 0)) for post in db_posts]
+        )
         fresh_posts: list[dict] = []
         cooled_posts: list[dict] = []
 
         for post in db_posts:
             score = _safe_score(getattr(post, "score", 0))
-            tier = _score_tier(score)
+            percentile = percentile_map.get(score, 0.0)
+            tier = _db_score_tier(score, percentile)
             item = {
                 "obj": post,
                 "score": score,
+                "percentile": percentile,
                 "tier": tier,
                 "reason": f"tier_{tier.lower()}",
             }
@@ -280,19 +341,37 @@ def _select_next_x_post(db: Session, connected_account_id: int):
         if chosen_item:
             post = chosen_item["obj"]
             score = chosen_item["score"]
+            percentile = chosen_item.get("percentile", 0.0)
             tier = chosen_item["tier"]
 
             return SimpleNamespace(
                 provider_post_id=str(post.provider_post_id).strip(),
                 text=str(post.text or post.provider_post_id).strip(),
                 strategy=f"x_db_tier_{tier.lower()}",
-                reason=f"db tier rotation score={int(score)} cooldown={COOLDOWN_DAYS}d",
-                raw={"source": "x_db", "post_id": getattr(post, "id", None)},
+                reason=(
+                    f"db percentile orbit p{int(percentile * 100)} "
+                    f"score={int(score)} cooldown={COOLDOWN_DAYS}d"
+                ),
+                raw={
+                    "source": "x_db",
+                    "post_id": getattr(post, "id", None),
+                    "score_percentile": round(percentile, 4),
+                    "allow_retweeted_third_party_content": _allow_third_party_retweets(account),
+                },
             )
 
     handle = account.handle
     rows = eligible_rows(read_pool_rows(handle))
     rows = [row for row in rows if _x_row_is_original(row)]
+    if not _allow_third_party_retweets(account):
+        rows = [
+            row
+            for row in rows
+            if not _is_third_party_retweet_text(
+                str(row.get("tweet_text", "") or row.get("text", "") or ""),
+                handle,
+            )
+        ]
     if not rows:
         return None
 

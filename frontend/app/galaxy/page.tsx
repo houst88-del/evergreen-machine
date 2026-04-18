@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, me } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
@@ -289,9 +289,8 @@ export default function GalaxyPage() {
   const [statusMap, setStatusMap] = useState<Record<number, DashboardStatus>>({});
   const [hovered, setHovered] = useState<GalaxyNode | null>(null);
   const [selectedStarId, setSelectedStarId] = useState<string | null>(null);
-  const [liveTick, setLiveTick] = useState(0);
+  const [animMs, setAnimMs] = useState(0);
   const [error, setError] = useState("");
-  const [flashTick, setFlashTick] = useState(0);
   const [timeWarp, setTimeWarp] = useState(0);
   const [timeLapseOn, setTimeLapseOn] = useState(true);
   const [timeLapseSpeed, setTimeLapseSpeed] = useState(0.25);
@@ -302,48 +301,37 @@ export default function GalaxyPage() {
   const [highlightMode, setHighlightMode] = useState<
     "off" | "strong" | "viral" | "conversion"
   >("off");
-  const [motionFactor, setMotionFactor] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [cameraDriftTick, setCameraDriftTick] = useState(0);
-  const [parallaxTick, setParallaxTick] = useState(0);
-  const [waveTick, setWaveTick] = useState(0);
+  const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
+
+  const liveTick = animMs / 60;
+  const cameraDriftTick = liveTick;
+  const parallaxTick = liveTick;
+  const flashTick = Math.floor(animMs / 1800);
+  const waveTick = Math.floor(animMs / 1400);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setLiveTick((v) => v + motionFactor);
-      setCameraDriftTick((v) => v + motionFactor);
-      setParallaxTick((v) => v + motionFactor);
-    }, 60);
-    return () => window.clearInterval(id);
-  }, [motionFactor]);
+    let frameId = 0;
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setMotionFactor((current) => {
-        const target = timeLapseOn ? 1 : 0;
-        const next = current + (target - current) * 0.18;
-        if (Math.abs(next - target) < 0.01) return target;
-        return next;
-      });
-    }, 60);
-    return () => window.clearInterval(id);
+    const tick = (timestamp: number) => {
+      const state = animationRef.current;
+      if (!state.lastTs) state.lastTs = timestamp;
+
+      const delta = Math.min(40, timestamp - state.lastTs);
+      state.lastTs = timestamp;
+
+      const target = timeLapseOn ? 1 : 0;
+      state.speed += (target - state.speed) * 0.12;
+      if (Math.abs(state.speed - target) < 0.001) state.speed = target;
+
+      state.elapsed += delta * state.speed;
+      setAnimMs(state.elapsed);
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
   }, [timeLapseOn]);
-
-  useEffect(() => {
-    const id = window.setInterval(
-      () => setFlashTick((v) => v + (motionFactor > 0.02 ? 1 : 0)),
-      1800
-    );
-    return () => window.clearInterval(id);
-  }, [motionFactor]);
-
-  useEffect(() => {
-    const id = window.setInterval(
-      () => setWaveTick((v) => v + (motionFactor > 0.02 ? 1 : 0)),
-      1400
-    );
-    return () => window.clearInterval(id);
-  }, [motionFactor]);
 
   useEffect(() => {
     if (!timeLapseOn) return;

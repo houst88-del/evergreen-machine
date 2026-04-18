@@ -35,6 +35,20 @@ def _normalize_string(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _score_percentile_map(values: list[float]) -> dict[float, float]:
+    if not values:
+        return {}
+
+    ordered = sorted(values)
+    total = max(1, len(ordered) - 1)
+    percentiles: dict[float, float] = {}
+
+    for index, value in enumerate(ordered):
+        percentiles.setdefault(value, index / total if total else 1.0)
+
+    return percentiles
+
+
 def _is_recent(dt_value, minutes: int) -> bool:
     if not dt_value:
         return False
@@ -148,14 +162,14 @@ def _revival_score(post: Post, score: float, refresh_count: int) -> float:
     return round(score * 0.35 + age_bonus + resurfaced_bonus + dormant_bonus, 2)
 
 
-def _gravity_tier(post: Post, score: float) -> str:
+def _gravity_tier(post: Post, score: float, percentile: float) -> str:
     raw_tier = _normalize_string(_raw_value(post, "gravity_tier", "gravity", default=""))
     if raw_tier in {"gravity", "strong", "standard"}:
         return raw_tier
 
-    if score >= 250:
+    if percentile >= 0.92 or score >= 320:
         return "gravity"
-    if score >= 120:
+    if percentile >= 0.68 or score >= 160:
         return "strong"
     return "standard"
 
@@ -242,8 +256,13 @@ def _is_current_cycle(post: Post, autopilot: AutopilotStatus | None) -> bool:
     return False
 
 
-def _candidate_flag(score: float, gravity: str, revival_score: float) -> bool:
-    return bool(score >= 180 or revival_score >= 120 or gravity in {"gravity", "strong"})
+def _candidate_flag(score: float, gravity: str, revival_score: float, percentile: float) -> bool:
+    return bool(
+        percentile >= 0.78
+        or score >= 240
+        or revival_score >= 120
+        or gravity == "gravity"
+    )
 
 
 def _resolve_requested_user_id(authorization: str | None, fallback_user_id: int) -> int:
@@ -380,6 +399,9 @@ def get_galaxy(
             query = query.filter(Post.connected_account_id.in_(account_ids))
 
         posts = query.order_by(Post.score.desc(), Post.id.asc()).limit(limit).all()
+        percentile_map = _score_percentile_map(
+            [_safe_float(getattr(post, "score", 0), 0.0) for post in posts]
+        )
 
         autopilots = (
             db.query(AutopilotStatus)
@@ -405,19 +427,20 @@ def get_galaxy(
         nodes: list[dict[str, Any]] = []
         for idx, post in enumerate(posts):
             score = _safe_float(getattr(post, "score", 0), 0.0)
+            percentile = percentile_map.get(score, 0.0)
             refresh_count = _extract_refresh_count(post)
             revival_score = _revival_score(post, score, refresh_count)
 
             account = account_map.get(getattr(post, "connected_account_id", None))
             autopilot = autopilot_map.get(getattr(post, "connected_account_id", None))
 
-            gravity = _gravity_tier(post, score)
+            gravity = _gravity_tier(post, score, percentile)
             gravity_score = _gravity_score(post, score)
             predicted_velocity = _predicted_velocity(post)
             archive_signal = _archive_signal(post)
 
             current_cycle = _is_current_cycle(post, autopilot)
-            candidate = _candidate_flag(score, gravity, revival_score)
+            candidate = _candidate_flag(score, gravity, revival_score, percentile)
 
             # Visual tiering should create a real spiral, not a flat ring.
             # X and Bluesky scores live on different scales, so we normalize before
@@ -437,47 +460,51 @@ def get_galaxy(
 
             if is_x:
                 cold_archive = bool(
-                    score < 6
+                    percentile < 0.14
+                    and score < 120
                     and revival_score < 18
                     and refresh_count == 0
                     and age_days >= 30
                     and not candidate
                     and not current_cycle
                 )
-                normalized_score = score * 3.0
+                normalized_score = percentile * 100
             elif is_bluesky:
                 cold_archive = bool(
-                    score < 18
+                    percentile < 0.18
+                    and score < 36
                     and revival_score < 28
                     and refresh_count <= 1
                     and age_days >= 10
                     and not candidate
                     and not current_cycle
                 )
-                normalized_score = score * 1.0
+                normalized_score = percentile * 100
             else:
                 cold_archive = bool(
-                    score < 10
+                    percentile < 0.16
+                    and score < 60
                     and revival_score < 22
                     and refresh_count == 0
                     and age_days >= 14
                     and not candidate
                     and not current_cycle
                 )
-                normalized_score = score * 1.8
+                normalized_score = percentile * 100
 
             if gravity_score is not None:
-                normalized_score += min(80.0, max(0.0, gravity_score) * 0.08)
+                normalized_score += min(24.0, max(0.0, gravity_score) * 0.024)
             if predicted_velocity is not None:
-                normalized_score += min(30.0, max(0.0, predicted_velocity) * 10.0)
-            if current_cycle and normalized_score < 48:
-                normalized_score = 48.0
-            elif candidate and normalized_score < 32:
-                normalized_score = 32.0
+                normalized_score += min(18.0, max(0.0, predicted_velocity) * 8.0)
+            normalized_score += min(12.0, revival_score * 0.04)
+            if current_cycle and normalized_score < 76:
+                normalized_score = 76.0
+            elif candidate and normalized_score < 52:
+                normalized_score = 52.0
 
-            if normalized_score >= 140:
+            if normalized_score >= 92 or gravity == "gravity":
                 tier = "core"
-            elif normalized_score >= 60 or gravity == "strong":
+            elif normalized_score >= 64 or gravity == "strong":
                 tier = "inner_arm"
             elif cold_archive:
                 tier = "drift"
@@ -492,6 +519,7 @@ def get_galaxy(
                     "label": _extract_label(post),
                     "score": score,
                     "normalized_score": round(normalized_score, 2),
+                    "score_percentile": round(percentile, 4),
                     "gravity": gravity,
                     "tier": tier,
                     "cold_archive": cold_archive,
