@@ -27,12 +27,21 @@ function AuthHeader({ clerkEnabled }: { clerkEnabled: boolean }) {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const appOrigin =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.evergreenmachine.ai'
 
   return (
     <html lang="en">
       <body>
         {clerkEnabled ? (
-          <ClerkProvider>
+          <ClerkProvider
+            signInUrl="/login"
+            signUpUrl="/signup"
+            signInForceRedirectUrl={`${appOrigin}/dashboard`}
+            signUpForceRedirectUrl={`${appOrigin}/dashboard`}
+            signInFallbackRedirectUrl={`${appOrigin}/dashboard`}
+            signUpFallbackRedirectUrl={`${appOrigin}/dashboard`}
+          >
             <AuthHeader clerkEnabled={clerkEnabled} />
             {children}
           </ClerkProvider>
