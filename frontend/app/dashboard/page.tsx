@@ -661,7 +661,7 @@ export default function DashboardPage() {
 
     return {
       backendOnline: !!system?.backend?.ok,
-      workerState: heartbeat.status || (system?.worker?.ok ? 'running' : 'offline'),
+      workerState: system?.worker?.ok ? heartbeat.status || 'running' : 'offline',
       queued: heartbeat.queued ?? 0,
       processed: heartbeat.processed ?? 0,
       syncedAccounts: heartbeat.synced_accounts ?? accounts.length,

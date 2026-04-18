@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from app.core.auth_store import create_auth_user, get_auth_user_by_email, update_last_login
 from app.core.db import SessionLocal
 from app.core.security import create_token, get_current_auth_user, hash_password, verify_password
-from app.models.models import AutopilotStatus, User
+from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.pool_service import active_rotation_count
 
 
@@ -169,12 +169,57 @@ def serialize_user(user: User) -> dict:
     }
 
 
+def migrate_user_records(db, source: User, target: User) -> None:
+    if source.id == target.id:
+        return
+
+    for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == source.id).all():
+        account.user_id = target.id
+
+    for post in db.query(Post).filter(Post.user_id == source.id).all():
+        post.user_id = target.id
+
+    target_default_autopilot = (
+        db.query(AutopilotStatus)
+        .filter(
+            AutopilotStatus.user_id == target.id,
+            AutopilotStatus.connected_account_id.is_(None),
+        )
+        .first()
+    )
+
+    for autopilot in db.query(AutopilotStatus).filter(AutopilotStatus.user_id == source.id).all():
+        if autopilot.connected_account_id is None and target_default_autopilot:
+            db.delete(autopilot)
+            continue
+        autopilot.user_id = target.id
+
+    db.flush()
+    db.delete(source)
+    db.flush()
+
+
 def ensure_db_user(email: str, handle: str) -> tuple[dict, dict]:
     db = SessionLocal()
     try:
         normalized_handle = handle if str(handle).startswith("@") else f"@{handle}"
 
-        user = db.query(User).filter(User.email == email).first()
+        user_by_email = db.query(User).filter(User.email == email).first()
+        user_by_handle = (
+            db.query(User).filter(User.handle == normalized_handle).order_by(User.id.asc()).first()
+        )
+
+        if user_by_email and user_by_handle and user_by_email.id != user_by_handle.id:
+            migrate_user_records(db, source=user_by_handle, target=user_by_email)
+            user = user_by_email
+        elif user_by_email:
+            user = user_by_email
+        elif user_by_handle:
+            user = user_by_handle
+            user.email = email
+        else:
+            user = None
+
         if not user:
             user = User(email=email, handle=normalized_handle)
             db.add(user)
@@ -192,6 +237,8 @@ def ensure_db_user(email: str, handle: str) -> tuple[dict, dict]:
             db.refresh(user)
             db.refresh(autopilot)
         else:
+            user.email = email
+            user.handle = normalized_handle
             autopilot = db.query(AutopilotStatus).filter(AutopilotStatus.user_id == user.id).first()
             if not autopilot:
                 autopilot = AutopilotStatus(
