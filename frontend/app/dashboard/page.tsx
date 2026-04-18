@@ -124,6 +124,26 @@ function cycleLabel(value?: string | null) {
   return relativeWhen(value)
 }
 
+function countdownUntil(value?: string | null, nowMs = Date.now()) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+
+  const diffMs = d.getTime() - nowMs
+  if (diffMs <= 0) return 'Ready now'
+
+  const totalSeconds = Math.floor(diffMs / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+  if (minutes > 0) return `${minutes}m ${seconds}s`
+  return `${seconds}s`
+}
+
 function providerLabel(provider?: string) {
   const p = String(provider || '').toLowerCase()
   if (p === 'x' || p === 'twitter') return 'X'
@@ -319,6 +339,7 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 export default function DashboardPage() {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const [system, setSystem] = useState<SystemStatus | null>(null)
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
@@ -345,6 +366,16 @@ export default function DashboardPage() {
 
     return () => {
       mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 1000)
+
+    return () => {
+      window.clearInterval(id)
     }
   }, [])
 
@@ -926,6 +957,7 @@ export default function DashboardPage() {
               {accounts.map((account) => {
                 const status = statusMap[account.id]
                 const nextCycleText = cycleLabel(status?.next_cycle_at)
+                const nextRefreshCountdown = countdownUntil(status?.next_cycle_at, nowMs)
                 const isOverdue = nextCycleText === 'Overdue'
 
                 return (
@@ -1064,6 +1096,7 @@ export default function DashboardPage() {
                       }}
                     >
                       <div>Last action: {fmtWhen(status?.last_action_at)}</div>
+                      <div>Next refresh in: {nextRefreshCountdown}</div>
                       <div>Next cycle: {fmtWhen(status?.next_cycle_at)}</div>
                     </div>
                   </div>
