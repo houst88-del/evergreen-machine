@@ -762,7 +762,8 @@ export default function GalaxyPage() {
   const densityScale =
     nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
   const sceneScale =
-    zoom * densityScale * (highlightMode === "strong" || highlightMode === "viral" ? 1.05 : 1);
+    densityScale * (highlightMode === "strong" || highlightMode === "viral" ? 1.05 : 1) +
+    (zoom - 1) * 1.2;
   const baseShiftX = selectedStar ? (50 - (selectedStar as any)._px) * 0.12 : 0;
   const baseShiftY = selectedStar ? (52 - (selectedStar as any)._py) * 0.12 : 0;
   const driftX =
@@ -1109,12 +1110,15 @@ export default function GalaxyPage() {
                 <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>Zoom</div>
                 <input
                   type="range"
-                  min={0.8}
-                  max={1.4}
-                  step={0.05}
+                  min={0.5}
+                  max={2}
+                  step={0.1}
                   value={zoom}
                   onChange={(e) => setZoom(Number(e.target.value))}
                 />
+                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
+                  View {zoom.toFixed(1)}x
+                </div>
               </div>
             </div>
 
