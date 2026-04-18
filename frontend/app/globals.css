@@ -19,6 +19,33 @@ button { font: inherit; }
   min-height: 100vh;
 }
 
+.auth-header-shell {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 16px 20px 0;
+}
+
+.auth-header {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(7, 17, 11, 0.76);
+  backdrop-filter: blur(18px);
+}
+
+.auth-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .shell {
   width: min(100%, 960px);
   margin: 0 auto;
@@ -422,5 +449,11 @@ button { font: inherit; }
     flex-direction: column;
     align-items: flex-start;
     gap: 18px;
+  }
+
+  .auth-header,
+  .auth-actions {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

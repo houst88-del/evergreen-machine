@@ -5,6 +5,7 @@ This repo now supports a Clerk-based auth layer while preserving the existing ba
 ## What was added
 
 - Clerk provider support in the Next app layout
+- Clerk middleware in `frontend/proxy.ts`
 - Clerk-powered login and signup UI when Clerk env vars are present
 - a secure frontend bootstrap route at `frontend/app/api/session/bootstrap/route.ts`
 - a secure backend bootstrap endpoint at `backend/app/routes/auth.py`
@@ -16,6 +17,14 @@ When Clerk is configured:
 3. the app calls the backend bootstrap endpoint with an internal secret
 4. the backend creates or reuses the Evergreen user and returns the app token
 5. the dashboard continues working on the existing backend APIs
+
+## Quick verification checklist
+
+- `clerkMiddleware()` exists in `frontend/proxy.ts`
+- `ClerkProvider` is inside `<body>` in `frontend/app/layout.tsx`
+- the shared layout uses `Show`, `SignInButton`, `SignUpButton`, and `UserButton`
+- the app still uses the App Router
+- the bootstrap route uses `auth()` with Clerk server utilities
 
 ## Required environment variables
 

@@ -1,4 +1,4 @@
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { auth, clerkClient } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
 const API_BASE =
@@ -12,7 +12,8 @@ export async function POST() {
     return NextResponse.json({ detail: 'No Clerk session' }, { status: 401 })
   }
 
-  const user = await currentUser()
+  const client = await clerkClient()
+  const user = await client.users.getUser(userId)
   const primaryEmail =
     user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || ''
 
