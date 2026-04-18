@@ -71,6 +71,7 @@ class AutopilotStatus(Base):
     last_post_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_action_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     next_cycle_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

@@ -55,6 +55,14 @@ def ensure_runtime_schema() -> None:
         else:
             statements.append("ALTER TABLE users ADD COLUMN welcome_email_sent_at TIMESTAMP NULL")
 
+    if "autopilot_status" in inspector.get_table_names():
+        autopilot_columns = {column["name"] for column in inspector.get_columns("autopilot_status")}
+        if "metadata_json" not in autopilot_columns:
+            if engine.dialect.name == "sqlite":
+                statements.append("ALTER TABLE autopilot_status ADD COLUMN metadata_json JSON")
+            else:
+                statements.append("ALTER TABLE autopilot_status ADD COLUMN metadata_json JSON NULL")
+
     if not statements:
         return
 
@@ -107,6 +115,14 @@ def _account_pacing_mode(account: ConnectedAccount | None) -> str:
     return normalize_mode(metadata.get("pacing_mode"))
 
 
+def _safe_boolish(value: object, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 def posts_in_rotation_for_account(db, account: ConnectedAccount) -> int:
     db_active_posts = (
         db.query(Post)
@@ -144,6 +160,14 @@ def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
         "next_cycle_at": visible_next_cycle_at,
         "pacing_mode": pacing_mode,
         "pacing_options": pacing_options_for_provider(provider),
+        "breathing_room_active": _safe_boolish(metadata.get("breathing_room_active", False)),
+        "breathing_room_until": metadata.get("breathing_room_until") or None,
+        "breathing_room_reason": metadata.get("breathing_room_reason") or None,
+        "latest_original_post_at": metadata.get("latest_original_post_at") or None,
+        "fresh_post_protection_enabled": _safe_boolish(
+            metadata.get("fresh_post_protection_enabled", True),
+            True,
+        ),
         "metadata": metadata,
     }
 

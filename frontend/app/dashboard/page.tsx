@@ -54,6 +54,11 @@ type AccountStatus = {
     display_name: string
     description: string
   }>
+  breathing_room_active?: boolean
+  breathing_room_until?: string | null
+  breathing_room_reason?: string | null
+  latest_original_post_at?: string | null
+  fresh_post_protection_enabled?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -143,6 +148,23 @@ function cycleLabel(value?: string | null) {
   if (diffMs < -5 * 60 * 1000) return 'Overdue'
 
   return relativeWhen(value)
+}
+
+function longCountdownUntil(value?: string | null, nowMs = Date.now()) {
+  const d = parseApiDate(value)
+  if (!d) return '—'
+
+  const diffMs = d.getTime() - nowMs
+  if (diffMs <= 0) return 'ready now'
+
+  const totalMinutes = Math.ceil(diffMs / 60000)
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+  const minutes = totalMinutes % 60
+
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 function countdownUntil(value?: string | null, nowMs = Date.now()) {
@@ -1040,6 +1062,39 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleToggleFreshPostProtection(accountId: number, enabled: boolean) {
+    if (!session?.user) return
+    const busyKey = `breathing-${accountId}`
+    setBusyAction(busyKey)
+    setActionMessage('')
+    setError('')
+
+    try {
+      const res = await apiFetch(
+        `/api/status/breathing-room?user_id=${session.user.id || 1}&connected_account_id=${accountId}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled }),
+        }
+      )
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.detail || json.message || json.error || 'Could not update fresh-post protection')
+      }
+
+      setActionMessage(
+        `${enabled ? 'Enabled' : 'Disabled'} fresh-post protection for ${json.account_handle || 'account'}.`
+      )
+      await refreshMissionControlNow()
+      scheduleFollowupRefreshes()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update fresh-post protection')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   if (loading) {
     return (
       <main className="page">
@@ -1417,6 +1472,14 @@ export default function DashboardPage() {
                 const nextCycleText = cycleLabel(status?.next_cycle_at)
                 const nextRefreshCountdown = countdownUntil(status?.next_cycle_at, nowMs)
                 const isOverdue = nextCycleText === 'Overdue'
+                const freshPostProtectionEnabled =
+                  status?.fresh_post_protection_enabled !== false
+                const breathingRoomActive = Boolean(status?.breathing_room_active)
+                const breathingRoomCountdown = longCountdownUntil(
+                  status?.breathing_room_until,
+                  nowMs
+                )
+                const latestOriginalText = relativeWhen(status?.latest_original_post_at)
 
                 return (
                   <div
@@ -1584,11 +1647,11 @@ export default function DashboardPage() {
                           flexWrap: 'wrap',
                           marginTop: 10,
                         }}
-                      >
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
+                        >
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
                             ...statusPillStyle(status?.running ? 'good' : 'neutral'),
                           }}
                         >
@@ -1601,10 +1664,30 @@ export default function DashboardPage() {
                             cursor: 'default',
                             ...statusPillStyle('neutral'),
                           }}
-                        >
-                          Rotation {status?.posts_in_rotation ?? 0}
-                        </span>
-                      </div>
+                          >
+                            Rotation {status?.posts_in_rotation ?? 0}
+                          </span>
+
+                          <span
+                            className="btn"
+                            style={{
+                              cursor: 'default',
+                              ...statusPillStyle(
+                                breathingRoomActive
+                                  ? 'warn'
+                                  : freshPostProtectionEnabled
+                                    ? 'good'
+                                    : 'neutral'
+                              ),
+                            }}
+                          >
+                            {breathingRoomActive
+                              ? `Breathing room · ${breathingRoomCountdown}`
+                              : freshPostProtectionEnabled
+                                ? 'Fresh-post protection On'
+                                : 'Fresh-post protection Off'}
+                          </span>
+                        </div>
 
                       <div
                         style={{
@@ -1624,6 +1707,51 @@ export default function DashboardPage() {
                         }}
                       >
                         {pacingWindowLabel}
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                          marginTop: 10,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            handleToggleFreshPostProtection(
+                              account.id,
+                              !freshPostProtectionEnabled
+                            )
+                          }
+                          disabled={busyAction === `breathing-${account.id}`}
+                          style={{
+                            ...statusPillStyle(
+                              freshPostProtectionEnabled ? 'good' : 'neutral'
+                            ),
+                          }}
+                        >
+                          {busyAction === `breathing-${account.id}`
+                            ? 'Updating...'
+                            : freshPostProtectionEnabled
+                              ? 'Disable Protection'
+                              : 'Enable Protection'}
+                        </button>
+
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: 'rgba(236,253,245,0.62)',
+                          }}
+                        >
+                          {breathingRoomActive
+                            ? `Fresh original post is still breathing. Evergreen resumes in ${breathingRoomCountdown}.`
+                            : freshPostProtectionEnabled
+                              ? `Fresh originals get breathing room before resurfacing resumes. Latest original: ${latestOriginalText}.`
+                              : 'Evergreen can refresh immediately after new live posts.'}
+                        </div>
                       </div>
 
                       <div

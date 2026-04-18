@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, UTC
 from typing import Any
 
 from app.core.db import SessionLocal
-from app.models.models import AutopilotStatus, ConnectedAccount, User
+from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.job_queue import (
     claim_next_jobs,
     complete_job,
@@ -20,7 +20,13 @@ from app.services.pacing import (
     get_profile_for_mode,
     normalize_mode,
 )
-from app.services.scoring import record_resurfaced_post, select_next_post, seed_demo_data
+from app.services.scoring import (
+    _bluesky_post_is_original,
+    _x_post_is_original,
+    record_resurfaced_post,
+    select_next_post,
+    seed_demo_data,
+)
 from app.services.x_refresh_service import refresh_repost
 
 try:
@@ -49,6 +55,8 @@ VIRAL_ENGAGEMENT_RATE_THRESHOLD = 6.0
 VIRAL_IMPRESSIONS_THRESHOLD = 15000
 PROFILE_SURGE_RATE_THRESHOLD = 0.010
 ANALYTICS_REFRESH_THRESHOLD_HOURS = 6
+X_FRESH_POST_BREATHING_HOURS = 10
+BLUESKY_FRESH_POST_BREATHING_HOURS = 8
 
 
 def _stage(message: str, events: list[str]) -> None:
@@ -274,6 +282,127 @@ def _analytics_is_stale(autopilot: AutopilotStatus) -> tuple[bool, str]:
     if last_analytics_at <= _analytics_refresh_cutoff():
         return True, "analytics stale"
     return False, ""
+
+
+def _fresh_post_protection_enabled(account: ConnectedAccount | None) -> bool:
+    metadata = dict((account.metadata_json or {}) if account else {})
+    raw = metadata.get("fresh_post_protection_enabled")
+    if raw is None:
+        return True
+    return _boolish(raw) if isinstance(raw, str) else bool(raw)
+
+
+def _fresh_post_breathing_hours(provider: str | None) -> int:
+    key = str(provider or "").strip().lower()
+    if key == "bluesky":
+        return BLUESKY_FRESH_POST_BREATHING_HOURS
+    return X_FRESH_POST_BREATHING_HOURS
+
+
+def _is_original_post_for_provider(post: Post, provider: str | None) -> bool:
+    key = str(provider or "").strip().lower()
+    if key == "bluesky":
+        return _bluesky_post_is_original(post)
+    return _x_post_is_original(post)
+
+
+def _latest_original_post(db, connected_account_id: int, provider: str | None) -> Post | None:
+    posts = (
+        db.query(Post)
+        .filter(
+            Post.connected_account_id == connected_account_id,
+            Post.state == "active",
+        )
+        .order_by(Post.created_at.desc(), Post.id.desc())
+        .all()
+    )
+    for post in posts:
+        if _is_original_post_for_provider(post, provider):
+            return post
+    return None
+
+
+def _clear_breathing_room_metadata(autopilot: AutopilotStatus) -> dict[str, Any]:
+    metadata = _get_autopilot_metadata(autopilot)
+    metadata["breathing_room_active"] = False
+    metadata["breathing_room_until"] = ""
+    metadata["breathing_room_reason"] = ""
+    metadata["latest_original_post_at"] = ""
+    metadata["latest_original_post_id"] = ""
+    return metadata
+
+
+def _evaluate_breathing_room(
+    db,
+    autopilot: AutopilotStatus,
+    account: ConnectedAccount,
+) -> dict[str, Any]:
+    metadata = _clear_breathing_room_metadata(autopilot)
+    provider = str(account.provider or autopilot.provider or "x").strip().lower()
+    protection_enabled = _fresh_post_protection_enabled(account)
+    metadata["fresh_post_protection_enabled"] = protection_enabled
+
+    latest_original = _latest_original_post(db, int(account.id), provider)
+    if latest_original and getattr(latest_original, "created_at", None):
+        latest_original_at = latest_original.created_at
+        metadata["latest_original_post_at"] = latest_original_at.isoformat()
+        metadata["latest_original_post_id"] = str(getattr(latest_original, "provider_post_id", "") or "").strip()
+
+        breathing_until = latest_original_at + timedelta(hours=_fresh_post_breathing_hours(provider))
+        if protection_enabled and breathing_until > _utc_now_naive():
+            metadata["breathing_room_active"] = True
+            metadata["breathing_room_until"] = breathing_until.isoformat()
+            metadata["breathing_room_reason"] = "recent original post"
+
+    _set_autopilot_metadata(autopilot, metadata)
+    db.commit()
+    db.refresh(autopilot)
+    return metadata
+
+
+def _hold_for_breathing_room(
+    db,
+    autopilot: AutopilotStatus,
+    account: ConnectedAccount,
+    metadata: dict[str, Any],
+    events: list[str],
+) -> dict[str, Any]:
+    breathing_until = _parse_iso_naive(metadata.get("breathing_room_until"))
+    if not breathing_until:
+        raise ValueError("breathing room hold requested without a valid resume time")
+
+    next_delay_minutes = max(1, int((breathing_until - _utc_now_naive()).total_seconds() // 60) + 1)
+    result_message = "breathing room active for recent original post"
+    _persist_refresh_schedule(
+        db,
+        autopilot,
+        next_refresh_at=breathing_until,
+        next_delay_minutes=next_delay_minutes,
+        pacing_mode=_effective_pacing_mode(autopilot, account),
+        result_message=result_message,
+    )
+    events.append("breathing room active")
+    return {
+        "connected_account_id": int(account.id),
+        "user_id": int(account.user_id),
+        "handle": account.handle,
+        "provider": account.provider,
+        "message": result_message,
+        "last_action_at": autopilot.last_action_at.isoformat() if autopilot.last_action_at else None,
+        "next_cycle_at": autopilot.next_cycle_at.isoformat() if autopilot.next_cycle_at else None,
+        "last_post_text": autopilot.last_post_text,
+        "cycle_events": events,
+        "pacing_mode": _effective_pacing_mode(autopilot, account),
+        "pacing_reason": "fresh post breathing room",
+        "next_delay_minutes": next_delay_minutes,
+        "candidate_strength": "steady",
+        "rotation_health": {
+            "pool_size": int(autopilot.posts_in_rotation or 0),
+            "refreshes_last_24h": _refresh_count_last_24h(int(account.id)),
+            "last_strategy": _get_autopilot_metadata(autopilot).get("last_strategy", "Constellation circulation"),
+            "mix_hint": "Fresh-post protection active",
+        },
+    }
 
 
 def _run_analytics_sync(
@@ -521,6 +650,10 @@ def _run_refresh_job(connected_account_id: int, payload: dict | None = None) -> 
                 ]
             )
             account, user, autopilot = _get_account_context(db, connected_account_id)
+        breathing_metadata = _evaluate_breathing_room(db, autopilot, account)
+        if _boolish(breathing_metadata.get("breathing_room_active", False)):
+            _stage("holding for fresh post breathing room", events)
+            return _hold_for_breathing_room(db, autopilot, account, breathing_metadata, events)
         excluded_provider_post_ids: set[str] = set()
         post = None
         selection_metadata: dict[str, Any] | None = None

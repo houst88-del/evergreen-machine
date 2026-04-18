@@ -54,6 +54,15 @@ def get_status(
             if account and isinstance(account.metadata_json, dict)
             else {}
         )
+        autopilot_metadata = (
+            dict(getattr(status, "metadata_json", None) or {})
+            if isinstance(getattr(status, "metadata_json", None), dict)
+            else {}
+        )
+        merged_metadata = {
+            **account_metadata,
+            **autopilot_metadata,
+        }
         pacing = pacing_payload(
             status.provider,
             account_metadata.get("pacing_mode") or getattr(status, "pacing_mode", None),
@@ -69,7 +78,16 @@ def get_status(
             "last_post_text": status.last_post_text,
             "last_action_at": _serialize_utc(status.last_action_at),
             "next_cycle_at": _serialize_utc(status.next_cycle_at),
-            "metadata": account_metadata,
+            "breathing_room_active": _safe_bool(merged_metadata.get("breathing_room_active", False)),
+            "breathing_room_until": merged_metadata.get("breathing_room_until") or None,
+            "breathing_room_reason": merged_metadata.get("breathing_room_reason") or None,
+            "latest_original_post_at": merged_metadata.get("latest_original_post_at") or None,
+            "fresh_post_protection_enabled": (
+                _safe_bool(merged_metadata.get("fresh_post_protection_enabled"))
+                if merged_metadata.get("fresh_post_protection_enabled") is not None
+                else True
+            ),
+            "metadata": merged_metadata,
             **pacing,
         }
 
@@ -160,5 +178,65 @@ def set_pacing(
             **pacing_payload(status.provider, metadata["pacing_mode"]),
         }
 
+    finally:
+        db.close()
+
+
+@router.post("/breathing-room")
+def set_breathing_room(
+    user_id: int = Query(...),
+    connected_account_id: int | None = Query(default=None),
+    payload: dict = Body(...),
+):
+    db: Session = SessionLocal()
+
+    try:
+        status = (
+            db.query(AutopilotStatus)
+            .filter(
+                AutopilotStatus.user_id == user_id,
+                AutopilotStatus.connected_account_id == connected_account_id,
+            )
+            .first()
+        )
+
+        if not status:
+            return {"ok": False, "error": "Autopilot not found"}
+
+        account = None
+        if status.connected_account_id:
+            account = (
+                db.query(ConnectedAccount)
+                .filter(ConnectedAccount.id == status.connected_account_id)
+                .first()
+            )
+
+        if not account:
+            return {"ok": False, "error": "Connected account not found"}
+
+        enabled = payload.get("enabled")
+        metadata = dict(account.metadata_json or {}) if isinstance(account.metadata_json, dict) else {}
+        metadata["fresh_post_protection_enabled"] = bool(enabled)
+        account.metadata_json = metadata
+        account.updated_at = datetime.utcnow()
+
+        status_metadata = (
+            dict(status.metadata_json or {}) if isinstance(getattr(status, "metadata_json", None), dict) else {}
+        )
+        status_metadata["fresh_post_protection_enabled"] = bool(enabled)
+        if not enabled:
+            status_metadata["breathing_room_active"] = False
+            status_metadata["breathing_room_until"] = ""
+            status_metadata["breathing_room_reason"] = ""
+            status.next_cycle_at = datetime.utcnow()
+        status.metadata_json = status_metadata
+        status.updated_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "ok": True,
+            "enabled": bool(enabled),
+            "account_handle": account.handle,
+        }
     finally:
         db.close()
