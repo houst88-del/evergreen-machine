@@ -7,7 +7,7 @@ const API_BASE =
 
 export async function POST() {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth({ treatPendingAsSignedOut: false })
     const bootstrapSecret = process.env.EVERGREEN_INTERNAL_BOOTSTRAP_SECRET
 
     if (!userId) {

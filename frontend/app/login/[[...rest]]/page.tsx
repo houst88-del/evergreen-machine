@@ -8,7 +8,7 @@ import { login, me, resetAuthState } from '../../lib/auth'
 
 export default function LoginPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { isLoaded: clerkLoaded, userId } = useAuth()
+  const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
