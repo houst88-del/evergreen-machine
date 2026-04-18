@@ -419,14 +419,14 @@ export default function DashboardPage() {
 
     async function checkSession() {
       try {
-        const attempts = clerkEnabled ? 10 : 1
+        const attempts = clerkEnabled ? 3 : 1
         let data = null
 
         for (let attempt = 0; attempt < attempts; attempt += 1) {
           data = await me()
           if (data?.user) break
           if (clerkEnabled && attempt < attempts - 1) {
-            await new Promise((resolve) => window.setTimeout(resolve, 900))
+            await new Promise((resolve) => window.setTimeout(resolve, 750))
           }
         }
 
@@ -454,15 +454,18 @@ export default function DashboardPage() {
     if (error) return
     if (!loading) return
 
-    const timeoutId = window.setTimeout(async () => {
-      await resetAuthState()
-      window.location.replace('/signup')
-    }, 12000)
+    const timeoutId = window.setTimeout(() => {
+      setError(
+        getLastBootstrapError() ||
+          'Evergreen could not finish the dashboard handoff. Your Clerk login may be active, but the app session did not complete.',
+      )
+      setLoading(false)
+    }, 7000)
 
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [loading])
+  }, [error, loading])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -477,9 +480,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (error) return
     if (loading || session?.user) return
-    void resetAuthState().finally(() => {
-      window.location.replace('/signup')
-    })
+    setError(
+      getLastBootstrapError() ||
+        'Evergreen could not verify your dashboard session. Please return to sign-in once this message is visible.',
+    )
   }, [error, loading, router, session])
 
   async function refreshMissionControlNow() {
