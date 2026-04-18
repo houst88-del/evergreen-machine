@@ -37,40 +37,73 @@ export async function POST() {
       primaryEmail.split('@')[0] ||
       'creator'
 
-    const res = await fetch(`${API_BASE}/api/auth/bootstrap-clerk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Evergreen-Internal-Secret': bootstrapSecret,
-      },
-      body: JSON.stringify({
-        email: primaryEmail,
-        handle: handleSeed,
-        clerk_user_id: userId,
-      }),
-      cache: 'no-store',
-    })
-
-    const raw = await res.text()
-    let json: unknown = null
-
-    if (raw) {
-      try {
-        json = JSON.parse(raw)
-      } catch {
-        json = null
-      }
+    const payload = {
+      email: primaryEmail,
+      handle: handleSeed,
+      clerk_user_id: userId,
     }
 
-    if (json && typeof json === 'object') {
-      return NextResponse.json(json, { status: res.status })
+    let lastStatus = 500
+    let lastRaw = ''
+    let lastJson: unknown = null
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await fetch(`${API_BASE}/api/auth/bootstrap-clerk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Evergreen-Internal-Secret': bootstrapSecret,
+        },
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+      })
+
+      const raw = await res.text()
+      let json: unknown = null
+
+      if (raw) {
+        try {
+          json = JSON.parse(raw)
+        } catch {
+          json = null
+        }
+      }
+
+      if (res.ok) {
+        if (json && typeof json === 'object') {
+          return NextResponse.json(json, { status: res.status })
+        }
+
+        return NextResponse.json(
+          {
+            detail: raw || 'Bootstrap bridge returned an empty response',
+          },
+          { status: res.status || 500 },
+        )
+      }
+
+      lastStatus = res.status || 500
+      lastRaw = raw
+      lastJson = json
+
+      if (![502, 503, 504].includes(lastStatus) || attempt === 2) {
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+    }
+
+    if (lastJson && typeof lastJson === 'object') {
+      return NextResponse.json(lastJson, { status: lastStatus })
     }
 
     return NextResponse.json(
       {
-        detail: raw || 'Bootstrap bridge returned an empty response',
+        detail:
+          lastRaw ||
+          `Bootstrap bridge failed after retrying the backend handoff (${lastStatus})`,
       },
-      { status: res.status || 500 },
+      { status: lastStatus || 500 },
     )
   } catch (error) {
     return NextResponse.json(
