@@ -811,31 +811,91 @@ export default function GalaxyPage() {
       <div style={{ maxWidth: 2600, margin: "0 auto", padding: 28 }}>
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 16,
-            alignItems: "center",
-            flexWrap: "wrap",
-            marginBottom: 18,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.3fr) auto",
+            gap: 20,
+            alignItems: "end",
+            marginBottom: 22,
           }}
         >
-          <div>
+          <div
+            style={{
+              border: "1px solid rgba(110,231,183,0.14)",
+              borderRadius: 28,
+              padding: "20px 22px",
+              background:
+                "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(250,228,120,0.05) 45%, rgba(125,211,252,0.04))",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+              <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
+              <span style={missionBadgeStyle("mint", true)}>🌿 Garden memory</span>
+              <span style={missionBadgeStyle("sky", true)}>
+                {selected === "unified" ? "Unified canopy" : selectedLabel}
+              </span>
+            </div>
             <h1 style={{ fontSize: 54, lineHeight: 1, margin: 0, fontWeight: 700 }}>
               ✦🌿 Starden
             </h1>
             <p
               style={{
-                marginTop: 10,
-                color: "rgba(236,253,245,0.72)",
-                fontSize: 14,
+                marginTop: 12,
+                color: "rgba(236,253,245,0.8)",
+                fontSize: 18,
+                lineHeight: 1.5,
+                maxWidth: 780,
               }}
             >
-              A star garden for seeing where your strongest resurfacing pull is gathering next.
+              Your star garden for seeing which ideas are still alive, which ones are beginning to glow
+              again, and where Evergreen wants to send its next pulse.
             </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+                marginTop: 18,
+              }}
+            >
+              {[
+                ["Living stars", String(workingNodes.length)],
+                ["Active pulse", currentStatus?.running ? "Running" : "Idle"],
+                ["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 18,
+                    padding: "12px 14px",
+                    background: "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: "rgba(236,253,245,0.56)",
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 18, fontWeight: 600 }}>{value}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div
-            style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
           >
             <button
               onClick={() => (window.location.href = "/dashboard")}
@@ -959,7 +1019,7 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Command Deck
+                Garden Notes
               </div>
               <div
                 style={{
@@ -969,11 +1029,9 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.74)",
                 }}
               >
-                <div>View: {selectedLabel}</div>
+                <div>Canopy: {selectedLabel}</div>
                 <div>Mode: {intelligenceView}</div>
-                <div>
-                  Travel: {timeTravel < 34 ? "Past" : timeTravel > 66 ? "Future" : "Present"}
-                </div>
+                <div>Season: {timeTravel < 34 ? "Past" : timeTravel > 66 ? "Future" : "Present"}</div>
                 <div>Zoom: {zoom.toFixed(1)}x</div>
                 <div>Focus: {highlightMode === "off" ? "Balanced" : highlightMode}</div>
               </div>
@@ -1013,7 +1071,7 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Autopilot Signal
+                Pulse Signal
               </div>
               <div style={{ marginTop: 10, fontSize: 40, fontWeight: 700 }}>
                 {currentStatus?.running ? "Running" : "Idle"}
@@ -1054,7 +1112,7 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Time Travel
+                Seasonal Drift
               </div>
               <div style={{ marginTop: 10 }}>
                 <input
@@ -1080,7 +1138,7 @@ export default function GalaxyPage() {
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Replay
+                Bloom Replay
               </div>
               <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
                 <button
