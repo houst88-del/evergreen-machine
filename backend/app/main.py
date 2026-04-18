@@ -44,6 +44,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://evergreenmachine.ai",
+        "https://www.evergreenmachine.ai",
         "https://evergreenmachine-git-main-houst88-4413s-projects.vercel.app",
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
