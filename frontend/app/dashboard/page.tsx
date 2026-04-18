@@ -483,6 +483,19 @@ export default function DashboardPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
 
+  const bootstrapNode = clerkEnabled ? (
+    <ClerkSessionBootstrap
+      clerkEnabled={clerkEnabled}
+      onResolved={setSession}
+      onFinished={() => setLoading(false)}
+    />
+  ) : (
+    <BasicSessionBootstrap
+      onResolved={setSession}
+      onFinished={() => setLoading(false)}
+    />
+  )
+
   useEffect(() => {
     const id = window.setInterval(() => {
       setNowMs(Date.now())
@@ -1034,6 +1047,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <main className="page">
+        {bootstrapNode}
         <div className="shell">
           <section className="card">Checking session...</section>
         </div>
@@ -1099,18 +1113,7 @@ export default function DashboardPage() {
 
   return (
     <main className="page">
-      {clerkEnabled ? (
-        <ClerkSessionBootstrap
-          clerkEnabled={clerkEnabled}
-          onResolved={setSession}
-          onFinished={() => setLoading(false)}
-        />
-      ) : (
-        <BasicSessionBootstrap
-          onResolved={setSession}
-          onFinished={() => setLoading(false)}
-        />
-      )}
+      {bootstrapNode}
       <div className="shell">
         <header className="header">
           <div>
