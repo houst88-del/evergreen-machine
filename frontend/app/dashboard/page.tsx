@@ -100,17 +100,26 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
 
+function parseApiDate(value?: string | null) {
+  if (!value) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  const normalized =
+    /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`
+  const d = new Date(normalized)
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+
 function fmtWhen(value?: string | null) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
+  const d = parseApiDate(value)
+  if (!d) return '—'
   return d.toLocaleString()
 }
 
 function relativeWhen(value?: string | null) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
+  const d = parseApiDate(value)
+  if (!d) return '—'
 
   const diffMs = d.getTime() - Date.now()
   const mins = Math.round(Math.abs(diffMs) / 60000)
@@ -126,9 +135,8 @@ function relativeWhen(value?: string | null) {
 }
 
 function cycleLabel(value?: string | null) {
-  if (!value) return 'No cycle scheduled'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return 'No cycle scheduled'
+  const d = parseApiDate(value)
+  if (!d) return 'No cycle scheduled'
 
   const diffMs = d.getTime() - Date.now()
   if (diffMs < -5 * 60 * 1000) return 'Overdue'
@@ -137,9 +145,8 @@ function cycleLabel(value?: string | null) {
 }
 
 function countdownUntil(value?: string | null, nowMs = Date.now()) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
+  const d = parseApiDate(value)
+  if (!d) return '—'
 
   const diffMs = d.getTime() - nowMs
   if (diffMs <= 0) return 'Ready now'
