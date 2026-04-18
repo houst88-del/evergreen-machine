@@ -890,6 +890,39 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleStartAutopilot() {
+    if (!session?.user) return
+    const readyAccounts = accounts.filter((account) => statusMap[account.id]?.connected)
+    const targets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
+
+    if (targets.length === 0) {
+      setActionMessage(
+        readyAccounts.length > 0 ? 'Autopilot is already running on every connected lane.' : 'Connect a lane first.'
+      )
+      setError('')
+      return
+    }
+
+    setBusyAction('start-autopilot')
+    setActionMessage('')
+    setError('')
+
+    try {
+      await Promise.all(targets.map((account) => handleToggleAutopilot(account.id, true)))
+      setActionMessage(
+        targets.length === 1
+          ? `Started autopilot for ${targets[0].handle}.`
+          : `Started autopilot for ${targets.length} connected lanes.`
+      )
+      await refreshMissionControlNow()
+      scheduleFollowupRefreshes()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start autopilot')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleSetPacing(accountId: number, mode: string) {
     if (!session?.user) return
     const busyKey = `pacing-${accountId}`
@@ -1044,6 +1077,41 @@ export default function DashboardPage() {
           </section>
         ) : null}
 
+        <section
+          className="card"
+          style={{
+            padding: '10px 16px',
+            background: 'rgba(8, 26, 18, 0.82)',
+            marginTop: 2,
+            marginBottom: 4,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              fontSize: 12,
+              color: 'rgba(236,253,245,0.8)',
+            }}
+          >
+            <span style={missionEyebrowStyle}>Live Pulse</span>
+            <span style={statusPillStyle(summary.backendOnline ? 'good' : 'bad')}>
+              Backend {summary.backendOnline ? 'online' : 'offline'}
+            </span>
+            <span style={statusPillStyle(summary.workerState === 'running' ? 'good' : 'neutral')}>
+              Worker {startCase(summary.workerState)}
+            </span>
+            <span>{summary.connectedCount} connected</span>
+            <span>{summary.postsInRotation} in rotation</span>
+            <span>{summary.queued} queued</span>
+            <span>{summary.processed} processed</span>
+            {summary.nextCycle ? <span>Next cycle {cycleLabel(summary.nextCycle)}</span> : null}
+            {summary.workerError ? <span style={{ color: '#fecaca' }}>Worker issue: {summary.workerError}</span> : null}
+          </div>
+        </section>
+
         <div
           style={{
             marginTop: 4,
@@ -1099,6 +1167,14 @@ export default function DashboardPage() {
                 {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : '☁️ Connect Bluesky'}
               </button>
 
+              <button
+                className="btn"
+                onClick={handleStartAutopilot}
+                disabled={busyAction === 'start-autopilot' || accounts.length === 0}
+              >
+                {busyAction === 'start-autopilot' ? 'Starting Autopilot...' : '▶ Start Autopilot'}
+              </button>
+
               <Link className="btn primary" href="/galaxy">
                 ✦ Open Starden
               </Link>
@@ -1150,57 +1226,41 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section
-          className="card"
-          style={{
-            padding: '14px 18px',
-            background: 'rgba(8, 26, 18, 0.88)',
-          }}
-        >
+        <section className="card">
           <div
             style={{
               display: 'flex',
-              gap: 10,
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
               flexWrap: 'wrap',
-              alignItems: 'center',
-              fontSize: 13,
-              color: 'rgba(236,253,245,0.82)',
             }}
           >
-            <span style={missionEyebrowStyle}>Live Pulse</span>
-            <span style={statusPillStyle(summary.backendOnline ? 'good' : 'bad')}>
-              Backend {summary.backendOnline ? 'online' : 'offline'}
-            </span>
-            <span style={statusPillStyle(summary.workerState === 'running' ? 'good' : 'neutral')}>
-              Worker {startCase(summary.workerState)}
-            </span>
-            <span>{summary.connectedCount} connected</span>
-            <span>{summary.postsInRotation} in rotation</span>
-            <span>{summary.queued} queued</span>
-            <span>{summary.processed} processed</span>
-            <span>
-              Next cycle:{' '}
-              {summary.nextCycle ? `${fmtWhen(summary.nextCycle)} (${cycleLabel(summary.nextCycle)})` : 'none'}
-            </span>
-            <span>Heartbeat {fmtWhen(summary.heartbeatAt)}</span>
-            {summary.workerError ? (
-              <span style={{ color: '#fecaca' }}>Worker issue: {summary.workerError}</span>
-            ) : null}
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Connected Lanes</h3>
+              <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
+                Each lane handles connection, autopilot state, refresh pacing, and the next selection view in one place.
+              </div>
+            </div>
+            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
+              {accounts.length > 1 ? 'X on the left, Bluesky on the right when both are connected.' : 'Single-lane view for Standard.'}
+            </div>
           </div>
-        </section>
-
-        <section className="card">
-          <h3 style={{ marginTop: 0 }}>Connected Accounts Snapshot</h3>
-          <p style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
-            Once a lane is connected, the controls below take you through start, pace, refresh, and monitor.
-          </p>
 
           {accounts.length === 0 ? (
             <div>No connected accounts yet.</div>
           ) : (
-            <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-              {accounts.map((account) => {
-                const status = statusMap[account.id]
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
+                gap: 14,
+                marginTop: 18,
+              }}
+            >
+              {deploymentWindows.map((lane) => {
+                const account = lane.account
+                const status = lane.status
                 const activePacingOption = selectedPacingOption(status)
                 const pacingDescription =
                   activePacingOption?.description ||
@@ -1221,13 +1281,16 @@ export default function DashboardPage() {
                       border: '1px solid rgba(52,211,153,0.18)',
                       borderRadius: 18,
                       padding: 16,
-                      background: 'rgba(16,185,129,0.04)',
+                      background:
+                        account.provider === 'x'
+                          ? 'linear-gradient(180deg, rgba(125,211,252,0.05), rgba(16,185,129,0.03))'
+                          : 'linear-gradient(180deg, rgba(110,231,183,0.05), rgba(16,185,129,0.03))',
                     }}
                   >
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1.4fr repeat(5, minmax(110px, 1fr))',
+                        gridTemplateColumns: '1.6fr repeat(4, minmax(90px, 1fr))',
                         gap: 12,
                         alignItems: 'center',
                       }}
@@ -1245,6 +1308,9 @@ export default function DashboardPage() {
                         </div>
                         <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>
                           {account.handle}
+                        </div>
+                        <div style={{ color: 'rgba(236,253,245,0.7)', marginTop: 6 }}>
+                          {lane.latestHeadline}
                         </div>
                       </div>
 
@@ -1285,7 +1351,7 @@ export default function DashboardPage() {
 
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Refresh Window
+                          Refresh
                         </div>
                         <span
                           className="btn"
@@ -1300,7 +1366,7 @@ export default function DashboardPage() {
 
                       <div>
                         <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                          Next Cycle
+                          Next
                         </div>
                         <span
                           className="btn"
@@ -1337,14 +1403,6 @@ export default function DashboardPage() {
                         {busyAction === `refresh-${account.id}` ? 'Queueing Refresh...' : '⚡ Refresh Now'}
                       </button>
 
-                      <button
-                        className="btn"
-                        onClick={() => handleRunAnalytics(account.id, account.handle)}
-                        disabled={busyAction === `analytics-${account.id}`}
-                      >
-                        {busyAction === `analytics-${account.id}` ? 'Queueing Analytics...' : '🧠 Run Analytics'}
-                      </button>
-
                       <button className="btn" onClick={() => handleDisconnectAccount(account.id)}>
                         Disconnect
                       </button>
@@ -1352,6 +1410,43 @@ export default function DashboardPage() {
                       <Link className="btn" href="/galaxy">
                         Open in Starden
                       </Link>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 10,
+                        marginTop: 12,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 14,
+                          padding: 12,
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <div style={missionEyebrowStyle}>Strategy / Why</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
+                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
+                          {compactText(lane.selectionReason, 72)}
+                        </div>
+                      </div>
                     </div>
 
                     <div
@@ -1399,7 +1494,7 @@ export default function DashboardPage() {
 
                       <div
                         style={{
-                          marginTop: 8,
+                          marginTop: 10,
                           fontSize: 13,
                           color: 'rgba(236,253,245,0.76)',
                         }}
@@ -1416,195 +1511,20 @@ export default function DashboardPage() {
                       >
                         {pacingWindowLabel}
                       </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
-                        gap: 12,
-                        marginTop: 12,
-                        fontSize: 13,
-                        color: 'rgba(236,253,245,0.72)',
-                      }}
-                    >
-                      <div>Last action: {fmtWhen(status?.last_action_at)}</div>
-                      <div>Next refresh in: {nextRefreshCountdown}</div>
-                      <div>Next cycle: {fmtWhen(status?.next_cycle_at)}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Live Deployment Window</h3>
-              <div style={{ color: 'rgba(236,253,245,0.68)', fontSize: 13 }}>
-                Compact engine lanes for what X and Bluesky are selecting, prioritizing, and preparing next.
-              </div>
-            </div>
-
-            <div style={{ color: 'rgba(236,253,245,0.56)', fontSize: 12 }}>
-              Updates flow in with the dashboard refresh loop.
-            </div>
-          </div>
-
-          {deploymentWindows.length === 0 ? (
-            <div style={{ marginTop: 16 }}>No connected deployment lanes yet.</div>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
-                gap: 14,
-                marginTop: 18,
-              }}
-            >
-              {deploymentWindows.map((lane) => {
-                const stateKind = jobStateKind(lane.latestState)
-                return (
-                  <div
-                    key={lane.account.id}
-                    style={{
-                      border: '1px solid rgba(52,211,153,0.16)',
-                      borderRadius: 18,
-                      padding: 16,
-                      background:
-                        lane.account.provider === 'x'
-                          ? 'linear-gradient(180deg, rgba(125,211,252,0.06), rgba(16,185,129,0.03))'
-                          : 'linear-gradient(180deg, rgba(110,231,183,0.06), rgba(16,185,129,0.03))',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span style={missionEyebrowStyle}>
-                            {providerLabel(lane.account.provider)}
-                          </span>
-                          <span
-                            style={{
-                              ...missionBadgeStyle('neutral'),
-                              ...statusPillStyle(lane.status?.running ? 'good' : 'neutral'),
-                            }}
-                          >
-                            {lane.status?.running ? 'Autopilot live' : 'Autopilot idle'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>
-                          {lane.account.handle}
-                        </div>
-                        <div style={{ color: 'rgba(236,253,245,0.72)', marginTop: 6 }}>
-                          {lane.latestHeadline}
-                        </div>
-                      </div>
-
-                      <span
-                        style={{
-                          ...missionBadgeStyle('neutral'),
-                          ...statusPillStyle(stateKind),
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {startCase(lane.latestState)}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 10,
-                        marginTop: 16,
-                        fontSize: 13,
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
-                      </div>
 
                       <div
                         style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2,minmax(0,1fr))',
+                          gap: 12,
+                          marginTop: 12,
+                          fontSize: 13,
+                          color: 'rgba(236,253,245,0.72)',
                         }}
                       >
-                        <div style={missionEyebrowStyle}>Pulling From</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.sourceGroup}</div>
+                        <div>Last action: {lane.lastActionText}</div>
+                        <div>Next refresh: {nextRefreshCountdown}</div>
                       </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Strategy / Why</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
-                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
-                          {compactText(lane.selectionReason, 72)}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 14,
-                          padding: 12,
-                          background: 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <div style={missionEyebrowStyle}>Live Priority</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.activeSignal}</div>
-                        <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
-                          Queue: {lane.pendingPair} • Momentum {lane.momentumRemaining}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
-                        gap: 12,
-                        marginTop: 14,
-                        color: 'rgba(236,253,245,0.78)',
-                        fontSize: 13,
-                      }}
-                    >
-                      <div>Last action: {lane.lastActionText}</div>
-                      <div>Next refresh in: {lane.nextRefreshCountdown}</div>
-                      <div>Next cycle: {lane.nextCycleText}</div>
                     </div>
                   </div>
                 )
