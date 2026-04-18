@@ -1453,35 +1453,6 @@ export default function DashboardPage() {
                           <div style={{ marginTop: 6 }}>{status?.posts_in_rotation ?? 0}</div>
                         </div>
 
-                        <div>
-                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                            Refresh
-                          </div>
-                          <span
-                            className="btn"
-                            style={{
-                              cursor: 'default',
-                              ...statusPillStyle(pacingModeTone(status?.pacing_mode)),
-                            }}
-                          >
-                            {pacingDisplayLabel}
-                          </span>
-                        </div>
-
-                        <div>
-                          <div style={{ color: 'rgba(236,253,245,0.6)', fontSize: 12, marginBottom: 6 }}>
-                            Next
-                          </div>
-                          <span
-                            className="btn"
-                            style={{
-                              cursor: 'default',
-                              ...statusPillStyle(isOverdue ? 'warn' : 'neutral'),
-                            }}
-                          >
-                            {nextCycleText}
-                          </span>
-                        </div>
                       </div>
                     </div>
 
