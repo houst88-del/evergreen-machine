@@ -1658,34 +1658,14 @@ export default function DashboardPage() {
                           Autopilot {status?.running ? 'Running' : 'Idle'}
                         </span>
 
-                        <span
-                          className="btn"
-                          style={{
-                            cursor: 'default',
-                            ...statusPillStyle('neutral'),
-                          }}
-                          >
-                            Rotation {status?.posts_in_rotation ?? 0}
-                          </span>
-
                           <span
                             className="btn"
                             style={{
                               cursor: 'default',
-                              ...statusPillStyle(
-                                breathingRoomActive
-                                  ? 'warn'
-                                  : freshPostProtectionEnabled
-                                    ? 'good'
-                                    : 'neutral'
-                              ),
-                            }}
+                              ...statusPillStyle('neutral'),
+                          }}
                           >
-                            {breathingRoomActive
-                              ? `Breathing room · ${breathingRoomCountdown}`
-                              : freshPostProtectionEnabled
-                                ? 'Fresh-post protection On'
-                                : 'Fresh-post protection Off'}
+                            Rotation {status?.posts_in_rotation ?? 0}
                           </span>
                         </div>
 
