@@ -21,7 +21,7 @@ export default function LoginPage() {
       const params = new URLSearchParams(window.location.search)
       if (params.get('fresh') === '1') {
         void resetAuthState({ includeClerk: true }).finally(() => {
-          setCheckingSession(false)
+          router.replace('/login')
         })
         return
       }
