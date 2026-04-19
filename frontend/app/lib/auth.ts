@@ -260,7 +260,6 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
 export async function me(): Promise<AuthResponse | null> {
   const token = getToken()
-  const storedUser = getStoredUser()
 
   if (!token) {
     const bootstrapped = await bootstrapBackendSession()
@@ -270,17 +269,12 @@ export async function me(): Promise<AuthResponse | null> {
   }
 
   const freshToken = getToken()
-  const freshStoredUser = getStoredUser()
 
-  if (!freshToken && !freshStoredUser) return null
+  if (!freshToken) return null
 
   const res = await apiFetch('/api/auth/me')
 
-  if (res.status === 404) {
-    return storedUser ? { user: storedUser, token: token || undefined } : null
-  }
-
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 404) {
     clearToken()
     clearStoredUser()
 
@@ -288,15 +282,24 @@ export async function me(): Promise<AuthResponse | null> {
     return bootstrapped?.user ? bootstrapped : null
   }
 
-  const json = await res.json()
+  let json: any = null
+  try {
+    json = await res.json()
+  } catch {
+    json = null
+  }
 
   if (!res.ok) {
-    return freshStoredUser ? { user: freshStoredUser, token: freshToken || undefined } : null
+    lastBootstrapError =
+      json?.detail || `Evergreen session verification failed (${res.status})`
+    return null
   }
 
   if (json.user) {
     setStoredUser(json.user)
   }
+
+  lastBootstrapError = null
 
   return json
 }

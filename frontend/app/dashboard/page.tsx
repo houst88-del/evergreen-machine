@@ -566,16 +566,16 @@ export default function DashboardPage() {
         }
 
         if (!mounted) return
+        if (!data?.user) {
+          setSession(null)
+          router.replace('/login')
+          return
+        }
+
         setSession(data)
-        if (data?.user?.email) {
+        if (data.user.email) {
           setBillingEmailInput((current) => current || data.user.email)
           await refreshSubscriptionInfo()
-        }
-        if (!data?.user && clerkEnabled) {
-          setError(
-            getLastBootstrapError() ||
-              'Evergreen could not finish your account session. Please try sign-in again.',
-          )
         }
       } finally {
         if (mounted) setLoading(false)
@@ -594,17 +594,13 @@ export default function DashboardPage() {
     if (!loading) return
 
     const timeoutId = window.setTimeout(() => {
-      setError(
-        getLastBootstrapError() ||
-          'Evergreen could not finish the dashboard handoff. Your Clerk login may be active, but the app session did not complete.',
-      )
-      setLoading(false)
+      router.replace('/login')
     }, 7000)
 
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [error, loading])
+  }, [error, loading, router])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -619,10 +615,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (error) return
     if (loading || session?.user) return
-    setError(
-      getLastBootstrapError() ||
-        'Evergreen could not verify your dashboard session. Please return to sign-in once this message is visible.',
-    )
+    router.replace('/login')
   }, [error, loading, router, session])
 
   async function refreshMissionControlNow() {
