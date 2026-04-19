@@ -298,6 +298,6 @@ export async function me(): Promise<AuthResponse | null> {
   return json
 }
 
-export function logout() {
-  void resetAuthState({ includeClerk: true })
+export async function logout() {
+  await resetAuthState({ includeClerk: true })
 }

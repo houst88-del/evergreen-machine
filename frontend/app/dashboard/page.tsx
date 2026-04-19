@@ -1298,12 +1298,17 @@ export default function DashboardPage() {
 
           <button
             className="btn"
-            onClick={() => {
-              logout()
-              window.location.href = `${getAppBase()}/login`
+            onClick={async () => {
+              setBusyAction('logout')
+              try {
+                await logout()
+              } finally {
+                window.location.assign(`${getAppBase()}/login`)
+              }
             }}
+            disabled={busyAction === 'logout'}
           >
-            Logout
+            {busyAction === 'logout' ? 'Logging out...' : 'Logout'}
           </button>
         </header>
 
