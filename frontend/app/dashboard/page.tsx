@@ -439,6 +439,18 @@ export default function DashboardPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
 
+  async function refreshSessionUser() {
+    try {
+      const latest = await me()
+      if (latest?.user) {
+        setSession(latest)
+      }
+      return latest
+    } catch {
+      return null
+    }
+  }
+
   function currentSubscriptionState() {
     const user = session?.user || {}
     const rawStatus = String(user.subscription_status || 'inactive').trim().toLowerCase()
@@ -553,7 +565,12 @@ export default function DashboardPage() {
     if (!session?.user) return
 
     try {
-      const userId = session.user.id || 1
+      const latestSession = await refreshSessionUser()
+      const activeSession = latestSession?.user ? latestSession : session
+      const activeUser = activeSession?.user
+      if (!activeUser) return
+
+      const userId = activeUser.id || 1
 
       const [systemRes, accountsRes, jobsRes] = await Promise.all([
         apiFetch('/api/system-status'),
@@ -615,7 +632,12 @@ export default function DashboardPage() {
 
     async function loadMissionControl() {
       try {
-        const userId = session.user.id || 1
+        const latestSession = await refreshSessionUser()
+        const activeSession = latestSession?.user ? latestSession : session
+        const activeUser = activeSession?.user
+        if (!activeUser) return
+
+        const userId = activeUser.id || 1
 
         const [systemRes, accountsRes, jobsRes] = await Promise.all([
           apiFetch('/api/system-status'),
@@ -670,9 +692,20 @@ export default function DashboardPage() {
     loadMissionControl()
     const id = window.setInterval(loadMissionControl, 6000)
 
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === 'visible') {
+        loadMissionControl()
+      }
+    }
+
+    window.addEventListener('focus', loadMissionControl)
+    document.addEventListener('visibilitychange', handleVisibilityRefresh)
+
     return () => {
       mounted = false
       window.clearInterval(id)
+      window.removeEventListener('focus', loadMissionControl)
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
   }, [session])
 
