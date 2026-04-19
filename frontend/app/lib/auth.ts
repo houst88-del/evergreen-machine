@@ -11,6 +11,9 @@ declare global {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
+const APP_BASE =
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') ||
+  'https://www.evergreenmachine.ai'
 
 const TOKEN_KEY = 'evergreen_auth_token'
 const USER_KEY = 'evergreen_auth_user'
@@ -34,6 +37,10 @@ let lastBootstrapError: string | null = null
 
 export function getApiBase() {
   return API_BASE
+}
+
+export function getAppBase() {
+  return APP_BASE
 }
 
 export function getLastBootstrapError() {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getLastBootstrapError, getToken, logout, me, resetAuthState } from '../lib/auth'
+import { getAppBase, getLastBootstrapError, getToken, logout, me, resetAuthState } from '../lib/auth'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
@@ -1204,7 +1204,7 @@ export default function DashboardPage() {
             className="btn"
             onClick={() => {
               logout()
-              window.location.href = '/login'
+              window.location.href = `${getAppBase()}/login`
             }}
           >
             Logout
