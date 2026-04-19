@@ -42,6 +42,22 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 WORKER_HEARTBEAT_PATH = Path(__file__).resolve().parents[1] / "worker_heartbeat.json"
 
 
+def canonical_dashboard_url() -> str:
+    app_base = (
+        os.getenv("EVERGREEN_APP_URL", "").strip()
+        or os.getenv("EVERGREEN_DASHBOARD_URL", "").strip()
+        or "https://www.evergreenmachine.ai"
+    ).rstrip("/")
+
+    if "vercel.app" in app_base or "vercel.com" in app_base:
+        app_base = "https://www.evergreenmachine.ai"
+
+    if app_base.endswith("/dashboard"):
+        return app_base
+
+    return f"{app_base}/dashboard"
+
+
 def read_worker_heartbeat() -> dict:
     if not WORKER_HEARTBEAT_PATH.exists():
         return {"status": "missing", "timestamp": None}
@@ -393,7 +409,7 @@ def system_status():
             "ok": worker_alive,
             "heartbeat": heartbeat,
         },
-        "frontend_hint": os.getenv("EVERGREEN_DASHBOARD_URL", "http://127.0.0.1:3000/dashboard"),
+        "frontend_hint": canonical_dashboard_url(),
     }
 
 

@@ -690,6 +690,55 @@ export default function DashboardPage() {
     window.setTimeout(refreshMissionControlNow, 8000)
   }
 
+  async function waitForConnectedProvider(
+    provider: string,
+    options?: { attempts?: number; delayMs?: number; connectedAccountId?: number | null }
+  ) {
+    if (!session?.user) return false
+
+    const attempts = options?.attempts ?? 12
+    const delayMs = options?.delayMs ?? 1200
+    const expectedAccountId = options?.connectedAccountId ?? null
+    const target = provider.toLowerCase()
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const latestSession = await refreshSessionUser()
+        const activeUser = latestSession?.user || session.user
+        if (!activeUser?.id) return false
+
+        const res = await apiFetch(`/api/connected-accounts?user_id=${activeUser.id}`)
+        const json = await res.json().catch(() => ({}))
+        const nextAccounts = Array.isArray(json.accounts)
+          ? json.accounts
+          : Array.isArray(json)
+            ? json
+            : []
+
+        if (
+          nextAccounts.some((account: ConnectedAccount) => {
+            const accountProvider = String(account.provider || '').toLowerCase()
+            const accountId = Number(account.id || 0)
+            return (
+              accountProvider === target &&
+              (!expectedAccountId || accountId === expectedAccountId) &&
+              String(account.connection_status || '').toLowerCase() === 'connected'
+            )
+          })
+        ) {
+          await refreshMissionControlNow()
+          return true
+        }
+      } catch {
+        // ignore transient polling failures during OAuth handoff
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+    }
+
+    return false
+  }
+
   useEffect(() => {
     if (!session?.user) return
 
@@ -778,15 +827,25 @@ export default function DashboardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
 
-    if (params.get('provider') === 'x' && params.get('connected') === '1') {
-      setActionMessage('X account connected.')
-      refreshMissionControlNow()
-      scheduleFollowupRefreshes()
-      params.delete('provider')
-      params.delete('connected')
-      const next = params.toString()
-      const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
-      window.history.replaceState({}, '', url)
+    if (params.get('provider') === 'x' && params.get('connected') === '1' && session?.user) {
+      const connectedAccountId = Number(params.get('connected_account_id') || 0) || null
+      setActionMessage('Finalizing X connection…')
+      ;(async () => {
+        const connected = await waitForConnectedProvider('x', { connectedAccountId })
+        if (connected) {
+          setActionMessage('X account connected.')
+          scheduleFollowupRefreshes()
+        } else {
+          setError('X connected, but the dashboard is still syncing. Refresh once in a few seconds.')
+        }
+
+        params.delete('provider')
+        params.delete('connected')
+        params.delete('connected_account_id')
+        const next = params.toString()
+        const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
+        window.history.replaceState({}, '', url)
+      })()
     }
 
     if (params.get('provider') === 'x' && params.get('error')) {

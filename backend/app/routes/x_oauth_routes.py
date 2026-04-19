@@ -4,7 +4,7 @@ import os
 
 import tweepy
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount, User
@@ -204,7 +204,7 @@ def start_oauth(user_id: int = Query(..., ge=1)):
         raise HTTPException(status_code=500, detail=f"Failed to start X OAuth: {exc}")
 
 
-@router.get("/callback", response_class=HTMLResponse)
+@router.get("/callback")
 def oauth_callback(
     request: Request,
     x_oauth_request_secret: str | None = Cookie(default=None),
@@ -249,7 +249,7 @@ def oauth_callback(
         if not provider_account_id or not username:
             raise HTTPException(status_code=500, detail="Missing X account id or username")
 
-        save_or_update_x_account(
+        connected_account_id = save_or_update_x_account(
             user_id=int(x_oauth_user_id),
             provider_account_id=provider_account_id,
             handle=f"@{username}",
@@ -259,17 +259,11 @@ def oauth_callback(
             api_secret=api_secret,
         )
 
-        redirect_url = f"{dashboard_redirect_url()}?provider=x&connected=1"
-        html = f"""
-        <html>
-          <head><meta http-equiv="refresh" content="0; url={redirect_url}" /></head>
-          <body style="font-family: sans-serif; background: #0b1220; color: #d7f7ff;">
-            <p>X account connected. Redirecting back to dashboard…</p>
-            <p><a href="{redirect_url}" style="color:#8be9ff;">Continue</a></p>
-          </body>
-        </html>
-        """
-        response = HTMLResponse(content=html)
+        redirect_url = (
+            f"{dashboard_redirect_url()}?provider=x&connected=1"
+            f"&connected_account_id={connected_account_id}"
+        )
+        response = RedirectResponse(url=redirect_url, status_code=303)
         response.delete_cookie("x_oauth_request_secret", path="/")
         response.delete_cookie("x_oauth_request_token", path="/")
         response.delete_cookie("x_oauth_user_id", path="/")
