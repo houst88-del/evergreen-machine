@@ -28,7 +28,7 @@ def build_welcome_email(user: User) -> tuple[str, str, str]:
     dashboard_url = f"{app_origin()}/dashboard"
     starden_url = f"{app_origin()}/galaxy"
 
-    subject = "Welcome to Evergreen Machine"
+    subject = "✦🌿 Welcome to Evergreen Machine"
     text = (
         f"Welcome to Evergreen Machine, {handle}.\n\n"
         "Your account is ready.\n\n"
@@ -42,15 +42,15 @@ def build_welcome_email(user: User) -> tuple[str, str, str]:
     )
     html = f"""
       <div style="margin:0;padding:0;background:#07110b;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#edf6ef;">
-        <div style="max-width:720px;margin:0 auto;padding:28px 20px 40px;">
-          <div style="margin-bottom:18px;padding:18px 20px;border-radius:22px;border:1px solid rgba(156,227,169,0.14);background:#0a1510;">
+        <div style="max-width:720px;margin:0 auto;padding:18px 20px 36px;">
+          <div style="margin-bottom:12px;padding:14px 18px;border-radius:20px;border:1px solid rgba(156,227,169,0.14);background:#0a1510;">
             <div style="font-size:13px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#8aa193;">
               Evergreen Machine
             </div>
           </div>
 
           <div style="position:relative;overflow:hidden;border-radius:30px;border:1px solid rgba(156,227,169,0.18);background:linear-gradient(180deg,#102017 0%,#0b1711 58%,#09140f 100%);">
-            <div style="height:130px;background:
+            <div style="height:96px;background:
               radial-gradient(circle at 14% 28%, rgba(156,227,169,0.18) 0, rgba(156,227,169,0.18) 2px, transparent 3px),
               radial-gradient(circle at 24% 42%, rgba(147,197,253,0.95) 0, rgba(147,197,253,0.95) 2px, transparent 3px),
               radial-gradient(circle at 34% 22%, rgba(254,240,138,0.9) 0, rgba(254,240,138,0.9) 2px, transparent 3px),
@@ -59,10 +59,10 @@ def build_welcome_email(user: User) -> tuple[str, str, str]:
               radial-gradient(circle at 84% 48%, rgba(191,219,254,0.9) 0, rgba(191,219,254,0.9) 2px, transparent 3px),
               linear-gradient(180deg, rgba(11,23,17,0.22) 0%, rgba(11,23,17,0.02) 100%);
             ">
-              <div style="width:220px;height:220px;border-radius:999px;background:radial-gradient(circle, rgba(250,204,21,0.22) 0%, rgba(250,204,21,0.06) 38%, rgba(250,204,21,0) 72%);margin:24px auto 0;"></div>
+              <div style="width:180px;height:180px;border-radius:999px;background:radial-gradient(circle, rgba(250,204,21,0.22) 0%, rgba(250,204,21,0.06) 38%, rgba(250,204,21,0) 72%);margin:10px auto 0;"></div>
             </div>
 
-            <div style="padding:0 44px 36px;margin-top:-18px;">
+            <div style="padding:0 44px 36px;margin-top:-10px;">
               <div style="display:inline-block;padding:9px 14px;border-radius:999px;background:rgba(11,23,17,0.88);border:1px solid rgba(156,227,169,0.14);font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#9eb5a7;">
                 ✦🌿 Starden-ready
               </div>
