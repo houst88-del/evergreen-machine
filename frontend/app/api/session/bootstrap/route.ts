@@ -22,7 +22,12 @@ export async function POST() {
     }
 
     const client = await clerkClient()
-    const user = await client.users.getUser(userId)
+    let user: Awaited<ReturnType<typeof client.users.getUser>> | null = null
+    try {
+      user = await client.users.getUser(userId)
+    } catch {
+      return NextResponse.json({ detail: 'No Clerk session' }, { status: 401 })
+    }
     const primaryEmail =
       user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || ''
 
