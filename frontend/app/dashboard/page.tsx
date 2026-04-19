@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getAppBase, getLastBootstrapError, getToken, logout, me, resetAuthState } from '../lib/auth'
+import {
+  apiFetch as authApiFetch,
+  getAppBase,
+  getLastBootstrapError,
+  getToken,
+  logout,
+  me,
+  resetAuthState,
+} from '../lib/auth'
 import { STRIPE_LINKS } from '../lib/billing'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
@@ -417,6 +425,11 @@ function jobStateKind(value?: string) {
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
+  const res = await authApiFetch(path, init)
+
+  if (typeof window === 'undefined') return res
+  if (res.ok || API_BASE === window.location.origin) return res
+
   const token = getToken()
   const headers = new Headers(init.headers || {})
 
@@ -424,7 +437,7 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     headers.set('Content-Type', 'application/json')
   }
 
-  if (token) {
+  if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
