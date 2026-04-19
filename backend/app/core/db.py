@@ -1,4 +1,6 @@
 import os
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -9,6 +11,41 @@ if not raw_database_url:
     raise RuntimeError("DATABASE_URL environment variable is required")
 
 database_url = raw_database_url
+
+
+def _rewrite_supabase_pooler_to_transaction_mode(url: str) -> str:
+    """
+    Supabase pooler URLs on port 5432 use session mode, which can hit the
+    pool-size ceiling quickly when both the API and worker are active.
+    Transaction mode on 6543 is a better fit for this app's short-lived SQLAlchemy
+    sessions and background job polling.
+    """
+    lowered = str(url or "").lower()
+    if "pooler.supabase.com" not in lowered:
+        return url
+
+    parsed = urlparse(url)
+    if parsed.port != 5432:
+        return url
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    # Keep an escape hatch in case we ever need to force session mode again.
+    if str(query.get("pool_mode", "")).strip().lower() == "session":
+        return url
+
+    host = parsed.hostname or ""
+    userinfo = ""
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo = f"{userinfo}:{parsed.password}"
+        userinfo = f"{userinfo}@"
+
+    netloc = f"{userinfo}{host}:6543"
+    return urlunparse(parsed._replace(netloc=netloc, query=urlencode(query)))
+
+
+database_url = _rewrite_supabase_pooler_to_transaction_mode(database_url)
 
 # Supabase / managed Postgres often needs sslmode=require.
 if database_url.startswith("postgresql://") and "sslmode=" not in database_url:
