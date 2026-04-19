@@ -67,11 +67,17 @@ const BACKEND =
   "https://backend-fixed-production.up.railway.app";
 
 async function evergreenApiFetch(path: string, init: RequestInit = {}) {
-  const res = await apiFetch(path, init);
-  if (typeof window === "undefined") return res;
+  try {
+    const res = await apiFetch(path, init);
+    if (typeof window === "undefined") return res;
 
-  if (res.ok || BACKEND === window.location.origin) {
-    return res;
+    if (res.ok || BACKEND === window.location.origin) {
+      return res;
+    }
+  } catch {
+    if (typeof window === "undefined") {
+      throw new Error("Evergreen API request failed");
+    }
   }
 
   const normalizedPath = path.startsWith("/api/") ? path.slice("/api/".length) : path;

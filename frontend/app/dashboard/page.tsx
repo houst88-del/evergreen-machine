@@ -425,10 +425,14 @@ function jobStateKind(value?: string) {
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
-  const res = await authApiFetch(path, init)
+  try {
+    const res = await authApiFetch(path, init)
 
-  if (typeof window === 'undefined') return res
-  if (res.ok || API_BASE === window.location.origin) return res
+    if (typeof window === 'undefined') return res
+    if (res.ok || API_BASE === window.location.origin) return res
+  } catch {
+    if (typeof window === 'undefined') throw new Error('Evergreen API request failed')
+  }
 
   const token = getToken()
   const headers = new Headers(init.headers || {})
