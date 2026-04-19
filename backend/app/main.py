@@ -840,6 +840,24 @@ def list_users():
                     "user_id": user.id,
                     "email": user.email,
                     "handle": user.handle,
+                    "subscription_status": user.subscription_status,
+                    "trial_started_at": (
+                        user.trial_started_at.isoformat()
+                        if user.trial_started_at
+                        else None
+                    ),
+                    "trial_ends_at": (
+                        user.trial_ends_at.isoformat()
+                        if user.trial_ends_at
+                        else None
+                    ),
+                    "stripe_customer_id": user.stripe_customer_id,
+                    "stripe_subscription_id": user.stripe_subscription_id,
+                    "current_period_end": (
+                        user.current_period_end.isoformat()
+                        if user.current_period_end
+                        else None
+                    ),
                     "welcome_email_sent_at": (
                         user.welcome_email_sent_at.isoformat()
                         if user.welcome_email_sent_at

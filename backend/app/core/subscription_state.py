@@ -178,7 +178,17 @@ def _maybe_reconcile_from_stripe(user: User) -> bool:
         return False
 
     updated_at = parse_datetime(user.subscription_updated_at)
-    if updated_at and updated_at >= utc_now_naive() - timedelta(minutes=STRIPE_RECONCILE_MINUTES):
+    raw_status = str(user.subscription_status or "").strip().lower()
+    has_local_stripe_ref = bool(
+        str(user.stripe_customer_id or "").strip() or str(user.stripe_subscription_id or "").strip()
+    )
+    should_throttle = raw_status in PAID_SUBSCRIPTION_STATUSES or has_local_stripe_ref
+
+    if (
+        should_throttle
+        and updated_at
+        and updated_at >= utc_now_naive() - timedelta(minutes=STRIPE_RECONCILE_MINUTES)
+    ):
         return False
 
     email = str(user.email or "").strip().lower()
