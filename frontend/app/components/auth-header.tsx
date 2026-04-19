@@ -74,7 +74,10 @@ export function AuthHeader({ clerkEnabled }: { clerkEnabled: boolean }) {
                 background: 'rgba(16,185,129,0.04)',
               }}
             >
-              <UserButton />
+              <UserButton
+                userProfileMode="navigation"
+                userProfileUrl="/account"
+              />
             </div>
           </Show>
         </div>

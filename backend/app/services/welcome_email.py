@@ -97,7 +97,10 @@ def maybe_send_welcome_email(db, user: User) -> bool:
                 "Content-Type": "application/json",
             },
         )
-        response.raise_for_status()
+        if response.is_error:
+            raise RuntimeError(
+                f"Resend send failed ({response.status_code}): {response.text.strip() or 'empty response'}"
+            )
 
     user.welcome_email_sent_at = datetime.utcnow()
     db.add(user)

@@ -361,6 +361,7 @@ def login(payload: dict):
         email=email,
         handle=str(auth_user.get("handle", "@demo_creator")),
     )
+    trigger_welcome_email(user_data["id"])
     update_last_login(email)
     token = create_token(
         {
@@ -421,8 +422,7 @@ def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Hea
         email=email,
         handle=str(existing.get("handle", f"@{handle}")),
     )
-    if created_auth_user:
-        trigger_welcome_email(user_data["id"])
+    trigger_welcome_email(user_data["id"])
     update_last_login(email)
     token = create_token(
         {
