@@ -630,47 +630,59 @@ export default function DashboardPage() {
 
       const userId = activeUser.id || 1
 
-      const [systemRes, accountsRes, jobsRes] = await Promise.all([
-        apiFetch('/api/system-status'),
-        apiFetch(`/api/connected-accounts?user_id=${userId}`),
-        apiFetch(`/api/jobs?user_id=${userId}`),
+      const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
+        apiFetch('/api/system-status')
+          .then((res) => res.json())
+          .then((json) => ({ ok: true, json })),
+        apiFetch(`/api/connected-accounts?user_id=${userId}`)
+          .then((res) => res.json())
+          .then((json) => ({ ok: true, json })),
+        apiFetch(`/api/jobs?user_id=${userId}`)
+          .then((res) => res.json())
+          .then((json) => ({ ok: true, json })),
       ])
 
-      const systemJson = await systemRes.json()
-      const accountsJson = await accountsRes.json()
-      const jobsJson = await jobsRes.json()
+      if (systemResult.status === 'fulfilled' && systemResult.value.ok) {
+        setSystem(systemResult.value.json)
+      }
 
-      const nextAccounts = Array.isArray(accountsJson.accounts)
-        ? accountsJson.accounts
-        : Array.isArray(accountsJson)
-          ? accountsJson
-          : []
+      if (accountsResult.status === 'fulfilled' && accountsResult.value.ok) {
+        const accountsJson = accountsResult.value.json
+        const nextAccounts = Array.isArray(accountsJson.accounts)
+          ? accountsJson.accounts
+          : Array.isArray(accountsJson)
+            ? accountsJson
+            : []
 
-      const nextStatusMap: Record<number, AccountStatus> = {}
-      await Promise.all(
-        nextAccounts.map(async (account: ConnectedAccount) => {
-          try {
-            const res = await apiFetch(
-              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-            )
-            if (!res.ok) return
-            nextStatusMap[account.id] = await res.json()
-          } catch {
-            // ignore account-specific failures
-          }
-        })
-      )
+        const nextStatusMap: Record<number, AccountStatus> = {}
+        await Promise.all(
+          nextAccounts.map(async (account: ConnectedAccount) => {
+            try {
+              const res = await apiFetch(
+                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+              )
+              if (!res.ok) return
+              nextStatusMap[account.id] = await res.json()
+            } catch {
+              // ignore account-specific failures
+            }
+          })
+        )
 
-      const nextJobs = Array.isArray(jobsJson.jobs)
-        ? jobsJson.jobs
-        : Array.isArray(jobsJson)
-          ? jobsJson
-          : []
+        setAccounts(nextAccounts)
+        setStatusMap(nextStatusMap)
+      }
 
-      setSystem(systemJson)
-      setAccounts(nextAccounts)
-      setStatusMap(nextStatusMap)
-      setJobs(nextJobs)
+      if (jobsResult.status === 'fulfilled' && jobsResult.value.ok) {
+        const jobsJson = jobsResult.value.json
+        const nextJobs = Array.isArray(jobsJson.jobs)
+          ? jobsJson.jobs
+          : Array.isArray(jobsJson)
+            ? jobsJson
+            : []
+        setJobs(nextJobs)
+      }
+
       setError('')
     } catch {
       // ignore silent refresh failures
@@ -747,49 +759,62 @@ export default function DashboardPage() {
 
         const userId = activeUser.id || 1
 
-        const [systemRes, accountsRes, jobsRes] = await Promise.all([
-          apiFetch('/api/system-status'),
-          apiFetch(`/api/connected-accounts?user_id=${userId}`),
-          apiFetch(`/api/jobs?user_id=${userId}`),
+        const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
+          apiFetch('/api/system-status')
+            .then((res) => res.json())
+            .then((json) => ({ ok: true, json })),
+          apiFetch(`/api/connected-accounts?user_id=${userId}`)
+            .then((res) => res.json())
+            .then((json) => ({ ok: true, json })),
+          apiFetch(`/api/jobs?user_id=${userId}`)
+            .then((res) => res.json())
+            .then((json) => ({ ok: true, json })),
         ])
-
-        const systemJson = await systemRes.json()
-        const accountsJson = await accountsRes.json()
-        const jobsJson = await jobsRes.json()
-
-        const nextAccounts = Array.isArray(accountsJson.accounts)
-          ? accountsJson.accounts
-          : Array.isArray(accountsJson)
-            ? accountsJson
-            : []
-
-        const nextStatusMap: Record<number, AccountStatus> = {}
-        await Promise.all(
-          nextAccounts.map(async (account: ConnectedAccount) => {
-            try {
-              const res = await apiFetch(
-                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-              )
-              if (!res.ok) return
-              nextStatusMap[account.id] = await res.json()
-            } catch {
-              // ignore account-specific failures
-            }
-          })
-        )
-
-        const nextJobs = Array.isArray(jobsJson.jobs)
-          ? jobsJson.jobs
-          : Array.isArray(jobsJson)
-            ? jobsJson
-            : []
 
         if (!mounted) return
 
-        setSystem(systemJson)
-        setAccounts(nextAccounts)
-        setStatusMap(nextStatusMap)
-        setJobs(nextJobs)
+        if (systemResult.status === 'fulfilled' && systemResult.value.ok) {
+          setSystem(systemResult.value.json)
+        }
+
+        if (accountsResult.status === 'fulfilled' && accountsResult.value.ok) {
+          const accountsJson = accountsResult.value.json
+          const nextAccounts = Array.isArray(accountsJson.accounts)
+            ? accountsJson.accounts
+            : Array.isArray(accountsJson)
+              ? accountsJson
+              : []
+
+          const nextStatusMap: Record<number, AccountStatus> = {}
+          await Promise.all(
+            nextAccounts.map(async (account: ConnectedAccount) => {
+              try {
+                const res = await apiFetch(
+                  `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+                )
+                if (!res.ok) return
+                nextStatusMap[account.id] = await res.json()
+              } catch {
+                // ignore account-specific failures
+              }
+            })
+          )
+
+          if (!mounted) return
+          setAccounts(nextAccounts)
+          setStatusMap(nextStatusMap)
+        }
+
+        if (jobsResult.status === 'fulfilled' && jobsResult.value.ok) {
+          const jobsJson = jobsResult.value.json
+          const nextJobs = Array.isArray(jobsJson.jobs)
+            ? jobsJson.jobs
+            : Array.isArray(jobsJson)
+              ? jobsJson
+              : []
+          setJobs(nextJobs)
+        }
+
         setError('')
       } catch (err) {
         if (!mounted) return
