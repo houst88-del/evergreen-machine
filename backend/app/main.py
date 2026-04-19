@@ -11,6 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
+from app.core.auth_store import get_auth_user_by_email, subscription_snapshot
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
@@ -138,6 +139,28 @@ def posts_in_rotation_for_account(db, account: ConnectedAccount) -> int:
     return active_rotation_count(account.handle)
 
 
+def get_user_subscription_state(user: User) -> dict:
+    auth_user = get_auth_user_by_email(str(user.email or "").strip().lower())
+    return subscription_snapshot(auth_user)
+
+
+def require_autopilot_access(user: User) -> dict:
+    state = get_user_subscription_state(user)
+    if state.get("can_run_autopilot"):
+        return state
+
+    if state.get("subscription_status") == "expired":
+        raise HTTPException(
+            status_code=402,
+            detail="Your 1-day free trial has ended. Subscribe to restart Autopilot.",
+        )
+
+    raise HTTPException(
+        status_code=402,
+        detail="Start your 1-day free trial or subscribe to use Autopilot.",
+    )
+
+
 def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
     account = getattr(autopilot, "connected_account", None) if autopilot else None
     provider = getattr(autopilot, "provider", None) or getattr(account, "provider", None) or "x"
@@ -147,11 +170,14 @@ def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
     visible_next_cycle_at = next_refresh_at or (
         autopilot.next_cycle_at.isoformat() if autopilot and autopilot.next_cycle_at else None
     )
+    subscription = get_user_subscription_state(user)
+    can_run_autopilot = bool(subscription.get("can_run_autopilot", False))
+    running = bool(getattr(autopilot, "enabled", False)) if autopilot else False
 
     return {
         "user_id": user.id,
         "connected_account_id": getattr(autopilot, "connected_account_id", None) if autopilot else None,
-        "running": bool(getattr(autopilot, "enabled", False)) if autopilot else False,
+        "running": running and can_run_autopilot,
         "connected": bool(getattr(autopilot, "connected", False)) if autopilot else False,
         "provider": provider,
         "account_handle": getattr(account, "handle", None) or user.handle or "@demo_creator",
@@ -169,6 +195,11 @@ def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
             metadata.get("fresh_post_protection_enabled", True),
             True,
         ),
+        "subscription_status": subscription.get("subscription_status"),
+        "trial_started_at": subscription.get("trial_started_at"),
+        "trial_ends_at": subscription.get("trial_ends_at"),
+        "can_run_autopilot": can_run_autopilot,
+        "autopilot_blocked": running and not can_run_autopilot,
         "metadata": metadata,
     }
 
@@ -342,6 +373,8 @@ def toggle_status(
 
         autopilot = get_or_create_autopilot_for_account(db, user, account)
         enabled = bool(payload.get("enabled", False))
+        if enabled:
+            require_autopilot_access(user)
         autopilot.enabled = enabled
         autopilot.connected = account.connection_status == "connected"
         autopilot.provider = account.provider

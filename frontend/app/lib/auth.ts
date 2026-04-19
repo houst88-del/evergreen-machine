@@ -24,6 +24,9 @@ export type AuthUser = {
   email: string
   handle: string
   subscription_status?: string
+  trial_started_at?: string | null
+  trial_ends_at?: string | null
+  can_run_autopilot?: boolean
   created_at?: string | null
   welcome_email_sent_at?: string | null
 }

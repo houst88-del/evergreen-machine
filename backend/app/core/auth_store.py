@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, UTC
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+
+TRIAL_HOURS = max(1, int(os.getenv("EVERGREEN_TRIAL_HOURS", "24")))
+PAID_SUBSCRIPTION_STATUSES = {"active", "subscribed", "paid"}
 
 
 def auth_store_dir() -> Path:
@@ -34,11 +39,115 @@ def save_auth_users(users: list[dict]) -> None:
     auth_store_file().write_text(json.dumps(users, indent=2), encoding="utf-8")
 
 
+def _utc_now_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _parse_naive_iso(value: str | None) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def subscription_snapshot(user: dict | None) -> dict:
+    if not user:
+        return {
+            "subscription_status": "inactive",
+            "trial_started_at": None,
+            "trial_ends_at": None,
+            "can_run_autopilot": False,
+        }
+
+    raw_status = str(user.get("subscription_status", "")).strip().lower()
+    trial_started_at = user.get("trial_started_at")
+    trial_ends_at = user.get("trial_ends_at")
+    trial_ends_at_dt = _parse_naive_iso(trial_ends_at)
+
+    if raw_status in PAID_SUBSCRIPTION_STATUSES:
+        return {
+            "subscription_status": "active",
+            "trial_started_at": trial_started_at,
+            "trial_ends_at": trial_ends_at,
+            "can_run_autopilot": True,
+        }
+
+    if trial_ends_at_dt and trial_ends_at_dt > _utc_now_naive():
+        return {
+            "subscription_status": "trialing",
+            "trial_started_at": trial_started_at,
+            "trial_ends_at": trial_ends_at,
+            "can_run_autopilot": True,
+        }
+
+    if trial_ends_at_dt:
+        return {
+            "subscription_status": "expired",
+            "trial_started_at": trial_started_at,
+            "trial_ends_at": trial_ends_at,
+            "can_run_autopilot": False,
+        }
+
+    return {
+        "subscription_status": "inactive",
+        "trial_started_at": trial_started_at,
+        "trial_ends_at": trial_ends_at,
+        "can_run_autopilot": False,
+    }
+
+
+def _with_trial_defaults(user: dict) -> tuple[dict, bool]:
+    updated = dict(user)
+    changed = False
+
+    raw_status = str(updated.get("subscription_status", "")).strip().lower()
+    if raw_status not in PAID_SUBSCRIPTION_STATUSES and not str(updated.get("trial_ends_at", "")).strip():
+        trial_started_at = str(updated.get("trial_started_at", "")).strip()
+        started_dt = _parse_naive_iso(trial_started_at)
+        if not started_dt:
+            started_dt = _utc_now_naive()
+            updated["trial_started_at"] = started_dt.isoformat(timespec="seconds")
+            changed = True
+
+        updated["trial_ends_at"] = (started_dt + timedelta(hours=TRIAL_HOURS)).isoformat(
+            timespec="seconds"
+        )
+        changed = True
+
+        if raw_status in {"", "inactive", "trial", "trialing"}:
+            updated["subscription_status"] = "trialing"
+            changed = True
+
+    return updated, changed
+
+
+def _decorate_auth_user(user: dict) -> tuple[dict, bool]:
+    updated, changed = _with_trial_defaults(user)
+    return {**updated, **subscription_snapshot(updated)}, changed
+
+
 def get_auth_user_by_email(email: str) -> dict | None:
     email = str(email).strip().lower()
-    for user in load_auth_users():
+    users = load_auth_users()
+    changed_any = False
+
+    for idx, user in enumerate(users):
         if str(user.get("email", "")).strip().lower() == email:
-            return user
+            decorated, changed = _decorate_auth_user(user)
+            if changed:
+                users[idx] = {
+                    key: value
+                    for key, value in decorated.items()
+                    if key not in {"can_run_autopilot"}
+                }
+                changed_any = True
+            if changed_any:
+                save_auth_users(users)
+            return decorated
     return None
 
 
@@ -49,19 +158,31 @@ def create_auth_user(email: str, handle: str, password_hash: str) -> dict:
 
     existing = [u for u in users if str(u.get("email", "")).strip().lower() == email]
     if existing:
-        return existing[0]
+        decorated, changed = _decorate_auth_user(existing[0])
+        if changed:
+            for idx, user in enumerate(users):
+                if str(user.get("email", "")).strip().lower() == email:
+                    users[idx] = {
+                        key: value for key, value in decorated.items() if key not in {"can_run_autopilot"}
+                    }
+                    save_auth_users(users)
+                    break
+        return decorated
 
-    now = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    now_dt = _utc_now_naive()
+    now = now_dt.isoformat(timespec="seconds")
     user = {
         "email": email,
         "handle": handle,
         "password_hash": password_hash,
         "created_at": now,
-        "subscription_status": "inactive",
+        "subscription_status": "trialing",
+        "trial_started_at": now,
+        "trial_ends_at": (now_dt + timedelta(hours=TRIAL_HOURS)).isoformat(timespec="seconds"),
     }
     users.append(user)
     save_auth_users(users)
-    return user
+    return {**user, **subscription_snapshot(user)}
 
 
 def update_last_login(email: str) -> None:

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getAppBase, getLastBootstrapError, getToken, logout, me, resetAuthState } from '../lib/auth'
+import { STRIPE_LINKS } from '../lib/billing'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
@@ -437,6 +438,44 @@ export default function DashboardPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
+
+  function currentSubscriptionState() {
+    const user = session?.user || {}
+    const rawStatus = String(user.subscription_status || 'inactive').trim().toLowerCase()
+    const trialEndsAt = typeof user.trial_ends_at === 'string' ? user.trial_ends_at : null
+    const trialEndsAtDate = parseApiDate(trialEndsAt)
+    const trialActive = Boolean(trialEndsAtDate && trialEndsAtDate.getTime() > nowMs)
+
+    if (rawStatus === 'active') {
+      return {
+        subscriptionStatus: 'active',
+        trialEndsAt,
+        canRunAutopilot: true,
+      }
+    }
+
+    if (trialActive) {
+      return {
+        subscriptionStatus: 'trialing',
+        trialEndsAt,
+        canRunAutopilot: true,
+      }
+    }
+
+    if (trialEndsAt) {
+      return {
+        subscriptionStatus: 'expired',
+        trialEndsAt,
+        canRunAutopilot: false,
+      }
+    }
+
+    return {
+      subscriptionStatus: rawStatus || 'inactive',
+      trialEndsAt: null,
+      canRunAutopilot: false,
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -938,6 +977,20 @@ export default function DashboardPage() {
 
   async function handleToggleAutopilot(accountId: number, enabled: boolean) {
     if (!session?.user) return
+    const { canRunAutopilot } = currentSubscriptionState()
+    const upgradeHref =
+      accounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
+      accounts.length > 1
+        ? STRIPE_LINKS.pro
+        : STRIPE_LINKS.standard
+
+    if (enabled && !canRunAutopilot) {
+      setActionMessage('Autopilot is part of your active trial or subscription. Upgrade to turn it back on.')
+      setError('')
+      window.location.assign(upgradeHref)
+      return
+    }
+
     setActionMessage('')
     setError('')
 
@@ -967,13 +1020,26 @@ export default function DashboardPage() {
 
   async function handleGlobalAutopilotAction() {
     if (!session?.user) return
+    const { canRunAutopilot } = currentSubscriptionState()
     const readyAccounts = accounts.filter((account) => statusMap[account.id]?.connected)
     const runningTargets = readyAccounts.filter((account) => statusMap[account.id]?.running)
     const idleTargets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
+    const upgradeHref =
+      accounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
+      accounts.length > 1
+        ? STRIPE_LINKS.pro
+        : STRIPE_LINKS.standard
 
     if (readyAccounts.length === 0) {
       setActionMessage('Connect a lane first.')
       setError('')
+      return
+    }
+
+    if (!canRunAutopilot) {
+      setActionMessage('Your 1-day free trial has ended. Subscribe to restart Autopilot.')
+      setError('')
+      window.location.assign(upgradeHref)
       return
     }
 
@@ -1125,6 +1191,7 @@ export default function DashboardPage() {
   }
 
   const user = session.user
+  const { subscriptionStatus, trialEndsAt, canRunAutopilot } = currentSubscriptionState()
   const recentJobs = jobs.slice(0, 5)
   const accountMap = new Map(accounts.map((account) => [account.id, account]))
   const connectedProviders = new Set(
@@ -1139,8 +1206,15 @@ export default function DashboardPage() {
   const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
   const connectedLaneCount = accounts.filter((account) => statusMap[account.id]?.connected).length
   const runningLaneCount = accounts.filter((account) => statusMap[account.id]?.connected && statusMap[account.id]?.running).length
+  const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
+  const upgradeHref =
+    connectedProviders.has('bluesky') || connectedProviders.size > 1
+      ? STRIPE_LINKS.pro
+      : STRIPE_LINKS.standard
   const globalAutopilotLabel =
-    connectedLaneCount === 0
+    !canRunAutopilot
+      ? '✦ Unlock Autopilot'
+      : connectedLaneCount === 0
       ? '▶ Start Autopilot'
       : runningLaneCount === connectedLaneCount
         ? '❚❚ Pause Autopilot'
@@ -1179,8 +1253,12 @@ export default function DashboardPage() {
     },
     {
       label: 'Start Autopilot',
-      detail: anyAutopilotRunning ? 'At least one lane is live.' : 'Turn on Evergreen after connecting.',
-      kind: anyAutopilotRunning ? 'good' : 'warn',
+      detail: !canRunAutopilot
+        ? 'Subscribe after the free trial to keep Evergreen running.'
+        : anyAutopilotRunning
+          ? 'At least one lane is live.'
+          : 'Turn on Evergreen after connecting.',
+      kind: !canRunAutopilot ? 'warn' : anyAutopilotRunning ? 'good' : 'warn',
     },
     {
       label: 'Monitor Starden',
@@ -1190,6 +1268,24 @@ export default function DashboardPage() {
       kind: accounts.length > 0 ? 'good' : 'neutral',
     },
   ] as const
+  const subscriptionBanner =
+    subscriptionStatus === 'trialing'
+      ? {
+          eyebrow: '1-Day Free Trial',
+          title: 'Autopilot is live while your trial runs.',
+          body: `Your trial gives you one full day to connect a lane, run Evergreen, and explore Starden. Autopilot will pause automatically when the timer ends unless you subscribe.`,
+          meta: trialCountdown ? `Trial ends in ${trialCountdown}.` : 'Trial active now.',
+          tone: 'good' as const,
+        }
+      : subscriptionStatus === 'expired'
+        ? {
+            eyebrow: 'Trial Complete',
+            title: 'Autopilot is paused until you subscribe.',
+            body: 'You can still sign in, connect lanes, and look around, but the refresh engine will stay off until you choose a plan.',
+            meta: 'Choose Standard for one lane or Pro for both X and Bluesky.',
+            tone: 'warn' as const,
+          }
+        : null
 
   return (
     <main className="page mission-page">
@@ -1269,6 +1365,51 @@ export default function DashboardPage() {
         >
           Signed in as {user.email} · {user.handle}
         </div>
+
+        {subscriptionBanner ? (
+          <section
+            className="card"
+            style={{
+              marginTop: 10,
+              borderColor:
+                subscriptionBanner.tone === 'good'
+                  ? 'rgba(156,227,169,0.2)'
+                  : 'rgba(250,204,21,0.24)',
+              background:
+                subscriptionBanner.tone === 'good'
+                  ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(7,17,11,0.82))'
+                  : 'linear-gradient(135deg, rgba(250,204,21,0.08), rgba(7,17,11,0.82))',
+            }}
+          >
+            <div style={missionEyebrowStyle}>{subscriptionBanner.eyebrow}</div>
+            <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              {subscriptionBanner.title}
+            </div>
+            <div style={{ marginTop: 8, color: 'rgba(236,253,245,0.74)', maxWidth: 760, lineHeight: 1.6 }}>
+              {subscriptionBanner.body}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                color:
+                  subscriptionBanner.tone === 'good'
+                    ? 'rgba(187,247,208,0.9)'
+                    : 'rgba(254,240,138,0.9)',
+                fontSize: 13,
+              }}
+            >
+              {subscriptionBanner.meta}
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
+              <a className="btn" href={STRIPE_LINKS.standard}>
+                Start Standard
+              </a>
+              <a className="btn primary" href={STRIPE_LINKS.pro}>
+                Start Pro
+              </a>
+            </div>
+          </section>
+        ) : null}
 
         {onboardingCue ? (
           <section
@@ -1547,7 +1688,11 @@ export default function DashboardPage() {
                         className="btn"
                         onClick={() => handleToggleAutopilot(account.id, !status?.running)}
                       >
-                        {status?.running ? 'Pause Autopilot' : 'Start Autopilot'}
+                        {status?.running
+                          ? 'Pause Autopilot'
+                          : canRunAutopilot
+                            ? 'Start Autopilot'
+                            : 'Unlock Autopilot'}
                       </button>
 
                       <button
@@ -1652,10 +1797,12 @@ export default function DashboardPage() {
                             className="btn"
                             style={{
                               cursor: 'default',
-                            ...statusPillStyle(status?.running ? 'good' : 'neutral'),
+                            ...statusPillStyle(
+                              status?.running ? 'good' : canRunAutopilot ? 'neutral' : 'warn'
+                            ),
                           }}
                         >
-                          Autopilot {status?.running ? 'Running' : 'Idle'}
+                          Autopilot {status?.running ? 'Running' : canRunAutopilot ? 'Idle' : 'Locked'}
                         </span>
 
                           <span

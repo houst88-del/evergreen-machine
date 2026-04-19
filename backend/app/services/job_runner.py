@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
+from app.core.auth_store import get_auth_user_by_email, subscription_snapshot
 from app.core.db import SessionLocal
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.job_queue import (
@@ -784,6 +785,16 @@ def enqueue_due_autopilot_jobs() -> int:
         autopilots = db.query(AutopilotStatus).filter(AutopilotStatus.enabled == True).all()
         now = _utc_now_naive()
         for autopilot in autopilots:
+            user = db.query(User).filter(User.id == autopilot.user_id).first()
+            subscription = subscription_snapshot(
+                get_auth_user_by_email(str(getattr(user, "email", "")).strip().lower())
+            )
+            if not subscription.get("can_run_autopilot", False):
+                autopilot.enabled = False
+                autopilot.next_cycle_at = None
+                db.flush()
+                continue
+
             account = db.query(ConnectedAccount).filter(ConnectedAccount.id == autopilot.connected_account_id).first()
             scheduled_at, repaired = _ensure_refresh_schedule_for_account(db, autopilot, account)
             if repaired:

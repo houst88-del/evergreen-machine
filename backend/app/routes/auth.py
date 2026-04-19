@@ -295,6 +295,9 @@ def auth_response(user_data: dict, auth_user: dict, token: str | None = None) ->
             "email": user_data["email"],
             "handle": user_data["handle"],
             "subscription_status": auth_user.get("subscription_status", "inactive"),
+            "trial_started_at": auth_user.get("trial_started_at"),
+            "trial_ends_at": auth_user.get("trial_ends_at"),
+            "can_run_autopilot": bool(auth_user.get("can_run_autopilot", False)),
         }
     }
     if token is not None:
