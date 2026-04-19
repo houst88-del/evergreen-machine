@@ -437,6 +437,11 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   })
 }
 
+function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountStatus | null) {
+  if (typeof status?.connected === 'boolean') return status.connected
+  return String(account?.connection_status || '').trim().toLowerCase() === 'connected'
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -885,7 +890,9 @@ export default function DashboardPage() {
       0
     )
 
-    const connectedCount = accountStatuses.filter((item) => item.connected).length
+    const connectedCount = accounts.filter((account) =>
+      isConnectedAccount(account, statusMap[account.id])
+    ).length
 
     const nextCycleCandidates = accountStatuses
       .map((item) => item.next_cycle_at)
@@ -910,7 +917,7 @@ export default function DashboardPage() {
       connectedCount,
       nextCycle,
     }
-  }, [system, statusMap, accounts.length])
+  }, [accounts, system, statusMap])
 
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']
@@ -1215,7 +1222,9 @@ export default function DashboardPage() {
   async function handleGlobalAutopilotAction() {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
-    const readyAccounts = accounts.filter((account) => statusMap[account.id]?.connected)
+    const readyAccounts = accounts.filter((account) =>
+      isConnectedAccount(account, statusMap[account.id])
+    )
     const runningTargets = readyAccounts.filter((account) => statusMap[account.id]?.running)
     const idleTargets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
     const upgradeHref =
@@ -1389,7 +1398,10 @@ export default function DashboardPage() {
   const recentJobs = jobs.slice(0, 5)
   const accountMap = new Map(accounts.map((account) => [account.id, account]))
   const connectedProviders = new Set(
-    accounts.map((account) => String(account.provider || '').trim().toLowerCase()).filter(Boolean)
+    accounts
+      .filter((account) => isConnectedAccount(account, statusMap[account.id]))
+      .map((account) => String(account.provider || '').trim().toLowerCase())
+      .filter(Boolean)
   )
   const xAccount = accounts.find(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
@@ -1398,8 +1410,12 @@ export default function DashboardPage() {
     (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
   )
   const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
-  const connectedLaneCount = accounts.filter((account) => statusMap[account.id]?.connected).length
-  const runningLaneCount = accounts.filter((account) => statusMap[account.id]?.connected && statusMap[account.id]?.running).length
+  const connectedLaneCount = accounts.filter((account) =>
+    isConnectedAccount(account, statusMap[account.id])
+  ).length
+  const runningLaneCount = accounts.filter(
+    (account) => isConnectedAccount(account, statusMap[account.id]) && statusMap[account.id]?.running
+  ).length
   const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
   const upgradeHref =
     connectedProviders.has('bluesky') || connectedProviders.size > 1
