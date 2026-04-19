@@ -8,8 +8,8 @@ Evergreen expects two production processes:
 The repo-level [Procfile](/Users/houstonfry/Downloads/evergreen_scaffold/Procfile) already defines both:
 
 ```procfile
-web: bash -lc 'python3 -m pip install -r backend/requirements.txt && PYTHONPATH=backend python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT'
-worker: bash -lc 'python3 -m pip install -r backend/requirements.txt && PYTHONPATH=backend python3 -m app.workers.autopilot_worker'
+web: bash -lc 'python -m pip install -r backend/requirements.txt && PYTHONPATH=backend python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT'
+worker: bash -lc 'python -m pip install -r backend/requirements.txt && PYTHONPATH=backend python -m app.workers.autopilot_worker'
 ```
 
 ## Railway checklist
@@ -21,7 +21,7 @@ Use the same repo for both services.
 Its start command should remain:
 
 ```bash
-bash -lc 'python3 -m pip install -r backend/requirements.txt && PYTHONPATH=backend python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT'
+bash -lc 'python -m pip install -r backend/requirements.txt && PYTHONPATH=backend python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT'
 ```
 
 ### 2. Add a second Railway service for the worker
@@ -29,7 +29,7 @@ bash -lc 'python3 -m pip install -r backend/requirements.txt && PYTHONPATH=backe
 Use this exact start command:
 
 ```bash
-bash -lc 'python3 -m pip install -r backend/requirements.txt && PYTHONPATH=backend python3 -m app.workers.autopilot_worker'
+bash -lc 'python -m pip install -r backend/requirements.txt && PYTHONPATH=backend python -m app.workers.autopilot_worker'
 ```
 
 ### 3. Copy backend env vars to the worker service
