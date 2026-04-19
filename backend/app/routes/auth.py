@@ -12,6 +12,7 @@ from app.core.auth_store import create_auth_user, get_auth_user_by_email, update
 from app.core.db import SessionLocal
 from app.core.security import create_token, get_current_auth_user, hash_password, verify_password
 from app.core.subscription_state import ensure_user_subscription_state
+from app.core.subscription_state import lookup_stripe_subscription_by_email, update_user_subscription
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.pool_service import active_rotation_count
 from app.services.welcome_email import maybe_send_welcome_email
@@ -176,9 +177,21 @@ def serialize_user(user: User) -> dict:
         "stripe_customer_id": str(user.stripe_customer_id or "").strip() or None,
         "stripe_subscription_id": str(user.stripe_subscription_id or "").strip() or None,
         "stripe_price_id": str(user.stripe_price_id or "").strip() or None,
+        "stripe_billing_email": str(user.stripe_billing_email or "").strip() or None,
         "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
         "subscription_updated_at": user.subscription_updated_at.isoformat() if user.subscription_updated_at else None,
     }
+
+
+def subscription_plan_label(price_id: str | None) -> str | None:
+    raw = str(price_id or "").strip().lower()
+    if not raw:
+        return None
+    if "pro" in raw:
+        return "Pro"
+    if "standard" in raw:
+        return "Standard"
+    return "Paid"
 
 
 def migrate_user_records(db, source: User, target: User) -> None:
@@ -311,6 +324,9 @@ def auth_response(user_data: dict, token: str | None = None) -> dict:
             "trial_started_at": user_data.get("trial_started_at"),
             "trial_ends_at": user_data.get("trial_ends_at"),
             "can_run_autopilot": bool(user_data.get("can_run_autopilot", False)),
+            "stripe_price_id": user_data.get("stripe_price_id"),
+            "stripe_billing_email": user_data.get("stripe_billing_email"),
+            "current_period_end": user_data.get("current_period_end"),
         }
     }
     if token is not None:
@@ -403,6 +419,84 @@ def me(auth_user: dict = Depends(get_current_auth_user)):
         handle=effective_handle,
     )
     return auth_response(user_data)
+
+
+@router.get("/subscription")
+def get_subscription(auth_user: dict = Depends(get_current_auth_user)):
+    email = str(auth_user.get("email", "")).strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="user not found")
+        state = ensure_user_subscription_state(db, user, stripe_reconcile=True)
+        db.refresh(user)
+        return {
+            "ok": True,
+            "subscription": {
+                "status": state.get("subscription_status"),
+                "trial_started_at": state.get("trial_started_at"),
+                "trial_ends_at": state.get("trial_ends_at"),
+                "can_run_autopilot": state.get("can_run_autopilot"),
+                "plan": subscription_plan_label(user.stripe_price_id),
+                "price_id": str(user.stripe_price_id or "").strip() or None,
+                "billing_email": str(user.stripe_billing_email or "").strip() or None,
+                "stripe_customer_id": str(user.stripe_customer_id or "").strip() or None,
+                "stripe_subscription_id": str(user.stripe_subscription_id or "").strip() or None,
+                "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+@router.post("/subscription/claim")
+def claim_subscription(payload: dict, auth_user: dict = Depends(get_current_auth_user)):
+    billing_email = str(payload.get("billing_email", "")).strip().lower()
+    if not billing_email:
+        raise HTTPException(status_code=400, detail="billing_email is required")
+
+    email = str(auth_user.get("email", "")).strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        stripe_match = lookup_stripe_subscription_by_email(billing_email)
+        if not stripe_match:
+            raise HTTPException(status_code=404, detail="No live Stripe subscription found for that billing email")
+
+        update_user_subscription(
+            user,
+            status=stripe_match.get("status") or "inactive",
+            stripe_customer_id=stripe_match.get("stripe_customer_id"),
+            stripe_subscription_id=stripe_match.get("stripe_subscription_id"),
+            stripe_price_id=stripe_match.get("stripe_price_id"),
+            stripe_billing_email=billing_email,
+            current_period_end=stripe_match.get("current_period_end"),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        state = ensure_user_subscription_state(db, user, stripe_reconcile=False)
+        return {
+            "ok": True,
+            "subscription": {
+                "status": state.get("subscription_status"),
+                "trial_started_at": state.get("trial_started_at"),
+                "trial_ends_at": state.get("trial_ends_at"),
+                "can_run_autopilot": state.get("can_run_autopilot"),
+                "plan": subscription_plan_label(user.stripe_price_id),
+                "price_id": str(user.stripe_price_id or "").strip() or None,
+                "billing_email": str(user.stripe_billing_email or "").strip() or None,
+                "stripe_customer_id": str(user.stripe_customer_id or "").strip() or None,
+                "stripe_subscription_id": str(user.stripe_subscription_id or "").strip() or None,
+                "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
+            },
+        }
+    finally:
+        db.close()
 
 
 @router.post("/bootstrap-clerk")

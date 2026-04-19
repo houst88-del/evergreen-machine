@@ -20,6 +20,7 @@ class User(Base):
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stripe_price_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     subscription_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

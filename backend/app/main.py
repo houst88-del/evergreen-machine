@@ -83,6 +83,8 @@ def ensure_runtime_schema() -> None:
         statements.append(f"ALTER TABLE users ADD COLUMN stripe_subscription_id {user_string_type}")
     if "stripe_price_id" not in user_columns:
         statements.append(f"ALTER TABLE users ADD COLUMN stripe_price_id {user_string_type}")
+    if "stripe_billing_email" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN stripe_billing_email {user_string_type}")
     if "current_period_end" not in user_columns:
         statements.append(f"ALTER TABLE users ADD COLUMN current_period_end {user_datetime_type}")
     if "subscription_updated_at" not in user_columns:
@@ -227,6 +229,7 @@ def _sync_subscription_from_stripe_payload(
     stripe_customer_id: str | None = None,
     stripe_subscription_id: str | None = None,
     stripe_price_id: str | None = None,
+    stripe_billing_email: str | None = None,
     current_period_end: str | None = None,
 ) -> dict | None:
     if not email:
@@ -242,6 +245,7 @@ def _sync_subscription_from_stripe_payload(
                 stripe_customer_id=stripe_customer_id,
                 stripe_subscription_id=stripe_subscription_id,
                 stripe_price_id=stripe_price_id,
+                stripe_billing_email=stripe_billing_email,
                 current_period_end=current_period_end,
             )
             db.add(user)
@@ -253,6 +257,7 @@ def _sync_subscription_from_stripe_payload(
             stripe_customer_id=stripe_customer_id,
             stripe_subscription_id=stripe_subscription_id,
             stripe_price_id=stripe_price_id,
+            stripe_billing_email=stripe_billing_email,
             current_period_end=current_period_end,
         )
     finally:
@@ -427,6 +432,7 @@ async def stripe_webhook(request: Request):
             stripe_customer_id=str(obj.get("customer") or "").strip() or None,
             stripe_subscription_id=subscription_id,
             stripe_price_id=price_id,
+            stripe_billing_email=email,
         )
         return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
 
@@ -458,6 +464,7 @@ async def stripe_webhook(request: Request):
             stripe_customer_id=str(obj.get("customer") or "").strip() or None,
             stripe_subscription_id=str(obj.get("id") or "").strip() or None,
             stripe_price_id=price_id,
+            stripe_billing_email=email,
             current_period_end=_iso_from_unix_timestamp(obj.get("current_period_end")),
         )
         return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
@@ -477,6 +484,7 @@ async def stripe_webhook(request: Request):
             status="inactive",
             stripe_customer_id=str(obj.get("customer") or "").strip() or None,
             stripe_subscription_id=str(obj.get("id") or "").strip() or None,
+            stripe_billing_email=email,
             current_period_end=None,
         )
         return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
@@ -488,6 +496,7 @@ async def stripe_webhook(request: Request):
             status="active",
             stripe_customer_id=str(obj.get("customer") or "").strip() or None,
             stripe_subscription_id=str(obj.get("subscription") or "").strip() or None,
+            stripe_billing_email=email,
         )
         return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
 

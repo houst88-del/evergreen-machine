@@ -78,6 +78,19 @@ type JobItem = {
   connected_account_id?: number
 }
 
+type SubscriptionInfo = {
+  status?: string | null
+  trial_started_at?: string | null
+  trial_ends_at?: string | null
+  can_run_autopilot?: boolean
+  plan?: string | null
+  price_id?: string | null
+  billing_email?: string | null
+  stripe_customer_id?: string | null
+  stripe_subscription_id?: string | null
+  current_period_end?: string | null
+}
+
 type JobPayload = {
   provider?: string
   handle?: string
@@ -438,6 +451,8 @@ export default function DashboardPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
+  const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
+  const [billingEmailInput, setBillingEmailInput] = useState('')
 
   async function refreshSessionUser() {
     try {
@@ -448,6 +463,21 @@ export default function DashboardPage() {
       return latest
     } catch {
       return null
+    }
+  }
+
+  async function refreshSubscriptionInfo() {
+    try {
+      const res = await apiFetch('/api/auth/subscription')
+      const json = await res.json()
+      if (res.ok && json?.subscription) {
+        setSubscriptionInfo(json.subscription)
+        if (!billingEmailInput && json.subscription.billing_email) {
+          setBillingEmailInput(String(json.subscription.billing_email))
+        }
+      }
+    } catch {
+      // ignore subscription panel refresh failures during polling
     }
   }
 
@@ -507,6 +537,10 @@ export default function DashboardPage() {
 
         if (!mounted) return
         setSession(data)
+        if (data?.user?.email) {
+          setBillingEmailInput((current) => current || data.user.email)
+          await refreshSubscriptionInfo()
+        }
         if (!data?.user && clerkEnabled) {
           setError(
             getLastBootstrapError() ||
@@ -566,6 +600,7 @@ export default function DashboardPage() {
 
     try {
       const latestSession = await refreshSessionUser()
+      await refreshSubscriptionInfo()
       const activeSession = latestSession?.user ? latestSession : session
       const activeUser = activeSession?.user
       if (!activeUser) return
@@ -633,6 +668,7 @@ export default function DashboardPage() {
     async function loadMissionControl() {
       try {
         const latestSession = await refreshSessionUser()
+        await refreshSubscriptionInfo()
         const activeSession = latestSession?.user ? latestSession : session
         const activeUser = activeSession?.user
         if (!activeUser) return
@@ -1331,6 +1367,7 @@ export default function DashboardPage() {
             tone: 'warn' as const,
           }
         : null
+  const activePlanLabel = subscriptionInfo?.plan || (subscriptionStatus === 'active' ? 'Paid' : null)
 
   return (
     <main className="page mission-page">
@@ -1415,6 +1452,111 @@ export default function DashboardPage() {
         >
           Signed in as {user.email} · {user.handle}
         </div>
+
+        {subscriptionInfo ? (
+          <section
+            className="card"
+            style={{
+              marginTop: 10,
+              borderColor:
+                subscriptionInfo.status === 'active'
+                  ? 'rgba(156,227,169,0.2)'
+                  : 'rgba(255,255,255,0.08)',
+              background:
+                subscriptionInfo.status === 'active'
+                  ? 'linear-gradient(135deg, rgba(16,185,129,0.07), rgba(7,17,11,0.82))'
+                  : 'rgba(7,17,11,0.82)',
+            }}
+          >
+            <div style={missionEyebrowStyle}>Subscription</div>
+            <div
+              style={{
+                marginTop: 8,
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              {activePlanLabel ? <span style={statusPillStyle('good')}>{activePlanLabel}</span> : null}
+              <span
+                style={statusPillStyle(
+                  subscriptionInfo.status === 'active'
+                    ? 'good'
+                    : subscriptionInfo.status === 'trialing'
+                      ? 'warn'
+                      : 'neutral'
+                )}
+              >
+                {String(subscriptionInfo.status || 'inactive').replace(/^./, (m) => m.toUpperCase())}
+              </span>
+              {subscriptionInfo.billing_email ? (
+                <span style={statusPillStyle('neutral')}>Billing: {subscriptionInfo.billing_email}</span>
+              ) : null}
+              {subscriptionInfo.current_period_end ? (
+                <span style={statusPillStyle('neutral')}>
+                  Renews {new Date(subscriptionInfo.current_period_end).toLocaleDateString()}
+                </span>
+              ) : null}
+            </div>
+
+            {subscriptionInfo.status !== 'active' ? (
+              <>
+                <div style={{ marginTop: 12, color: 'rgba(236,253,245,0.72)', maxWidth: 780, lineHeight: 1.6 }}>
+                  If you paid with a different billing email through Link or Stripe, you can claim that subscription here and attach it to this Evergreen account.
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
+                  <input
+                    value={billingEmailInput}
+                    onChange={(event) => setBillingEmailInput(event.target.value)}
+                    placeholder="Billing email used at checkout"
+                    style={{
+                      minWidth: 280,
+                      flex: '1 1 320px',
+                      background: 'rgba(12,26,19,0.95)',
+                      color: '#ecfdf5',
+                      border: '1px solid rgba(110,231,183,0.18)',
+                      borderRadius: 14,
+                      padding: '12px 14px',
+                    }}
+                  />
+                  <button
+                    className="btn"
+                    disabled={busyAction === 'claim-subscription'}
+                    onClick={async () => {
+                      setBusyAction('claim-subscription')
+                      setError('')
+                      setActionMessage('')
+                      try {
+                        const res = await apiFetch('/api/auth/subscription/claim', {
+                          method: 'POST',
+                          body: JSON.stringify({ billing_email: billingEmailInput }),
+                        })
+                        const json = await res.json()
+                        if (!res.ok) {
+                          throw new Error(json?.detail || 'Could not claim subscription')
+                        }
+                        await refreshSessionUser()
+                        await refreshSubscriptionInfo()
+                        setActionMessage('Subscription linked to this account.')
+                      } catch (claimError) {
+                        setError(
+                          claimError instanceof Error
+                            ? claimError.message
+                            : 'Could not claim subscription'
+                        )
+                      } finally {
+                        setBusyAction(null)
+                      }
+                    }}
+                  >
+                    {busyAction === 'claim-subscription' ? 'Linking…' : 'Claim paid subscription'}
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </section>
+        ) : null}
 
         {subscriptionBanner ? (
           <section

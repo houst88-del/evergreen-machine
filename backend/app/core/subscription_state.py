@@ -158,6 +158,7 @@ def update_user_subscription(
     stripe_customer_id: str | None = None,
     stripe_subscription_id: str | None = None,
     stripe_price_id: str | None = None,
+    stripe_billing_email: str | None = None,
     current_period_end: datetime | str | None = None,
 ) -> None:
     normalized_status = str(status or "").strip().lower() or "inactive"
@@ -168,6 +169,8 @@ def update_user_subscription(
         user.stripe_subscription_id = stripe_subscription_id
     if stripe_price_id:
         user.stripe_price_id = stripe_price_id
+    if stripe_billing_email:
+        user.stripe_billing_email = stripe_billing_email
     if current_period_end is not None:
         user.current_period_end = parse_datetime(current_period_end)
     user.subscription_updated_at = utc_now_naive()
@@ -246,11 +249,81 @@ def _maybe_reconcile_from_stripe(user: User) -> bool:
         stripe_customer_id=latest_customer_id,
         stripe_subscription_id=str(getattr(subscription, "id", "") or subscription.get("id") or "").strip() or None,
         stripe_price_id=price_id,
+        stripe_billing_email=email,
         current_period_end=iso_from_unix_timestamp(
             getattr(subscription, "current_period_end", None) or subscription.get("current_period_end")
         ),
     )
     return True
+
+
+def lookup_stripe_subscription_by_email(email: str) -> dict | None:
+    if not stripe.api_key:
+        return None
+
+    normalized = str(email or "").strip().lower()
+    if not normalized:
+        return None
+
+    try:
+        customers = list((stripe.Customer.list(email=normalized, limit=10) or {}).get("data") or [])
+    except Exception:
+        return None
+
+    active_subscription: dict | None = None
+    latest_subscription: dict | None = None
+    latest_customer_id: str | None = None
+
+    for customer in customers:
+        customer_id = str(getattr(customer, "id", "") or customer.get("id") or "").strip()
+        if not customer_id:
+            continue
+        try:
+            subscriptions = list(
+                (stripe.Subscription.list(customer=customer_id, status="all", limit=10) or {}).get("data") or []
+            )
+        except Exception:
+            continue
+        for subscription in subscriptions:
+            created = int(getattr(subscription, "created", 0) or subscription.get("created") or 0)
+            if latest_subscription is None or created > int(
+                getattr(latest_subscription, "created", 0) or latest_subscription.get("created") or 0
+            ):
+                latest_subscription = subscription
+                latest_customer_id = customer_id
+            sub_status = str(getattr(subscription, "status", "") or subscription.get("status") or "").strip().lower()
+            if sub_status in STRIPE_ACTIVE_STATUSES:
+                if active_subscription is None or created > int(
+                    getattr(active_subscription, "created", 0) or active_subscription.get("created") or 0
+                ):
+                    active_subscription = subscription
+                    latest_customer_id = customer_id
+
+    subscription = active_subscription or latest_subscription
+    if subscription is None:
+        return None
+
+    price_id = None
+    items = getattr(subscription, "items", None) or subscription.get("items") or {}
+    item_rows = getattr(items, "data", None) or items.get("data") or []
+    if isinstance(item_rows, list) and item_rows:
+        first = item_rows[0]
+        price = getattr(first, "price", None) or first.get("price") or {}
+        price_id = str(getattr(price, "id", "") or price.get("id") or "").strip() or None
+
+    sub_status = str(getattr(subscription, "status", "") or subscription.get("status") or "").strip().lower()
+    current_period_end = iso_from_unix_timestamp(
+        getattr(subscription, "current_period_end", None) or subscription.get("current_period_end")
+    )
+    return {
+        "email": normalized,
+        "stripe_customer_id": latest_customer_id,
+        "stripe_subscription_id": str(getattr(subscription, "id", "") or subscription.get("id") or "").strip()
+        or None,
+        "stripe_price_id": price_id,
+        "current_period_end": current_period_end.isoformat() if current_period_end else None,
+        "status": "active" if sub_status in STRIPE_ACTIVE_STATUSES else "inactive",
+    }
 
 
 def ensure_user_subscription_state(db, user: User, *, stripe_reconcile: bool = True) -> dict:

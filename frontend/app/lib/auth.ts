@@ -27,6 +27,9 @@ export type AuthUser = {
   trial_started_at?: string | null
   trial_ends_at?: string | null
   can_run_autopilot?: boolean
+  stripe_price_id?: string | null
+  stripe_billing_email?: string | null
+  current_period_end?: string | null
   created_at?: string | null
   welcome_email_sent_at?: string | null
 }
