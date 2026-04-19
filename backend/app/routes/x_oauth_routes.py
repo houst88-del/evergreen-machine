@@ -28,10 +28,21 @@ def oauth_config():
 
 
 def dashboard_redirect_url() -> str:
-    return os.getenv(
-        "EVERGREEN_DASHBOARD_URL",
-        "http://127.0.0.1:3000/dashboard",
-    ).strip()
+    app_base = (
+        os.getenv("EVERGREEN_APP_URL", "").strip()
+        or os.getenv("EVERGREEN_DASHBOARD_URL", "").strip()
+        or "https://www.evergreenmachine.ai"
+    ).rstrip("/")
+
+    # Preview deployment hosts can trigger Vercel auth instead of returning
+    # the user to the live product after OAuth completes.
+    if "vercel.app" in app_base or "vercel.com" in app_base:
+        app_base = "https://www.evergreenmachine.ai"
+
+    if app_base.endswith("/dashboard"):
+        return app_base
+
+    return f"{app_base}/dashboard"
 
 
 def get_or_create_account_scoped_autopilot(
