@@ -752,6 +752,12 @@ export default function DashboardPage() {
         const status = statusMap[account.id]
         const meta = asRecord(status?.metadata)
         const latestJob = jobs.find((job) => job.connected_account_id === account.id)
+        const activeRefreshJob = jobs.find((job) => {
+          if (job.connected_account_id !== account.id) return false
+          const jobType = String(job.job_type || job.type || '').trim().toLowerCase()
+          const jobState = String(job.status || job.state || '').trim().toLowerCase()
+          return jobType === 'refresh' && (jobState === 'queued' || jobState === 'running')
+        })
         const payload = latestJob ? parseJobPayload(latestJob) : null
         const rotationHealth = payload?.rotation_health || {}
 
@@ -804,6 +810,7 @@ export default function DashboardPage() {
           account,
           status,
           latestJob,
+          activeRefreshJob,
           latestHeadline: latestJob ? headlineForJob(latestJob, payload || {}) : 'Deployment lane idle',
           latestState: latestJob ? String(latestJob.state || latestJob.status || 'unknown') : 'idle',
           latestPost: compactText(latestPost),
@@ -813,7 +820,12 @@ export default function DashboardPage() {
           activeSignal: activeSignal || 'No live pressure detected',
           pendingPair: pendingPairId ? compactText(pendingPairId, 44) : 'No queued pair',
           momentumRemaining: momentumRemaining === '—' ? '0' : momentumRemaining,
-          nextRefreshCountdown: countdownUntil(status?.next_cycle_at, nowMs),
+          nextRefreshCountdown:
+            String(activeRefreshJob?.status || activeRefreshJob?.state || '').trim().toLowerCase() === 'running'
+              ? 'Running now'
+              : String(activeRefreshJob?.status || activeRefreshJob?.state || '').trim().toLowerCase() === 'queued'
+                ? 'Queued now'
+                : countdownUntil(status?.next_cycle_at, nowMs),
           nextCycleText: fmtWhen(status?.next_cycle_at),
           lastActionText: fmtWhen(status?.last_action_at),
         }
@@ -1616,8 +1628,19 @@ export default function DashboardPage() {
                   status?.pacing_label ||
                   'Moderate'
                 const nextCycleText = cycleLabel(status?.next_cycle_at)
-                const nextRefreshCountdown = countdownUntil(status?.next_cycle_at, nowMs)
-                const isOverdue = nextCycleText === 'Overdue'
+                const activeRefreshState = String(
+                  lane.activeRefreshJob?.status || lane.activeRefreshJob?.state || ''
+                )
+                  .trim()
+                  .toLowerCase()
+                const refreshBusy =
+                  activeRefreshState === 'queued' || activeRefreshState === 'running'
+                const nextRefreshCountdown = refreshBusy
+                  ? activeRefreshState === 'running'
+                    ? 'Running now'
+                    : 'Queued now'
+                  : countdownUntil(status?.next_cycle_at, nowMs)
+                const isOverdue = nextCycleText === 'Overdue' && !refreshBusy
                 const freshPostProtectionEnabled =
                   status?.fresh_post_protection_enabled !== false
                 const breathingRoomActive = Boolean(status?.breathing_room_active)
@@ -1703,9 +1726,15 @@ export default function DashboardPage() {
                       <button
                         className="btn"
                         onClick={() => handleRefreshNow(account.id, account.handle)}
-                        disabled={busyAction === `refresh-${account.id}`}
+                        disabled={busyAction === `refresh-${account.id}` || refreshBusy}
                       >
-                        {busyAction === `refresh-${account.id}` ? 'Queueing Refresh...' : '⚡ Refresh Now'}
+                        {busyAction === `refresh-${account.id}`
+                          ? 'Queueing Refresh...'
+                          : activeRefreshState === 'running'
+                            ? 'Refresh Running...'
+                            : activeRefreshState === 'queued'
+                              ? 'Refresh Queued...'
+                              : '⚡ Refresh Now'}
                       </button>
 
                     </div>

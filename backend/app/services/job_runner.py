@@ -12,6 +12,7 @@ from app.services.job_queue import (
     claim_next_jobs,
     complete_job,
     fail_job,
+    find_active_job,
     load_jobs,
     enqueue_job,
 )
@@ -800,6 +801,8 @@ def enqueue_due_autopilot_jobs() -> int:
             if repaired:
                 continue
             if scheduled_at and scheduled_at > now:
+                continue
+            if find_active_job("refresh", connected_account_id=int(autopilot.connected_account_id)):
                 continue
             enqueue_job("refresh", connected_account_id=int(autopilot.connected_account_id), payload={})
             created += 1

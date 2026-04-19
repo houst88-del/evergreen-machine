@@ -76,6 +76,21 @@ def enqueue_job(
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
+        existing = (
+            db.query(JobQueueItem)
+            .filter(
+                JobQueueItem.connected_account_id == int(connected_account_id),
+                JobQueueItem.job_type == str(job_type).strip(),
+                JobQueueItem.status.in_(("queued", "running")),
+            )
+            .order_by(JobQueueItem.created_at.asc(), JobQueueItem.id.asc())
+            .first()
+        )
+        if existing:
+            serialized = _serialize_job(existing)
+            serialized["deduped"] = True
+            return serialized
+
         job = JobQueueItem(
             id=_make_job_id(job_type, connected_account_id),
             connected_account_id=int(connected_account_id),
@@ -261,6 +276,26 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         if not job:
             return None
         return _serialize_job(job)
+    finally:
+        db.close()
+
+
+def find_active_job(job_type: str, *, connected_account_id: int) -> dict[str, Any] | None:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(JobQueueItem)
+            .filter(
+                JobQueueItem.connected_account_id == int(connected_account_id),
+                JobQueueItem.job_type == str(job_type).strip(),
+                JobQueueItem.status.in_(("queued", "running")),
+            )
+            .order_by(JobQueueItem.created_at.asc(), JobQueueItem.id.asc())
+            .first()
+        )
+        if not row:
+            return None
+        return _serialize_job(row)
     finally:
         db.close()
 
