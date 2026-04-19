@@ -399,13 +399,34 @@ def maybe_enable_connected_lane(db, user: User, autopilot: AutopilotStatus) -> A
     return autopilot
 
 
+def _account_sort_key(account: ConnectedAccount) -> tuple[int, int]:
+    connected = str(getattr(account, "connection_status", "") or "").strip().lower() == "connected"
+    return (0 if connected else 1, -int(getattr(account, "id", 0) or 0))
+
+
+def _preferred_accounts(accounts: list[ConnectedAccount]) -> list[ConnectedAccount]:
+    ranked = sorted(accounts, key=_account_sort_key)
+    deduped: list[ConnectedAccount] = []
+    seen_providers: set[str] = set()
+
+    for account in ranked:
+        provider = str(getattr(account, "provider", "") or "").strip().lower()
+        if provider in seen_providers:
+            continue
+        seen_providers.add(provider)
+        deduped.append(account)
+
+    return deduped
+
+
 def get_default_connected_account(db, user: User) -> ConnectedAccount | None:
-    return (
+    accounts = (
         db.query(ConnectedAccount)
         .filter(ConnectedAccount.user_id == user.id)
-        .order_by(ConnectedAccount.id.asc())
-        .first()
+        .all()
     )
+    preferred = _preferred_accounts(accounts)
+    return preferred[0] if preferred else None
 
 
 @app.get("/api/health")
@@ -584,9 +605,9 @@ def list_connected_accounts(
         accounts = (
             db.query(ConnectedAccount)
             .filter(ConnectedAccount.user_id == user.id)
-            .order_by(ConnectedAccount.provider.asc(), ConnectedAccount.id.asc())
             .all()
         )
+        accounts = sorted(_preferred_accounts(accounts), key=lambda account: str(account.provider or "").lower())
         return {
             "ok": True,
             "user_id": user.id,

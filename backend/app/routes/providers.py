@@ -71,6 +71,11 @@ def serialize_status(user: User, autopilot: AutopilotStatus) -> dict:
     }
 
 
+def _account_sort_key(account: ConnectedAccount) -> tuple[int, int]:
+    connected = str(getattr(account, "connection_status", "") or "").strip().lower() == "connected"
+    return (0 if connected else 1, -int(getattr(account, "id", 0) or 0))
+
+
 @router.post("/connect")
 def connect_provider(
     payload: dict,
@@ -156,7 +161,8 @@ def disconnect_provider(
         if connected_account_id is not None:
             query = query.filter(ConnectedAccount.id == connected_account_id)
 
-        account = query.order_by(ConnectedAccount.id.asc()).first()
+        accounts = query.all()
+        account = sorted(accounts, key=_account_sort_key)[0] if accounts else None
         if not account:
             raise HTTPException(status_code=404, detail="No connected account found")
 
