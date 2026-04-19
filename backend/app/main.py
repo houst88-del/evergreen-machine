@@ -17,7 +17,12 @@ from app.core.auth_store import (
 )
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
-from app.core.subscription_state import ensure_user_subscription_state, update_user_subscription
+from app.core.subscription_state import (
+    STRIPE_ACTIVE_STATUSES,
+    ensure_user_subscription_state,
+    iso_from_unix_timestamp,
+    update_user_subscription,
+)
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.routes.auth import router as auth_router
 from app.routes.bluesky_routes import router as bluesky_router
@@ -937,6 +942,133 @@ def send_dev_welcome_email(payload: dict):
             "detail": str(exc),
             "email": email or None,
             "user_id": int(user_id) if user_id is not None else None,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/dev/stripe-lookup")
+def dev_stripe_lookup(email: str):
+    normalized_email = str(email or "").strip().lower()
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    customers_out = []
+    subscriptions_out = []
+
+    if stripe.api_key:
+        try:
+            customers = list((stripe.Customer.list(email=normalized_email, limit=10) or {}).get("data") or [])
+        except Exception as exc:
+            return {
+                "ok": False,
+                "configured": True,
+                "mode": "live" if str(stripe.api_key).startswith("sk_live_") else "test",
+                "detail": f"Stripe customer lookup failed: {exc}",
+            }
+
+        for customer in customers:
+            customer_id = str(getattr(customer, "id", "") or customer.get("id") or "").strip()
+            customer_email = str(getattr(customer, "email", "") or customer.get("email") or "").strip() or None
+            if not customer_id:
+                continue
+
+            customers_out.append(
+                {
+                    "id": customer_id,
+                    "email": customer_email,
+                }
+            )
+
+            try:
+                subscriptions = list(
+                    (stripe.Subscription.list(customer=customer_id, status="all", limit=10) or {}).get("data") or []
+                )
+            except Exception:
+                subscriptions = []
+
+            for subscription in subscriptions:
+                items = getattr(subscription, "items", None) or subscription.get("items") or {}
+                item_rows = getattr(items, "data", None) or items.get("data") or []
+                price_id = None
+                if isinstance(item_rows, list) and item_rows:
+                    first = item_rows[0]
+                    price = getattr(first, "price", None) or first.get("price") or {}
+                    price_id = str(getattr(price, "id", "") or price.get("id") or "").strip() or None
+
+                subscriptions_out.append(
+                    {
+                        "id": str(getattr(subscription, "id", "") or subscription.get("id") or "").strip(),
+                        "customer": customer_id,
+                        "status": str(getattr(subscription, "status", "") or subscription.get("status") or "").strip(),
+                        "price_id": price_id,
+                        "current_period_end": iso_from_unix_timestamp(
+                            getattr(subscription, "current_period_end", None) or subscription.get("current_period_end")
+                        ),
+                    }
+                )
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == normalized_email).first()
+        return {
+            "ok": True,
+            "configured": bool(stripe.api_key),
+            "mode": "live" if str(stripe.api_key).startswith("sk_live_") else "test" if stripe.api_key else "unset",
+            "user": {
+                "id": user.id if user else None,
+                "email": user.email if user else normalized_email,
+                "subscription_status": user.subscription_status if user else None,
+                "trial_started_at": user.trial_started_at.isoformat() if user and user.trial_started_at else None,
+                "trial_ends_at": user.trial_ends_at.isoformat() if user and user.trial_ends_at else None,
+                "stripe_customer_id": user.stripe_customer_id if user else None,
+                "stripe_subscription_id": user.stripe_subscription_id if user else None,
+                "stripe_price_id": user.stripe_price_id if user else None,
+                "current_period_end": user.current_period_end.isoformat() if user and user.current_period_end else None,
+            },
+            "customers": customers_out,
+            "subscriptions": subscriptions_out,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/dev/reconcile-subscription")
+def dev_reconcile_subscription(payload: dict):
+    email = str(payload.get("email", "")).strip().lower()
+    force = bool(payload.get("force", True))
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if force:
+            user.subscription_updated_at = None
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        state = ensure_user_subscription_state(db, user, stripe_reconcile=True)
+        db.refresh(user)
+
+        return {
+            "ok": True,
+            "state": state,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "subscription_status": user.subscription_status,
+                "trial_started_at": user.trial_started_at.isoformat() if user.trial_started_at else None,
+                "trial_ends_at": user.trial_ends_at.isoformat() if user.trial_ends_at else None,
+                "stripe_customer_id": user.stripe_customer_id,
+                "stripe_subscription_id": user.stripe_subscription_id,
+                "stripe_price_id": user.stripe_price_id,
+                "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
+            },
         }
     finally:
         db.close()
