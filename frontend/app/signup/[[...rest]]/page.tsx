@@ -27,7 +27,12 @@ export default function SignupPage() {
         return
       }
 
-      if (!clerkLoaded || !userId) {
+      if (!clerkLoaded) {
+        return
+      }
+
+      if (!userId) {
+        void resetAuthState()
         setCheckingSession(false)
         return
       }

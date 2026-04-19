@@ -26,7 +26,12 @@ export default function LoginPage() {
         return
       }
 
-      if (!clerkLoaded || !userId) {
+      if (!clerkLoaded) {
+        return
+      }
+
+      if (!userId) {
+        void resetAuthState()
         setCheckingSession(false)
         return
       }
