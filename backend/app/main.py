@@ -450,11 +450,34 @@ async def stripe_webhook(request: Request):
 
 
 @app.get("/api/jobs")
-def get_jobs(limit: int = Query(50, ge=1, le=200), connected_account_id: int | None = Query(default=None)):
-    jobs = list_jobs(limit)
-    if connected_account_id is not None:
-        jobs = [j for j in jobs if int(j.get("connected_account_id", -1)) == int(connected_account_id)]
-    return {"jobs": jobs}
+def get_jobs(
+    limit: int = Query(50, ge=1, le=200),
+    connected_account_id: int | None = Query(default=None),
+    user_id: int = Query(1, ge=1),
+    authorization: str | None = Header(default=None),
+):
+    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db, user, _ = get_user_and_optional_account(resolved_user_id)
+    try:
+        jobs = list_jobs(limit)
+        user_account_ids = {
+            int(account.id)
+            for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == user.id).all()
+        }
+
+        if connected_account_id is not None:
+            jobs = [
+                j
+                for j in jobs
+                if int(j.get("connected_account_id", -1)) == int(connected_account_id)
+                and int(j.get("connected_account_id", -1)) in user_account_ids
+            ]
+        else:
+            jobs = [j for j in jobs if int(j.get("connected_account_id", -1)) in user_account_ids]
+
+        return {"jobs": jobs}
+    finally:
+        db.close()
 
 
 @app.get("/api/connected-accounts")
