@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, me } from "../lib/auth";
+import { apiFetch, getToken, me } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
@@ -65,6 +65,27 @@ type DashboardStatus = {
 const BACKEND =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://backend-fixed-production.up.railway.app";
+
+async function evergreenApiFetch(path: string, init: RequestInit = {}) {
+  const res = await apiFetch(path, init);
+  if (typeof window === "undefined") return res;
+
+  if (res.ok || BACKEND === window.location.origin) {
+    return res;
+  }
+
+  const normalizedPath = path.startsWith("/api/") ? path.slice("/api/".length) : path;
+  const headers = new Headers(init.headers || {});
+  const token = getToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(`/api/evergreen/${normalizedPath}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+}
 
 const safeNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
@@ -389,7 +410,7 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadAccounts() {
       try {
-        const res = await apiFetch(`/api/connected-accounts?user_id=${userId}`);
+        const res = await evergreenApiFetch(`/api/connected-accounts?user_id=${userId}`);
         const json = await res.json();
         if (!cancelled) {
           const next = Array.isArray(json.accounts) ? json.accounts : [];
@@ -420,13 +441,19 @@ export default function GalaxyPage() {
     async function loadStatuses() {
       try {
         const out: Record<number, DashboardStatus> = {};
-        for (const account of accounts) {
-          const res = await apiFetch(
-            `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-          );
-          if (!res.ok) continue;
-          out[account.id] = await res.json();
-        }
+        const results = await Promise.allSettled(
+          accounts.map(async (account) => {
+            const res = await evergreenApiFetch(
+              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+            );
+            if (!res.ok) return null;
+            return { accountId: account.id, json: (await res.json()) as DashboardStatus };
+          })
+        );
+        results.forEach((result) => {
+          if (result.status !== "fulfilled" || !result.value) return;
+          out[result.value.accountId] = result.value.json;
+        });
         if (!cancelled) setStatusMap(out);
       } catch {
         // ignore
@@ -450,7 +477,7 @@ export default function GalaxyPage() {
           selected === "unified"
             ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
             : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(selected)}`;
-        const res = await apiFetch(`/api/galaxy${qs}`);
+        const res = await evergreenApiFetch(`/api/galaxy${qs}`);
         const json: GalaxyResponse = await res.json();
         if (!cancelled) {
           setGalaxy({
