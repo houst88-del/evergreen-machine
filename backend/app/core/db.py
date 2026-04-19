@@ -1,6 +1,7 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
 raw_database_url = os.getenv("DATABASE_URL", "").strip()
 
@@ -24,13 +25,24 @@ engine_kwargs = {
 if database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 else:
-    engine_kwargs.update(
-        {
-            "pool_size": 5,
-            "max_overflow": 10,
-            "pool_timeout": 30,
-        }
-    )
+    # Managed Postgres poolers such as Supabase session-mode poolers can exhaust
+    # quickly when app containers also retain their own SQLAlchemy pool. Prefer
+    # opening short-lived connections instead of holding them across requests.
+    use_null_pool = any(
+        marker in database_url.lower()
+        for marker in ("supabase.com", "pooler.supabase.com", "aws-1-us-east-2.pooler.supabase.com")
+    ) or os.getenv("EVERGREEN_DB_NULL_POOL", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+    if use_null_pool:
+        engine_kwargs["poolclass"] = NullPool
+    else:
+        engine_kwargs.update(
+            {
+                "pool_size": 5,
+                "max_overflow": 10,
+                "pool_timeout": 30,
+            }
+        )
 
 engine = create_engine(
     database_url,
