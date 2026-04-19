@@ -17,6 +17,7 @@ const APP_BASE =
 
 const TOKEN_KEY = 'evergreen_auth_token'
 const USER_KEY = 'evergreen_auth_user'
+const AUTH_EVENT = 'evergreen-auth-changed'
 
 export type AuthUser = {
   id: number
@@ -45,6 +46,11 @@ export function getAppBase() {
 
 export function getLastBootstrapError() {
   return lastBootstrapError
+}
+
+function emitAuthChanged() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event(AUTH_EVENT))
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 5000) {
@@ -123,11 +129,13 @@ export function getToken() {
 export function setToken(token: string) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(TOKEN_KEY, token)
+  emitAuthChanged()
 }
 
 export function clearToken() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(TOKEN_KEY)
+  emitAuthChanged()
 }
 
 export function getStoredUser(): AuthUser | null {
@@ -145,11 +153,13 @@ export function getStoredUser(): AuthUser | null {
 export function setStoredUser(user: AuthUser) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(USER_KEY, JSON.stringify(user))
+  emitAuthChanged()
 }
 
 export function clearStoredUser() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(USER_KEY)
+  emitAuthChanged()
 }
 
 export async function resetAuthState(options?: { includeClerk?: boolean }) {
@@ -165,6 +175,8 @@ export async function resetAuthState(options?: { includeClerk?: boolean }) {
       // ignore Clerk sign-out failures during hard reset
     }
   }
+
+  emitAuthChanged()
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
