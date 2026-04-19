@@ -197,3 +197,44 @@ def update_last_login(email: str) -> None:
             break
     if changed:
         save_auth_users(users)
+
+
+def update_subscription_status(
+    email: str,
+    *,
+    status: str,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    stripe_price_id: str | None = None,
+    current_period_end: str | None = None,
+) -> dict | None:
+    email = str(email).strip().lower()
+    users = load_auth_users()
+    changed = False
+    updated_user: dict | None = None
+    now = _utc_now_naive().isoformat(timespec="seconds")
+
+    for user in users:
+        if str(user.get("email", "")).strip().lower() != email:
+            continue
+
+        user["subscription_status"] = str(status).strip().lower() or "inactive"
+        user["subscription_updated_at"] = now
+        if stripe_customer_id:
+            user["stripe_customer_id"] = stripe_customer_id
+        if stripe_subscription_id:
+            user["stripe_subscription_id"] = stripe_subscription_id
+        if stripe_price_id:
+            user["stripe_price_id"] = stripe_price_id
+        if current_period_end:
+            user["current_period_end"] = current_period_end
+        changed = True
+        updated_user = user
+        break
+
+    if not changed:
+        return None
+
+    save_auth_users(users)
+    decorated, _ = _decorate_auth_user(updated_user or {})
+    return decorated

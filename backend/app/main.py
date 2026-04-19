@@ -7,11 +7,16 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 from atproto import Client
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
+import stripe
 
-from app.core.auth_store import get_auth_user_by_email, subscription_snapshot
+from app.core.auth_store import (
+    get_auth_user_by_email,
+    subscription_snapshot,
+    update_subscription_status,
+)
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
@@ -27,6 +32,8 @@ from app.services.secret_crypto import encrypt_metadata
 from app.services.welcome_email import maybe_send_welcome_email, welcome_email_configured
 
 app = FastAPI(title="Evergreen API")
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
 WORKER_HEARTBEAT_PATH = Path(__file__).resolve().parents[1] / "worker_heartbeat.json"
 
@@ -161,6 +168,52 @@ def require_autopilot_access(user: User) -> dict:
     )
 
 
+def _stripe_email_from_event_object(obj: dict) -> str:
+    customer_details = obj.get("customer_details") or {}
+    return (
+        str(
+            customer_details.get("email")
+            or obj.get("customer_email")
+            or obj.get("receipt_email")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
+
+
+def _iso_from_unix_timestamp(value: object) -> str | None:
+    try:
+        ts = int(value or 0)
+    except Exception:
+        return None
+    if ts <= 0:
+        return None
+    return datetime.fromtimestamp(ts, UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def _sync_subscription_from_stripe_payload(
+    *,
+    email: str,
+    status: str,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    stripe_price_id: str | None = None,
+    current_period_end: str | None = None,
+) -> dict | None:
+    if not email:
+        return None
+
+    return update_subscription_status(
+        email,
+        status=status,
+        stripe_customer_id=stripe_customer_id,
+        stripe_subscription_id=stripe_subscription_id,
+        stripe_price_id=stripe_price_id,
+        current_period_end=current_period_end,
+    )
+
+
 def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
     account = getattr(autopilot, "connected_account", None) if autopilot else None
     provider = getattr(autopilot, "provider", None) or getattr(account, "provider", None) or "x"
@@ -292,6 +345,108 @@ def system_status():
         },
         "frontend_hint": os.getenv("EVERGREEN_DASHBOARD_URL", "http://127.0.0.1:3000/dashboard"),
     }
+
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request):
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+    if not webhook_secret:
+        raise HTTPException(status_code=500, detail="missing stripe webhook secret")
+
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="missing stripe signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, webhook_secret)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"invalid stripe webhook: {exc}")
+
+    event_type = str(event.get("type") or "").strip()
+    obj = dict(((event.get("data") or {}).get("object") or {}))
+
+    if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+        email = _stripe_email_from_event_object(obj)
+        subscription_id = str(obj.get("subscription") or "").strip() or None
+        price_id = None
+        line_items = obj.get("display_items") or []
+        if isinstance(line_items, list) and line_items:
+            first = line_items[0] or {}
+            if isinstance(first, dict):
+                price_id = str(first.get("price") or "").strip() or None
+
+        updated = _sync_subscription_from_stripe_payload(
+            email=email,
+            status="active",
+            stripe_customer_id=str(obj.get("customer") or "").strip() or None,
+            stripe_subscription_id=subscription_id,
+            stripe_price_id=price_id,
+        )
+        return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
+
+    if event_type in {"customer.subscription.created", "customer.subscription.updated"}:
+        email = str(((obj.get("customer_email") or "") if isinstance(obj, dict) else "")).strip().lower()
+        if not email:
+            try:
+                customer_id = str(obj.get("customer") or "").strip()
+                if customer_id:
+                    customer = stripe.Customer.retrieve(customer_id)
+                    email = str(getattr(customer, "email", "") or customer.get("email") or "").strip().lower()
+            except Exception:
+                email = ""
+
+        stripe_status = str(obj.get("status") or "").strip().lower()
+        internal_status = "active" if stripe_status in {"active", "trialing", "past_due"} else "inactive"
+        items = (((obj.get("items") or {}).get("data")) or []) if isinstance(obj, dict) else []
+        price_id = None
+        if isinstance(items, list) and items:
+            first = items[0] or {}
+            if isinstance(first, dict):
+                price = first.get("price") or {}
+                if isinstance(price, dict):
+                    price_id = str(price.get("id") or "").strip() or None
+
+        updated = _sync_subscription_from_stripe_payload(
+            email=email,
+            status=internal_status,
+            stripe_customer_id=str(obj.get("customer") or "").strip() or None,
+            stripe_subscription_id=str(obj.get("id") or "").strip() or None,
+            stripe_price_id=price_id,
+            current_period_end=_iso_from_unix_timestamp(obj.get("current_period_end")),
+        )
+        return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
+
+    if event_type in {"customer.subscription.deleted"}:
+        email = ""
+        try:
+            customer_id = str(obj.get("customer") or "").strip()
+            if customer_id:
+                customer = stripe.Customer.retrieve(customer_id)
+                email = str(getattr(customer, "email", "") or customer.get("email") or "").strip().lower()
+        except Exception:
+            email = ""
+
+        updated = _sync_subscription_from_stripe_payload(
+            email=email,
+            status="inactive",
+            stripe_customer_id=str(obj.get("customer") or "").strip() or None,
+            stripe_subscription_id=str(obj.get("id") or "").strip() or None,
+            current_period_end=None,
+        )
+        return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
+
+    if event_type in {"invoice.paid"}:
+        email = str(obj.get("customer_email") or obj.get("receipt_email") or "").strip().lower()
+        updated = _sync_subscription_from_stripe_payload(
+            email=email,
+            status="active",
+            stripe_customer_id=str(obj.get("customer") or "").strip() or None,
+            stripe_subscription_id=str(obj.get("subscription") or "").strip() or None,
+        )
+        return {"ok": True, "handled": True, "type": event_type, "updated": bool(updated)}
+
+    return {"ok": True, "handled": False, "type": event_type}
 
 
 @app.get("/api/jobs")
