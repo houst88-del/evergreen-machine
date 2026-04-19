@@ -472,6 +472,25 @@ export default function DashboardPage() {
       const json = await res.json()
       if (res.ok && json?.subscription) {
         setSubscriptionInfo(json.subscription)
+        setSession((current: any) => {
+          if (!current?.user) return current
+          return {
+            ...current,
+            user: {
+              ...current.user,
+              subscription_status: json.subscription.status ?? current.user.subscription_status,
+              trial_started_at: json.subscription.trial_started_at ?? current.user.trial_started_at,
+              trial_ends_at: json.subscription.trial_ends_at ?? current.user.trial_ends_at,
+              can_run_autopilot:
+                json.subscription.can_run_autopilot ?? current.user.can_run_autopilot,
+              stripe_price_id: json.subscription.price_id ?? current.user.stripe_price_id,
+              stripe_billing_email:
+                json.subscription.billing_email ?? current.user.stripe_billing_email,
+              current_period_end:
+                json.subscription.current_period_end ?? current.user.current_period_end,
+            },
+          }
+        })
         if (!billingEmailInput && json.subscription.billing_email) {
           setBillingEmailInput(String(json.subscription.billing_email))
         }
@@ -483,8 +502,16 @@ export default function DashboardPage() {
 
   function currentSubscriptionState() {
     const user = session?.user || {}
-    const rawStatus = String(user.subscription_status || 'inactive').trim().toLowerCase()
-    const trialEndsAt = typeof user.trial_ends_at === 'string' ? user.trial_ends_at : null
+    const effectiveStatus = subscriptionInfo?.status ?? user.subscription_status
+    const effectiveTrialEndsAt = subscriptionInfo?.trial_ends_at ?? user.trial_ends_at
+    const effectiveCanRunAutopilot =
+      typeof subscriptionInfo?.can_run_autopilot === 'boolean'
+        ? subscriptionInfo.can_run_autopilot
+        : user.can_run_autopilot
+
+    const rawStatus = String(effectiveStatus || 'inactive').trim().toLowerCase()
+    const trialEndsAt =
+      typeof effectiveTrialEndsAt === 'string' ? effectiveTrialEndsAt : null
     const trialEndsAtDate = parseApiDate(trialEndsAt)
     const trialActive = Boolean(trialEndsAtDate && trialEndsAtDate.getTime() > nowMs)
 
@@ -492,7 +519,8 @@ export default function DashboardPage() {
       return {
         subscriptionStatus: 'active',
         trialEndsAt,
-        canRunAutopilot: true,
+        canRunAutopilot:
+          typeof effectiveCanRunAutopilot === 'boolean' ? effectiveCanRunAutopilot : true,
       }
     }
 
@@ -500,7 +528,8 @@ export default function DashboardPage() {
       return {
         subscriptionStatus: 'trialing',
         trialEndsAt,
-        canRunAutopilot: true,
+        canRunAutopilot:
+          typeof effectiveCanRunAutopilot === 'boolean' ? effectiveCanRunAutopilot : true,
       }
     }
 
@@ -508,14 +537,15 @@ export default function DashboardPage() {
       return {
         subscriptionStatus: 'expired',
         trialEndsAt,
-        canRunAutopilot: false,
+        canRunAutopilot:
+          typeof effectiveCanRunAutopilot === 'boolean' ? effectiveCanRunAutopilot : false,
       }
     }
 
     return {
       subscriptionStatus: rawStatus || 'inactive',
       trialEndsAt: null,
-      canRunAutopilot: false,
+      canRunAutopilot: Boolean(effectiveCanRunAutopilot),
     }
   }
 
