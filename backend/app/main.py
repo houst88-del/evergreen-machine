@@ -23,6 +23,7 @@ from app.services.pacing import normalize_mode, pacing_options_for_provider
 from app.services.pool_service import active_rotation_count
 from app.services.scoring import seed_demo_data
 from app.services.secret_crypto import encrypt_metadata
+from app.services.welcome_email import maybe_send_welcome_email, welcome_email_configured
 
 app = FastAPI(title="Evergreen API")
 
@@ -586,7 +587,13 @@ def list_users():
             out.append(
                 {
                     "user_id": user.id,
+                    "email": user.email,
                     "handle": user.handle,
+                    "welcome_email_sent_at": (
+                        user.welcome_email_sent_at.isoformat()
+                        if user.welcome_email_sent_at
+                        else None
+                    ),
                     "accounts": [
                         {
                             "id": account.id,
@@ -599,6 +606,69 @@ def list_users():
                 }
             )
         return {"users": out}
+    finally:
+        db.close()
+
+
+@app.post("/api/dev/send-welcome-email")
+def send_dev_welcome_email(payload: dict):
+    email = str(payload.get("email", "")).strip().lower()
+    user_id = payload.get("user_id")
+    force = bool(payload.get("force", False))
+
+    db = SessionLocal()
+    try:
+        ensure_demo_seeded_once(db)
+
+        user = None
+        if user_id is not None:
+            user = db.query(User).filter(User.id == int(user_id)).first()
+        elif email:
+            user = db.query(User).filter(User.email == email).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if force:
+            user.welcome_email_sent_at = None
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        if not welcome_email_configured():
+            return {
+                "ok": False,
+                "configured": False,
+                "detail": "Welcome email env vars are missing",
+                "user_id": user.id,
+                "email": user.email,
+                "welcome_email_sent_at": None,
+            }
+
+        sent = maybe_send_welcome_email(db, user)
+        return {
+            "ok": True,
+            "configured": True,
+            "sent": sent,
+            "user_id": user.id,
+            "email": user.email,
+            "welcome_email_sent_at": (
+                user.welcome_email_sent_at.isoformat()
+                if user.welcome_email_sent_at
+                else None
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        return {
+            "ok": False,
+            "configured": welcome_email_configured(),
+            "detail": str(exc),
+            "email": email or None,
+            "user_id": int(user_id) if user_id is not None else None,
+        }
     finally:
         db.close()
 
