@@ -392,15 +392,15 @@ def login(payload: dict):
 @router.get("/me")
 def me(auth_user: dict = Depends(get_current_auth_user)):
     email = str(auth_user.get("email", "")).strip().lower()
+    token_handle = str(auth_user.get("handle", "")).strip() or "@demo_creator"
     stored = get_auth_user_by_email(email)
-    if not stored:
-        raise HTTPException(status_code=404, detail="auth user not found")
+    effective_handle = str((stored or {}).get("handle") or token_handle or "@demo_creator")
 
-    ensure_client_scaffold(str(stored.get("handle", "@creator")).lstrip("@"))
+    ensure_client_scaffold(effective_handle.lstrip("@"))
 
     user_data, _autopilot = ensure_db_user(
         email=email,
-        handle=str(stored.get("handle", "@demo_creator")),
+        handle=effective_handle,
     )
     return auth_response(user_data)
 
