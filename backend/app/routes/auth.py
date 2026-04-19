@@ -418,7 +418,14 @@ def me(auth_user: dict = Depends(get_current_auth_user)):
         email=email,
         handle=effective_handle,
     )
-    return auth_response(user_data)
+    token = create_token(
+        {
+            "email": user_data["email"],
+            "handle": user_data["handle"],
+            "user_id": user_data["id"],
+        }
+    )
+    return auth_response(user_data, token)
 
 
 @router.get("/subscription")

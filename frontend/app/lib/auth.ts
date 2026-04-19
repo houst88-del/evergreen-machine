@@ -302,6 +302,10 @@ export async function me(): Promise<AuthResponse | null> {
     return null
   }
 
+  if (json?.token) {
+    setToken(json.token)
+  }
+
   if (json.user) {
     setStoredUser(json.user)
   }
