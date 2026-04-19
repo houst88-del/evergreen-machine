@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {clerkEnabled ? (
           <ClerkProvider
+            afterSignOutUrl={`${appOrigin}/login`}
             signInUrl="/login"
             signUpUrl="/signup"
             signInForceRedirectUrl={`${appOrigin}/dashboard`}
