@@ -13,12 +13,11 @@ from sqlalchemy import inspect, text
 import stripe
 
 from app.core.auth_store import (
-    get_auth_user_by_email,
-    subscription_snapshot,
     update_subscription_status,
 )
 from app.core.db import Base, SessionLocal, engine
 from app.core.security import verify_token
+from app.core.subscription_state import ensure_user_subscription_state, update_user_subscription
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.routes.auth import router as auth_router
 from app.routes.bluesky_routes import router as bluesky_router
@@ -63,6 +62,26 @@ def ensure_runtime_schema() -> None:
             statements.append("ALTER TABLE users ADD COLUMN welcome_email_sent_at DATETIME")
         else:
             statements.append("ALTER TABLE users ADD COLUMN welcome_email_sent_at TIMESTAMP NULL")
+
+    user_datetime_type = "DATETIME" if engine.dialect.name == "sqlite" else "TIMESTAMP NULL"
+    user_string_type = "TEXT" if engine.dialect.name == "sqlite" else "VARCHAR(255) NULL"
+
+    if "subscription_status" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN subscription_status {user_string_type}")
+    if "trial_started_at" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN trial_started_at {user_datetime_type}")
+    if "trial_ends_at" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN trial_ends_at {user_datetime_type}")
+    if "stripe_customer_id" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN stripe_customer_id {user_string_type}")
+    if "stripe_subscription_id" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN stripe_subscription_id {user_string_type}")
+    if "stripe_price_id" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN stripe_price_id {user_string_type}")
+    if "current_period_end" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN current_period_end {user_datetime_type}")
+    if "subscription_updated_at" not in user_columns:
+        statements.append(f"ALTER TABLE users ADD COLUMN subscription_updated_at {user_datetime_type}")
 
     if "autopilot_status" in inspector.get_table_names():
         autopilot_columns = {column["name"] for column in inspector.get_columns("autopilot_status")}
@@ -146,13 +165,17 @@ def posts_in_rotation_for_account(db, account: ConnectedAccount) -> int:
     return active_rotation_count(account.handle)
 
 
-def get_user_subscription_state(user: User) -> dict:
-    auth_user = get_auth_user_by_email(str(user.email or "").strip().lower())
-    return subscription_snapshot(auth_user)
+def get_user_subscription_state(db, user: User) -> dict:
+    return ensure_user_subscription_state(db, user, stripe_reconcile=True)
 
 
 def require_autopilot_access(user: User) -> dict:
-    state = get_user_subscription_state(user)
+    db = SessionLocal()
+    try:
+        persistent_user = db.query(User).filter(User.id == user.id).first()
+        state = get_user_subscription_state(db, persistent_user or user)
+    finally:
+        db.close()
     if state.get("can_run_autopilot"):
         return state
 
@@ -204,17 +227,34 @@ def _sync_subscription_from_stripe_payload(
     if not email:
         return None
 
-    return update_subscription_status(
-        email,
-        status=status,
-        stripe_customer_id=stripe_customer_id,
-        stripe_subscription_id=stripe_subscription_id,
-        stripe_price_id=stripe_price_id,
-        current_period_end=current_period_end,
-    )
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            update_user_subscription(
+                user,
+                status=status,
+                stripe_customer_id=stripe_customer_id,
+                stripe_subscription_id=stripe_subscription_id,
+                stripe_price_id=stripe_price_id,
+                current_period_end=current_period_end,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return update_subscription_status(
+            email,
+            status=status,
+            stripe_customer_id=stripe_customer_id,
+            stripe_subscription_id=stripe_subscription_id,
+            stripe_price_id=stripe_price_id,
+            current_period_end=current_period_end,
+        )
+    finally:
+        db.close()
 
 
-def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
+def serialize_status(db, user: User, autopilot: AutopilotStatus | None) -> dict:
     account = getattr(autopilot, "connected_account", None) if autopilot else None
     provider = getattr(autopilot, "provider", None) or getattr(account, "provider", None) or "x"
     pacing_mode = _account_pacing_mode(account)
@@ -223,7 +263,7 @@ def serialize_status(user: User, autopilot: AutopilotStatus | None) -> dict:
     visible_next_cycle_at = next_refresh_at or (
         autopilot.next_cycle_at.isoformat() if autopilot and autopilot.next_cycle_at else None
     )
-    subscription = get_user_subscription_state(user)
+    subscription = get_user_subscription_state(db, user)
     can_run_autopilot = bool(subscription.get("can_run_autopilot", False))
     running = bool(getattr(autopilot, "enabled", False)) if autopilot else False
 
@@ -524,12 +564,12 @@ def get_status(
         if account is None:
             account = get_default_connected_account(db, user)
             if not account:
-                return serialize_status(user, None)
+                return serialize_status(db, user, None)
 
         autopilot = get_or_create_autopilot_for_account(db, user, account)
         db.commit()
         db.refresh(autopilot)
-        return serialize_status(user, autopilot)
+        return serialize_status(db, user, autopilot)
     finally:
         db.close()
 
@@ -562,7 +602,7 @@ def toggle_status(
 
         db.commit()
         db.refresh(autopilot)
-        return serialize_status(user, autopilot)
+        return serialize_status(db, user, autopilot)
     finally:
         db.close()
 
@@ -594,7 +634,7 @@ def set_pacing_mode(
         db.commit()
         db.refresh(account)
         db.refresh(autopilot)
-        return serialize_status(user, autopilot)
+        return serialize_status(db, user, autopilot)
     finally:
         db.close()
 
@@ -695,7 +735,7 @@ def connect_provider(
         db.commit()
         db.refresh(account)
         db.refresh(autopilot)
-        return serialize_status(user, autopilot)
+        return serialize_status(db, user, autopilot)
     finally:
         db.close()
 
@@ -721,7 +761,7 @@ def disconnect_provider(
 
         db.commit()
         db.refresh(autopilot)
-        return serialize_status(user, autopilot)
+        return serialize_status(db, user, autopilot)
     finally:
         db.close()
 

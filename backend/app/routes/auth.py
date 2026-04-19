@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from app.core.auth_store import create_auth_user, get_auth_user_by_email, update_last_login
 from app.core.db import SessionLocal
 from app.core.security import create_token, get_current_auth_user, hash_password, verify_password
+from app.core.subscription_state import ensure_user_subscription_state
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.pool_service import active_rotation_count
 from app.services.welcome_email import maybe_send_welcome_email
@@ -169,6 +170,14 @@ def serialize_user(user: User) -> dict:
         "handle": str(user.handle),
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "welcome_email_sent_at": user.welcome_email_sent_at.isoformat() if user.welcome_email_sent_at else None,
+        "subscription_status": str(user.subscription_status or "").strip().lower() or None,
+        "trial_started_at": user.trial_started_at.isoformat() if user.trial_started_at else None,
+        "trial_ends_at": user.trial_ends_at.isoformat() if user.trial_ends_at else None,
+        "stripe_customer_id": str(user.stripe_customer_id or "").strip() or None,
+        "stripe_subscription_id": str(user.stripe_subscription_id or "").strip() or None,
+        "stripe_price_id": str(user.stripe_price_id or "").strip() or None,
+        "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
+        "subscription_updated_at": user.subscription_updated_at.isoformat() if user.subscription_updated_at else None,
     }
 
 
@@ -223,6 +232,8 @@ def ensure_db_user(email: str, handle: str) -> tuple[dict, dict]:
         else:
             user = None
 
+        auth_user = get_auth_user_by_email(email)
+
         if not user:
             user = User(email=email, handle=normalized_handle)
             db.add(user)
@@ -260,7 +271,9 @@ def ensure_db_user(email: str, handle: str) -> tuple[dict, dict]:
             db.refresh(user)
             db.refresh(autopilot)
 
+        subscription_state = ensure_user_subscription_state(db, user, stripe_reconcile=True)
         user_data = serialize_user(user)
+        user_data.update(subscription_state)
         autopilot_data = {
             "user_id": int(autopilot.user_id),
             "enabled": bool(autopilot.enabled),
@@ -288,16 +301,16 @@ def trigger_welcome_email(user_id: int) -> None:
         db.close()
 
 
-def auth_response(user_data: dict, auth_user: dict, token: str | None = None) -> dict:
+def auth_response(user_data: dict, token: str | None = None) -> dict:
     payload = {
         "user": {
             "id": user_data["id"],
             "email": user_data["email"],
             "handle": user_data["handle"],
-            "subscription_status": auth_user.get("subscription_status", "inactive"),
-            "trial_started_at": auth_user.get("trial_started_at"),
-            "trial_ends_at": auth_user.get("trial_ends_at"),
-            "can_run_autopilot": bool(auth_user.get("can_run_autopilot", False)),
+            "subscription_status": user_data.get("subscription_status", "inactive"),
+            "trial_started_at": user_data.get("trial_started_at"),
+            "trial_ends_at": user_data.get("trial_ends_at"),
+            "can_run_autopilot": bool(user_data.get("can_run_autopilot", False)),
         }
     }
     if token is not None:
@@ -338,7 +351,7 @@ def signup(payload: dict):
             "user_id": user_data["id"],
         }
     )
-    return auth_response(user_data, auth_user, token)
+    return auth_response(user_data, token)
 
 
 @router.post("/login")
@@ -373,7 +386,7 @@ def login(payload: dict):
             "user_id": user_data["id"],
         }
     )
-    return auth_response(user_data, auth_user, token)
+    return auth_response(user_data, token)
 
 
 @router.get("/me")
@@ -389,7 +402,7 @@ def me(auth_user: dict = Depends(get_current_auth_user)):
         email=email,
         handle=str(stored.get("handle", "@demo_creator")),
     )
-    return auth_response(user_data, stored)
+    return auth_response(user_data)
 
 
 @router.post("/bootstrap-clerk")
@@ -434,4 +447,4 @@ def bootstrap_clerk(payload: dict, x_evergreen_internal_secret: str | None = Hea
             "user_id": user_data["id"],
         }
     )
-    return auth_response(user_data, existing, token)
+    return auth_response(user_data, token)

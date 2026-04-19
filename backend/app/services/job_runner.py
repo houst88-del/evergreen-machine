@@ -5,8 +5,8 @@ import re
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
-from app.core.auth_store import get_auth_user_by_email, subscription_snapshot
 from app.core.db import SessionLocal
+from app.core.subscription_state import ensure_user_subscription_state
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.job_queue import (
     claim_next_jobs,
@@ -787,9 +787,9 @@ def enqueue_due_autopilot_jobs() -> int:
         now = _utc_now_naive()
         for autopilot in autopilots:
             user = db.query(User).filter(User.id == autopilot.user_id).first()
-            subscription = subscription_snapshot(
-                get_auth_user_by_email(str(getattr(user, "email", "")).strip().lower())
-            )
+            if not user:
+                continue
+            subscription = ensure_user_subscription_state(db, user, stripe_reconcile=True)
             if not subscription.get("can_run_autopilot", False):
                 autopilot.enabled = False
                 autopilot.next_cycle_at = None
