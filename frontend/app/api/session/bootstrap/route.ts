@@ -5,6 +5,20 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 8000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function POST() {
   try {
     const { userId } = await auth({ treatPendingAsSignedOut: false })
@@ -53,7 +67,7 @@ export async function POST() {
     let lastJson: unknown = null
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const res = await fetch(`${API_BASE}/api/auth/bootstrap-clerk`, {
+      const res = await fetchWithTimeout(`${API_BASE}/api/auth/bootstrap-clerk`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,7 +75,7 @@ export async function POST() {
         },
         body: JSON.stringify(payload),
         cache: 'no-store',
-      })
+      }, 8000)
 
       const raw = await res.text()
       let json: unknown = null

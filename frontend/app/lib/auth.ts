@@ -185,7 +185,7 @@ export async function resetAuthState(options?: { includeClerk?: boolean }) {
   emitAuthChanged()
 }
 
-export async function apiFetch(path: string, init: RequestInit = {}) {
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 8000) {
   const token = getToken()
   const headers = new Headers(init.headers || {})
 
@@ -197,11 +197,11 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  return fetch(`${API_BASE}${path}`, {
+  return fetchWithTimeout(`${API_BASE}${path}`, {
     ...init,
     headers,
     cache: 'no-store',
-  })
+  }, timeoutMs)
 }
 
 export async function signup(email: string, password: string, handle: string): Promise<AuthResponse> {
@@ -272,7 +272,14 @@ export async function me(): Promise<AuthResponse | null> {
 
   if (!freshToken) return null
 
-  const res = await apiFetch('/api/auth/me')
+  let res: Response
+  try {
+    res = await apiFetch('/api/auth/me', {}, 8000)
+  } catch (error) {
+    lastBootstrapError =
+      error instanceof Error ? error.message : 'Evergreen session verification failed'
+    return null
+  }
 
   if (res.status === 401 || res.status === 404) {
     clearToken()
