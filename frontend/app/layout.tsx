@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { AuthHeader } from './components/auth-header'
+import { CanonicalHostGuard } from './components/canonical-host-guard'
 
 export const metadata: Metadata = {
   title: 'Evergreen Machine',
@@ -16,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <CanonicalHostGuard appOrigin={appOrigin} />
         {clerkEnabled ? (
           <ClerkProvider
             afterSignOutUrl={`${appOrigin}/login`}
