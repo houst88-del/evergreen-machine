@@ -696,8 +696,8 @@ export default function DashboardPage() {
   ) {
     if (!session?.user) return false
 
-    const attempts = options?.attempts ?? 12
-    const delayMs = options?.delayMs ?? 1200
+    const attempts = options?.attempts ?? 14
+    const delayMs = options?.delayMs ?? 800
     const expectedAccountId = options?.connectedAccountId ?? null
     const target = provider.toLowerCase()
 
@@ -1101,10 +1101,16 @@ export default function DashboardPage() {
         throw new Error(json.detail || json.message || 'Could not connect Bluesky')
       }
 
-      setActionMessage(`Connected Bluesky for ${json.account_handle || handle}.`)
-      await refreshMissionControlNow()
-      window.setTimeout(refreshMissionControlNow, 2000)
-      window.setTimeout(refreshMissionControlNow, 5000)
+      const connectedAccountId =
+        Number(json.connected_account_id || json.status?.connected_account_id || 0) || null
+      const connected = await waitForConnectedProvider('bluesky', { connectedAccountId })
+
+      setActionMessage(
+        connected
+          ? `Connected Bluesky for ${json.account_handle || handle}.`
+          : `Connected Bluesky for ${json.account_handle || handle}. Finalizing lane…`
+      )
+      scheduleFollowupRefreshes()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
     } finally {

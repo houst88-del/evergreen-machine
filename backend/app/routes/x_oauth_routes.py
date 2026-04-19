@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 
 import tweepy
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from app.core.db import SessionLocal
+from app.core.subscription_state import ensure_user_subscription_state
 from app.models.models import AutopilotStatus, ConnectedAccount, User
 from app.services.secret_crypto import encrypt_metadata, encrypt_secret
 
@@ -71,6 +73,29 @@ def get_or_create_account_scoped_autopilot(
         autopilot.connected = account.connection_status == "connected"
         autopilot.provider = "x"
 
+    return autopilot
+
+
+def maybe_enable_connected_lane(db, user: User, autopilot: AutopilotStatus) -> AutopilotStatus:
+    subscription = ensure_user_subscription_state(db, user, stripe_reconcile=True)
+    if not subscription.get("can_run_autopilot"):
+        return autopilot
+
+    sibling_running = (
+        db.query(AutopilotStatus)
+        .filter(
+            AutopilotStatus.user_id == user.id,
+            AutopilotStatus.id != autopilot.id,
+            AutopilotStatus.enabled.is_(True),
+        )
+        .first()
+    )
+    if not sibling_running:
+        return autopilot
+
+    autopilot.enabled = True
+    autopilot.last_action_at = datetime.now(UTC).replace(tzinfo=None)
+    autopilot.next_cycle_at = datetime.now(UTC).replace(tzinfo=None)
     return autopilot
 
 
@@ -140,6 +165,7 @@ def save_or_update_x_account(
         autopilot = get_or_create_account_scoped_autopilot(db, user, account)
         autopilot.connected = True
         autopilot.provider = "x"
+        autopilot = maybe_enable_connected_lane(db, user, autopilot)
 
         db.commit()
         db.refresh(account)

@@ -376,6 +376,29 @@ def get_or_create_autopilot_for_account(db, user: User, account: ConnectedAccoun
     return autopilot
 
 
+def maybe_enable_connected_lane(db, user: User, autopilot: AutopilotStatus) -> AutopilotStatus:
+    subscription = get_user_subscription_state(db, user)
+    if not subscription.get("can_run_autopilot"):
+        return autopilot
+
+    sibling_running = (
+        db.query(AutopilotStatus)
+        .filter(
+            AutopilotStatus.user_id == user.id,
+            AutopilotStatus.id != autopilot.id,
+            AutopilotStatus.enabled.is_(True),
+        )
+        .first()
+    )
+    if not sibling_running:
+        return autopilot
+
+    autopilot.enabled = True
+    autopilot.last_action_at = datetime.now(UTC).replace(tzinfo=None)
+    autopilot.next_cycle_at = datetime.now(UTC).replace(tzinfo=None)
+    return autopilot
+
+
 def get_default_connected_account(db, user: User) -> ConnectedAccount | None:
     return (
         db.query(ConnectedAccount)
@@ -761,6 +784,7 @@ def connect_provider(
         autopilot.connected = True
         autopilot.provider = provider
         autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
+        autopilot = maybe_enable_connected_lane(db, user, autopilot)
 
         db.commit()
         db.refresh(account)
