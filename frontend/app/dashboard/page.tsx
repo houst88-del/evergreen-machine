@@ -474,8 +474,14 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 }
 
 function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountStatus | null) {
+  const accountConnected =
+    String(account?.connection_status || '')
+      .trim()
+      .toLowerCase() === 'connected'
+
+  if (accountConnected) return true
   if (typeof status?.connected === 'boolean') return status.connected
-  return String(account?.connection_status || '').trim().toLowerCase() === 'connected'
+  return false
 }
 
 async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
@@ -1012,6 +1018,8 @@ export default function DashboardPage() {
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
     const accountStatuses = Object.values(statusMap)
+    const hasMissionData =
+      accounts.length > 0 || accountStatuses.length > 0 || jobs.length > 0
 
     const postsInRotation = accountStatuses.reduce(
       (sum, item) => sum + (item.posts_in_rotation || 0),
@@ -1031,9 +1039,18 @@ export default function DashboardPage() {
         ? nextCycleCandidates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
         : null
 
+    const inferredWorkerState =
+      system?.worker?.ok
+        ? heartbeat.status || 'running'
+        : accountStatuses.some((item) => item.running)
+          ? 'running'
+          : hasMissionData
+            ? 'idle'
+            : 'offline'
+
     return {
-      backendOnline: !!system?.backend?.ok,
-      workerState: system?.worker?.ok ? heartbeat.status || 'running' : 'offline',
+      backendOnline: typeof system?.backend?.ok === 'boolean' ? !!system.backend.ok : hasMissionData,
+      workerState: inferredWorkerState,
       queued: heartbeat.queued ?? 0,
       processed: heartbeat.processed ?? 0,
       syncedAccounts: heartbeat.synced_accounts ?? accounts.length,
@@ -1045,7 +1062,7 @@ export default function DashboardPage() {
       connectedCount,
       nextCycle,
     }
-  }, [accounts, system, statusMap])
+  }, [accounts, jobs, system, statusMap])
 
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']

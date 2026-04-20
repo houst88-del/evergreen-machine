@@ -509,7 +509,12 @@ export default function GalaxyPage() {
           setError("");
         }
       } catch {
-        if (!cancelled) setError("Could not load galaxy.");
+        if (cancelled) return;
+        setError((current) => {
+          const hasVisibleGalaxy =
+            galaxy.nodes.length > 0 || safeNum(galaxy.meta?.count, 0) > 0;
+          return hasVisibleGalaxy ? "" : "Could not load galaxy.";
+        });
       }
     }
     loadGalaxy();
