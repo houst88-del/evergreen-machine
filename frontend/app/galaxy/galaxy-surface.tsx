@@ -289,6 +289,50 @@ const normalizeEmbeddedGalaxy = (
   meta: (value?.meta || {}) as GalaxyMeta,
 });
 
+const scopedGalaxyFromUnified = (
+  unifiedGalaxy: GalaxyResponse,
+  selected: string,
+  accounts: ConnectedAccount[],
+  statusMap: Record<number, DashboardStatus>
+): GalaxyResponse | null => {
+  if (selected === "unified") return unifiedGalaxy;
+
+  const accountId = Number(selected || 0);
+  const account = accounts.find((item) => item.id === accountId);
+  if (!accountId || !account) return null;
+
+  const nodes = Array.isArray(unifiedGalaxy.nodes)
+    ? unifiedGalaxy.nodes.filter((node) => Number(node.connected_account_id || 0) === accountId)
+    : [];
+
+  const status = statusMap[accountId];
+  const latestActionAt = nodes
+    .map((node) => String(node.last_resurfaced_at || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+
+  return {
+    nodes,
+    meta: {
+      ...unifiedGalaxy.meta,
+      connected_account_id: accountId,
+      count: nodes.length,
+      connected:
+        typeof status?.connected === "boolean"
+          ? status.connected
+          : String(account.provider || "").trim().length > 0,
+      running: Boolean(status?.running),
+      last_action_at: status?.last_action_at || latestActionAt,
+      next_cycle_at: status?.next_cycle_at || unifiedGalaxy.meta?.next_cycle_at || null,
+      mode: "single",
+      metadata: {
+        ...(unifiedGalaxy.meta?.metadata || {}),
+        ...(status?.metadata || {}),
+      },
+    },
+  };
+};
+
 const computeRadius = (node: GalaxyNode) => {
   const score = safeNum(node.normalized_score ?? node.score, 0);
   const gravityScore = safeNum(node.gravity_score, 0);
@@ -701,17 +745,25 @@ export function GalaxySurface({
     let cancelled = false;
     setGalaxyScope("__loading__");
     async function loadGalaxy() {
-      if (
-        embedded &&
-        selected === "unified" &&
-        embeddedUnifiedGalaxy &&
-        Array.isArray(embeddedUnifiedGalaxy.nodes) &&
-        embeddedUnifiedGalaxy.nodes.length > 0
-      ) {
-        setGalaxy(normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy));
-        setGalaxyScope("unified");
-        setError("");
-        return;
+      let scopedUnifiedFallback: GalaxyResponse | null = null;
+      if (embedded && embeddedUnifiedGalaxy) {
+        const unifiedGalaxy = normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy);
+        if (Array.isArray(unifiedGalaxy.nodes) && unifiedGalaxy.nodes.length > 0) {
+          scopedUnifiedFallback = scopedGalaxyFromUnified(
+            unifiedGalaxy,
+            selected,
+            accounts,
+            statusMap
+          );
+          if (scopedUnifiedFallback && Array.isArray(scopedUnifiedFallback.nodes)) {
+            setGalaxy(scopedUnifiedFallback);
+            setGalaxyScope(selected);
+            setError("");
+          }
+          if (selected === "unified") {
+            return;
+          }
+        }
       }
 
       try {
@@ -726,6 +778,17 @@ export function GalaxySurface({
             nodes: Array.isArray(json.nodes) ? json.nodes : [],
             meta: json.meta || {},
           };
+          if (
+            scopedUnifiedFallback &&
+            Array.isArray(scopedUnifiedFallback.nodes) &&
+            scopedUnifiedFallback.nodes.length > 0 &&
+            nextGalaxy.nodes.length === 0
+          ) {
+            setGalaxy(scopedUnifiedFallback);
+            setGalaxyScope(selected);
+            setError("");
+            return;
+          }
           setGalaxy(nextGalaxy);
           setGalaxyScope(requestedSelection);
           setError("");

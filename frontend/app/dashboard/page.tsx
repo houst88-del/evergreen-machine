@@ -695,6 +695,32 @@ function deriveStatusFromGalaxy(account: ConnectedAccount, galaxy: GalaxyRespons
   }
 }
 
+function accountScopedGalaxyFromUnified(
+  unifiedGalaxy: GalaxyResponse,
+  account: ConnectedAccount,
+): GalaxyResponse {
+  const nodes = Array.isArray(unifiedGalaxy.nodes)
+    ? unifiedGalaxy.nodes.filter((node) => Number(node.connected_account_id || 0) === account.id)
+    : []
+
+  const latestActionAt = nodes
+    .map((node) => String((node as any).last_resurfaced_at || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null
+
+  return {
+    nodes,
+    meta: {
+      ...unifiedGalaxy.meta,
+      connected_account_id: account.id,
+      count: nodes.length,
+      connected: true,
+      mode: 'single',
+      last_action_at: latestActionAt,
+    },
+  }
+}
+
 function mergeAccountStatus(
   status: AccountStatus | null | undefined,
   galaxyStatus: AccountStatus | null | undefined,
@@ -1471,6 +1497,30 @@ function DashboardPageClient() {
     }
   }, [jobs, missionGalaxy.meta, missionGalaxy.nodes, resolvedAccounts, system, statusMap])
 
+  const derivedUnifiedStatusMap = useMemo(() => {
+    if (!Array.isArray(missionGalaxy.nodes) || missionGalaxy.nodes.length === 0) {
+      return {} as Record<number, AccountStatus>
+    }
+
+    return Object.fromEntries(
+      resolvedAccounts.map((account) => {
+        const scopedGalaxy = accountScopedGalaxyFromUnified(missionGalaxy, account)
+        return [account.id, deriveStatusFromGalaxy(account, scopedGalaxy)]
+      }),
+    )
+  }, [missionGalaxy, resolvedAccounts])
+
+  const effectiveStatusMap = useMemo(
+    () =>
+      Object.fromEntries(
+        resolvedAccounts.map((account) => [
+          account.id,
+          mergeAccountStatus(statusMap[account.id], derivedUnifiedStatusMap[account.id]),
+        ]),
+      ),
+    [derivedUnifiedStatusMap, resolvedAccounts, statusMap],
+  )
+
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']
     const jobFreshnessWindowSeconds = Number(system?.worker?.heartbeat?.poll_seconds || 0)
@@ -1485,7 +1535,7 @@ function DashboardPageClient() {
         return a.id - b.id
       })
       .map((account) => {
-        const status = statusMap[account.id]
+        const status = effectiveStatusMap[account.id]
         const meta = asRecord(status?.metadata)
         const laneJobs = jobs.filter((job) => job.connected_account_id === account.id)
         const latestJob = laneJobs[0]
@@ -1619,7 +1669,7 @@ function DashboardPageClient() {
           lastActionText: fmtWhen(effectiveLastActionAt),
         }
       })
-  }, [jobs, nowMs, optimisticRunningMap, resolvedAccounts, statusMap, system?.worker?.heartbeat?.poll_seconds])
+  }, [effectiveStatusMap, jobs, nowMs, optimisticRunningMap, resolvedAccounts, system?.worker?.heartbeat?.poll_seconds])
 
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
@@ -2025,7 +2075,7 @@ function DashboardPageClient() {
   const accountMap = new Map(resolvedAccounts.map((account) => [account.id, account]))
   const connectedProviders = new Set(
     resolvedAccounts
-      .filter((account) => isConnectedAccount(account, statusMap[account.id]))
+      .filter((account) => isConnectedAccount(account, effectiveStatusMap[account.id]))
       .map((account) => String(account.provider || '').trim().toLowerCase())
       .filter(Boolean)
   )
@@ -2037,7 +2087,7 @@ function DashboardPageClient() {
   )
   const anyAutopilotRunning = deploymentWindows.some((lane) => lane.effectiveRunning)
   const connectedLaneCount = resolvedAccounts.filter((account) =>
-    isConnectedAccount(account, statusMap[account.id])
+    isConnectedAccount(account, effectiveStatusMap[account.id])
   ).length
   const hasMissionSignals =
     resolvedAccounts.length > 0 ||
@@ -2052,7 +2102,7 @@ function DashboardPageClient() {
     handle: embeddedMissionUser?.handle ?? null,
   }
   const runningLaneCount = deploymentWindows.filter(
-    (lane) => isConnectedAccount(lane.account, statusMap[lane.account.id]) && lane.effectiveRunning
+    (lane) => isConnectedAccount(lane.account, effectiveStatusMap[lane.account.id]) && lane.effectiveRunning
   ).length
   const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
   const upgradeHref =
