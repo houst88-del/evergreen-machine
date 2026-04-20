@@ -23,12 +23,12 @@ from app.core.subscription_state import (
     iso_from_unix_timestamp,
     update_user_subscription,
 )
-from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
+from app.models.models import AutopilotStatus, ConnectedAccount, JobQueueItem, Post, User
 from app.routes.auth import router as auth_router
 from app.routes.bluesky_routes import router as bluesky_router
 from app.routes.galaxy import router as galaxy_router
 from app.routes.x_oauth_routes import router as x_oauth_router
-from app.services.job_queue import enqueue_job, list_jobs
+from app.services.job_queue import enqueue_job
 from app.services.pacing import normalize_mode, pacing_options_for_provider
 from app.services.pool_service import active_rotation_count
 from app.services.scoring import seed_demo_data
@@ -650,27 +650,52 @@ def get_jobs(
         resolved_user_id = resolve_requested_user_id(
             db, authorization, user_id, x_evergreen_email, x_evergreen_handle
         )
-    finally:
-        db.close()
-    db, user, _ = get_user_and_optional_account(resolved_user_id)
-    try:
-        jobs = list_jobs(limit)
-        user_account_ids = {
+        user = db.query(User).filter(User.id == resolved_user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {resolved_user_id} not found")
+
+        user_account_ids = [
             int(account.id)
             for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == user.id).all()
-        }
+        ]
+
+        if not user_account_ids:
+            return {"jobs": []}
+
+        query = db.query(JobQueueItem).filter(JobQueueItem.connected_account_id.in_(user_account_ids))
 
         if connected_account_id is not None:
-            jobs = [
-                j
-                for j in jobs
-                if int(j.get("connected_account_id", -1)) == int(connected_account_id)
-                and int(j.get("connected_account_id", -1)) in user_account_ids
-            ]
-        else:
-            jobs = [j for j in jobs if int(j.get("connected_account_id", -1)) in user_account_ids]
+            if int(connected_account_id) not in user_account_ids:
+                return {"jobs": []}
+            query = query.filter(JobQueueItem.connected_account_id == int(connected_account_id))
 
-        return {"jobs": jobs}
+        rows = (
+            query
+            .order_by(JobQueueItem.created_at.desc(), JobQueueItem.id.desc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+
+        return {
+            "jobs": [
+                {
+                    "id": row.id,
+                    "connected_account_id": row.connected_account_id,
+                    "job_type": row.job_type,
+                    "payload": dict(row.payload_json or {}),
+                    "status": row.status,
+                    "created_at": row.created_at.isoformat() if row.created_at else "",
+                    "started_at": row.started_at.isoformat() if row.started_at else None,
+                    "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+                    "result": row.result_json,
+                    "error": row.error,
+                    "worker_id": row.worker_id,
+                    "attempt_count": int(row.attempt_count or 0),
+                    "last_heartbeat_at": row.last_heartbeat_at.isoformat() if row.last_heartbeat_at else None,
+                }
+                for row in rows
+            ]
+        }
     finally:
         db.close()
 

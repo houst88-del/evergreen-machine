@@ -65,38 +65,6 @@ type DashboardStatus = {
 const BACKEND =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://backend-fixed-production.up.railway.app";
-const MISSION_SNAPSHOT_KEY = "evergreen_mission_snapshot_v1";
-
-type MissionSnapshot = {
-  savedAt?: string;
-  accounts?: ConnectedAccount[];
-  statusMap?: Record<number, DashboardStatus>;
-  missionGalaxy?: GalaxyResponse | null;
-};
-
-function loadMissionSnapshot(): MissionSnapshot | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(MISSION_SNAPSHOT_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as MissionSnapshot;
-  } catch {
-    return null;
-  }
-}
-
-function saveMissionSnapshot(patch: MissionSnapshot) {
-  if (typeof window === "undefined") return;
-  const current = loadMissionSnapshot() || {};
-  window.localStorage.setItem(
-    MISSION_SNAPSHOT_KEY,
-    JSON.stringify({
-      ...current,
-      ...patch,
-      savedAt: new Date().toISOString(),
-    })
-  );
-}
 
 async function evergreenApiFetch(path: string, init: RequestInit = {}) {
   try {
@@ -444,26 +412,6 @@ export default function GalaxyPage() {
   const [zoom, setZoom] = useState(1);
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
 
-  useEffect(() => {
-    const snapshot = loadMissionSnapshot();
-    if (!snapshot) return;
-
-    if (Array.isArray(snapshot.accounts) && snapshot.accounts.length) {
-      setAccounts((current) => (current.length ? current : snapshot.accounts || []));
-    }
-    if (snapshot.statusMap && Object.keys(snapshot.statusMap).length) {
-      setStatusMap((current) =>
-        Object.keys(current).length ? current : snapshot.statusMap || {}
-      );
-    }
-    if (snapshot.missionGalaxy?.nodes?.length) {
-      setGalaxy((current) =>
-        current.nodes?.length ? current : snapshot.missionGalaxy || { nodes: [], meta: {} as GalaxyMeta }
-      );
-      setGalaxyScope((current) => (current === "__loading__" ? "unified" : current));
-    }
-  }, []);
-
   const liveTick = animMs / 60;
   const cameraDriftTick = liveTick;
   const parallaxTick = liveTick;
@@ -548,9 +496,6 @@ export default function GalaxyPage() {
           }
 
           setAccounts((current) => (next.length ? next : current));
-          if (next.length) {
-            saveMissionSnapshot({ accounts: next });
-          }
           if (
             selected !== "unified" &&
             next.length > 0 &&
@@ -593,9 +538,6 @@ export default function GalaxyPage() {
         });
         if (!cancelled) {
           setStatusMap(out);
-          if (Object.keys(out).length) {
-            saveMissionSnapshot({ statusMap: out });
-          }
         }
       } catch {
         // ignore
@@ -629,9 +571,6 @@ export default function GalaxyPage() {
           };
           setGalaxy(nextGalaxy);
           setGalaxyScope(requestedSelection);
-          if (Array.isArray(nextGalaxy.nodes) && nextGalaxy.nodes.length) {
-            saveMissionSnapshot({ missionGalaxy: nextGalaxy });
-          }
           setError("");
         }
       } catch {
