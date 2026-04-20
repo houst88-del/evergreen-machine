@@ -600,6 +600,44 @@ function mergeConnectedAccounts(
   })
 }
 
+function inferAccountsFromMissionData(
+  primary: ConnectedAccount[],
+  statusMap: Record<number, AccountStatus>,
+  jobs: JobItem[],
+): ConnectedAccount[] {
+  const discovered: ConnectedAccount[] = []
+
+  for (const [rawId, status] of Object.entries(statusMap)) {
+    const id = Number(rawId)
+    const provider = String(status?.provider || '').trim().toLowerCase()
+    const handle = String(status?.account_handle || '').trim()
+    if (!id || !provider || !handle) continue
+    discovered.push({
+      id,
+      provider,
+      handle,
+      connection_status: status?.connected ? 'connected' : undefined,
+    })
+  }
+
+  for (const job of jobs) {
+    const id = Number(job.connected_account_id || 0)
+    if (!id) continue
+    const payload = parseJobPayload(job)
+    const provider = String(payload.provider || '').trim().toLowerCase()
+    const handle = String(payload.handle || '').trim()
+    if (!provider || !handle) continue
+    discovered.push({
+      id,
+      provider,
+      handle,
+      connection_status: 'connected',
+    })
+  }
+
+  return mergeConnectedAccounts(primary, discovered)
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -1128,18 +1166,23 @@ export default function DashboardPage() {
     }
   }, [session])
 
+  const resolvedAccounts = useMemo(
+    () => inferAccountsFromMissionData(accounts, statusMap, jobs),
+    [accounts, jobs, statusMap]
+  )
+
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
     const accountStatuses = Object.values(statusMap)
     const hasMissionData =
-      accounts.length > 0 || accountStatuses.length > 0 || jobs.length > 0
+      resolvedAccounts.length > 0 || accountStatuses.length > 0 || jobs.length > 0
 
     const postsInRotation = accountStatuses.reduce(
       (sum, item) => sum + (item.posts_in_rotation || 0),
       0
     )
 
-    const connectedCount = accounts.filter((account) =>
+    const connectedCount = resolvedAccounts.filter((account) =>
       isConnectedAccount(account, statusMap[account.id])
     ).length
 
@@ -1166,7 +1209,7 @@ export default function DashboardPage() {
       workerState: inferredWorkerState,
       queued: heartbeat.queued ?? 0,
       processed: heartbeat.processed ?? 0,
-      syncedAccounts: heartbeat.synced_accounts ?? accounts.length,
+      syncedAccounts: heartbeat.synced_accounts ?? resolvedAccounts.length,
       repairedJobs: heartbeat.repaired_jobs ?? 0,
       pollSeconds: heartbeat.poll_seconds ?? 0,
       heartbeatAt: heartbeat.timestamp ?? null,
@@ -1175,12 +1218,12 @@ export default function DashboardPage() {
       connectedCount,
       nextCycle,
     }
-  }, [accounts, jobs, system, statusMap])
+  }, [jobs, resolvedAccounts, system, statusMap])
 
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']
 
-    return accounts
+    return resolvedAccounts
       .slice()
       .sort((a, b) => {
         const providerDiff =
@@ -1317,7 +1360,7 @@ export default function DashboardPage() {
           lastActionText: fmtWhen(effectiveLastActionAt),
         }
       })
-  }, [accounts, jobs, nowMs, statusMap])
+  }, [jobs, nowMs, resolvedAccounts, statusMap])
 
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
@@ -1706,24 +1749,24 @@ export default function DashboardPage() {
   const user = session.user
   const { subscriptionStatus, trialEndsAt, canRunAutopilot } = currentSubscriptionState()
   const recentJobs = jobs.slice(0, 5)
-  const accountMap = new Map(accounts.map((account) => [account.id, account]))
+  const accountMap = new Map(resolvedAccounts.map((account) => [account.id, account]))
   const connectedProviders = new Set(
-    accounts
+    resolvedAccounts
       .filter((account) => isConnectedAccount(account, statusMap[account.id]))
       .map((account) => String(account.provider || '').trim().toLowerCase())
       .filter(Boolean)
   )
-  const xAccount = accounts.find(
+  const xAccount = resolvedAccounts.find(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   )
-  const blueskyAccount = accounts.find(
+  const blueskyAccount = resolvedAccounts.find(
     (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
   )
   const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
-  const connectedLaneCount = accounts.filter((account) =>
+  const connectedLaneCount = resolvedAccounts.filter((account) =>
     isConnectedAccount(account, statusMap[account.id])
   ).length
-  const runningLaneCount = accounts.filter(
+  const runningLaneCount = resolvedAccounts.filter(
     (account) => isConnectedAccount(account, statusMap[account.id]) && statusMap[account.id]?.running
   ).length
   const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
@@ -1755,7 +1798,7 @@ export default function DashboardPage() {
             body: 'The worker will keep importing new posts, refreshing scores, and selecting the next pulse from there.',
           }
         : null
-  const standardFriendly = accounts.filter(
+  const standardFriendly = resolvedAccounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   ).length <= 1
   const activationSteps = [
@@ -1782,10 +1825,10 @@ export default function DashboardPage() {
     },
     {
       label: 'Monitor Starden',
-      detail: accounts.length > 0
+      detail: resolvedAccounts.length > 0
         ? 'Watch selections and refresh timing below.'
         : 'Starden gets more useful once a lane is connected.',
-      kind: accounts.length > 0 ? 'good' : 'neutral',
+      kind: resolvedAccounts.length > 0 ? 'good' : 'neutral',
     },
   ] as const
   const subscriptionBanner =
