@@ -853,6 +853,7 @@ function DashboardPageClient() {
   const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [missionHydratedOnce, setMissionHydratedOnce] = useState(false)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const [system, setSystem] = useState<SystemStatus | null>(null)
@@ -1342,6 +1343,10 @@ function DashboardPageClient() {
 
         if (!hasMissionData) {
           setError(err instanceof Error ? err.message : 'Could not load mission control')
+        }
+      } finally {
+        if (mounted) {
+          setMissionHydratedOnce(true)
         }
       }
     }
@@ -2039,7 +2044,7 @@ function DashboardPageClient() {
     jobs.length > 0 ||
     (Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length > 0 : false) ||
     Object.keys(statusMap).length > 0
-  const missionHydrating = !error && !hasMissionSignals
+  const missionHydrating = !error && (!missionHydratedOnce || !hasMissionSignals)
   const embeddedMissionUser = session?.user || getStoredUser() || null
   const embeddedMissionUserId = embeddedMissionUser?.id ?? null
   const embeddedMissionIdentityHints = {

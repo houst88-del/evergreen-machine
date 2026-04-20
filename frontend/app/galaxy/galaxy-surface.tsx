@@ -938,6 +938,22 @@ export function GalaxySurface({
     return found ? `${found.provider} · ${found.handle}` : "Starden";
   }, [accounts, selected]);
 
+  const scopeOptions = useMemo(
+    () => [
+      { value: "unified", label: "Unified" },
+      ...accounts.map((account) => ({
+        value: String(account.id),
+        label:
+          providerLabel(account.provider) === "Bluesky"
+            ? "Bluesky"
+            : providerLabel(account.provider) === "X"
+              ? "X"
+              : providerLabel(account.provider),
+      })),
+    ],
+    [accounts]
+  );
+
   const counts = useMemo(() => {
     const gravityStars = workingNodes.filter((n) => rankGravity(n) >= 250).length;
     const strongStars = workingNodes.filter(
@@ -1271,24 +1287,60 @@ export function GalaxySurface({
                 Starden View
               </div>
             ) : null}
-            <select
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              style={{
-                borderRadius: 999,
-                border: "1px solid rgba(125,211,252,0.38)",
-                background: "#031110",
-                color: "white",
-                padding: "8px 12px",
-              }}
-            >
-              <option value="unified">Unified Starden</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={String(account.id)}>
-                  {account.provider}: {account.handle}
-                </option>
-              ))}
-            </select>
+            {embedded ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
+                {scopeOptions.map((option) => {
+                  const active = selected === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => setSelected(option.value)}
+                      style={{
+                        borderRadius: 999,
+                        border: active
+                          ? "1px solid rgba(125,211,252,0.48)"
+                          : "1px solid rgba(52,211,153,0.18)",
+                        background: active ? "rgba(59,130,246,0.18)" : "rgba(0,0,0,0.28)",
+                        color: "white",
+                        padding: "8px 12px",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: active ? 700 : 500,
+                        boxShadow: active ? "0 0 0 1px rgba(147,197,253,0.18)" : "none",
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <select
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(125,211,252,0.38)",
+                  background: "#031110",
+                  color: "white",
+                  padding: "8px 12px",
+                }}
+              >
+                <option value="unified">Unified Starden</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={String(account.id)}>
+                    {account.provider}: {account.handle}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
