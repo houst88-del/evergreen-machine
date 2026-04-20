@@ -1187,17 +1187,23 @@ function DashboardPageClient() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
-
         if (nextAccounts.length) {
           setAccounts(nextAccounts)
-          setStatusMap(nextStatusMap)
+          const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
+          setStatusMap((current) =>
+            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+              ? nextStatusMap
+              : current,
+          )
         }
       } else if (discoveredAccounts.length) {
-        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
-
         setAccounts(discoveredAccounts)
-        setStatusMap(nextStatusMap)
+        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
+        setStatusMap((current) =>
+          Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+            ? nextStatusMap
+            : current,
+        )
       }
 
       if (jobsResult.status === 'fulfilled') {
@@ -1345,19 +1351,27 @@ function DashboardPageClient() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
-
           if (!mounted) return
           if (nextAccounts.length) {
             setAccounts(nextAccounts)
-            setStatusMap(nextStatusMap)
+            const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
+            if (!mounted) return
+            setStatusMap((current) =>
+              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+                ? nextStatusMap
+                : current,
+            )
           }
         } else if (discoveredAccounts.length) {
-          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
-
           if (!mounted) return
           setAccounts(discoveredAccounts)
-          setStatusMap(nextStatusMap)
+          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
+          if (!mounted) return
+          setStatusMap((current) =>
+            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+              ? nextStatusMap
+              : current,
+          )
         }
 
         if (jobsResult.status === 'fulfilled') {
