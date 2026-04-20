@@ -82,9 +82,15 @@ type GalaxyNode = {
 type GalaxyResponse = {
   nodes?: GalaxyNode[]
   meta?: {
+    connected_account_id?: number | null
     count?: number
     running?: boolean
+    connected?: boolean
+    last_action_at?: string | null
+    next_cycle_at?: string | null
+    mode?: 'single' | 'unified'
     account_count?: number
+    metadata?: Record<string, unknown>
   }
 }
 
@@ -612,6 +618,133 @@ function mergeConnectedAccounts(
   })
 }
 
+function deriveStatusFromGalaxy(account: ConnectedAccount, galaxy: GalaxyResponse): AccountStatus {
+  const nodes = Array.isArray(galaxy.nodes) ? galaxy.nodes : []
+  const meta = asRecord(galaxy.meta?.metadata)
+  const currentNode = nodes.find((node) => Boolean((node as any).current_cycle)) || nodes[0]
+
+  return {
+    connected_account_id: account.id,
+    running: Boolean(galaxy.meta?.running),
+    connected:
+      typeof galaxy.meta?.connected === 'boolean'
+        ? galaxy.meta.connected
+        : String(account.connection_status || '').trim().toLowerCase() === 'connected',
+    provider: account.provider,
+    account_handle: account.handle,
+    posts_in_rotation:
+      typeof galaxy.meta?.count === 'number'
+        ? galaxy.meta.count
+        : nodes.length,
+    last_post_text:
+      String((currentNode as any)?.label || '').trim() ||
+      String((currentNode as any)?.url || '').trim() ||
+      null,
+    last_action_at:
+      typeof galaxy.meta?.last_action_at === 'string' ? galaxy.meta.last_action_at : null,
+    next_cycle_at:
+      typeof meta?.next_cycle_at === 'string'
+        ? meta.next_cycle_at
+        : typeof galaxy.meta?.next_cycle_at === 'string'
+          ? galaxy.meta.next_cycle_at
+          : null,
+    metadata: meta || {},
+  }
+}
+
+function mergeAccountStatus(
+  status: AccountStatus | null | undefined,
+  galaxyStatus: AccountStatus | null | undefined,
+): AccountStatus {
+  const mergedMetadata = {
+    ...(asRecord(galaxyStatus?.metadata) || {}),
+    ...(asRecord(status?.metadata) || {}),
+  }
+
+  return {
+    connected_account_id:
+      status?.connected_account_id ?? galaxyStatus?.connected_account_id ?? null,
+    running: Boolean(status?.running || galaxyStatus?.running),
+    connected:
+      typeof status?.connected === 'boolean'
+        ? status.connected
+        : typeof galaxyStatus?.connected === 'boolean'
+          ? galaxyStatus.connected
+          : undefined,
+    provider: status?.provider || galaxyStatus?.provider,
+    account_handle: status?.account_handle || galaxyStatus?.account_handle,
+    posts_in_rotation: Math.max(
+      Number(status?.posts_in_rotation || 0),
+      Number(galaxyStatus?.posts_in_rotation || 0),
+    ),
+    last_post_text: status?.last_post_text || galaxyStatus?.last_post_text || null,
+    last_action_at: status?.last_action_at || galaxyStatus?.last_action_at || null,
+    next_cycle_at: status?.next_cycle_at || galaxyStatus?.next_cycle_at || null,
+    pacing_mode: status?.pacing_mode,
+    pacing_label: status?.pacing_label,
+    pacing_description: status?.pacing_description,
+    pacing_window_label: status?.pacing_window_label,
+    pacing_options: status?.pacing_options,
+    breathing_room_active:
+      typeof status?.breathing_room_active === 'boolean'
+        ? status.breathing_room_active
+        : undefined,
+    breathing_room_until: status?.breathing_room_until || null,
+    breathing_room_reason: status?.breathing_room_reason || null,
+    latest_original_post_at: status?.latest_original_post_at || null,
+    fresh_post_protection_enabled:
+      typeof status?.fresh_post_protection_enabled === 'boolean'
+        ? status.fresh_post_protection_enabled
+        : undefined,
+    metadata: mergedMetadata,
+  }
+}
+
+async function fetchLaneStatusMap(
+  userId: number,
+  accounts: ConnectedAccount[],
+): Promise<Record<number, AccountStatus>> {
+  const entries = await Promise.all(
+    accounts.map(async (account) => {
+      let statusJson: AccountStatus | null = null
+      let galaxyStatus: AccountStatus | null = null
+
+      try {
+        const res = await apiFetch(`/api/status?user_id=${userId}&connected_account_id=${account.id}`)
+        if (res.ok) {
+          statusJson = (await res.json()) as AccountStatus
+        }
+      } catch {
+        // ignore account-specific status failures
+      }
+
+      try {
+        const galaxyJson = (await fetchJsonOrThrow(
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${account.id}`
+        )) as GalaxyResponse
+        galaxyStatus = deriveStatusFromGalaxy(account, galaxyJson)
+      } catch {
+        // ignore account-specific galaxy failures
+      }
+
+      const merged = mergeAccountStatus(statusJson, galaxyStatus)
+      const hasSignal = Boolean(
+        merged.connected ||
+          merged.running ||
+          (typeof merged.posts_in_rotation === 'number' && merged.posts_in_rotation > 0) ||
+          String(merged.last_action_at || '').trim() ||
+          String(merged.next_cycle_at || '').trim(),
+      )
+
+      return hasSignal ? [account.id, merged] : null
+    }),
+  )
+
+  return Object.fromEntries(
+    entries.filter((entry): entry is [number, AccountStatus] => Array.isArray(entry)),
+  )
+}
+
 function inferAccountsFromMissionData(
   primary: ConnectedAccount[],
   statusMap: Record<number, AccountStatus>,
@@ -937,41 +1070,14 @@ export default function DashboardPage() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-
-        const nextStatusMap: Record<number, AccountStatus> = {}
-        await Promise.all(
-          nextAccounts.map(async (account: ConnectedAccount) => {
-            try {
-              const res = await apiFetch(
-                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-              )
-              if (!res.ok) return
-              nextStatusMap[account.id] = await res.json()
-            } catch {
-              // ignore account-specific failures
-            }
-          })
-        )
+        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts)
 
         if (nextAccounts.length) {
           setAccounts(nextAccounts)
           setStatusMap(nextStatusMap)
         }
       } else if (discoveredAccounts.length) {
-        const nextStatusMap: Record<number, AccountStatus> = {}
-        await Promise.all(
-          discoveredAccounts.map(async (account) => {
-            try {
-              const res = await apiFetch(
-                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-              )
-              if (!res.ok) return
-              nextStatusMap[account.id] = await res.json()
-            } catch {
-              // ignore account-specific failures
-            }
-          })
-        )
+        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts)
 
         setAccounts(discoveredAccounts)
         setStatusMap(nextStatusMap)
@@ -1105,21 +1211,7 @@ export default function DashboardPage() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-
-        const nextStatusMap: Record<number, AccountStatus> = {}
-        await Promise.all(
-            nextAccounts.map(async (account: ConnectedAccount) => {
-              try {
-                const res = await apiFetch(
-                  `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-                )
-                if (!res.ok) return
-                nextStatusMap[account.id] = await res.json()
-              } catch {
-                // ignore account-specific failures
-              }
-            })
-          )
+        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts)
 
           if (!mounted) return
           if (nextAccounts.length) {
@@ -1127,20 +1219,7 @@ export default function DashboardPage() {
             setStatusMap(nextStatusMap)
           }
         } else if (discoveredAccounts.length) {
-          const nextStatusMap: Record<number, AccountStatus> = {}
-          await Promise.all(
-            discoveredAccounts.map(async (account) => {
-              try {
-                const res = await apiFetch(
-                  `/api/status?user_id=${userId}&connected_account_id=${account.id}`
-                )
-                if (!res.ok) return
-                nextStatusMap[account.id] = await res.json()
-              } catch {
-                // ignore account-specific failures
-              }
-            })
-          )
+          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts)
 
           if (!mounted) return
           setAccounts(discoveredAccounts)
