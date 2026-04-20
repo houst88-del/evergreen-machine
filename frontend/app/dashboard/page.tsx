@@ -267,13 +267,20 @@ function isFreshJobActivity(
   if (!marker) return false
 
   const ageMs = nowMs - marker.getTime()
-  const baseWindowMs = Math.max(90000, Number(pollSeconds || 0) * 5000)
+  const heartbeatMarker = parseApiDate(job.last_heartbeat_at)
+  const heartbeatAgeMs = heartbeatMarker ? nowMs - heartbeatMarker.getTime() : Number.POSITIVE_INFINITY
+  const queueWindowMs = Math.max(45000, Number(pollSeconds || 0) * 2000)
+  const runningWindowMs = Math.max(60000, Number(pollSeconds || 0) * 2500)
 
   if (state === 'queued') {
-    return ageMs <= baseWindowMs
+    return ageMs <= queueWindowMs
   }
 
-  return ageMs <= Math.max(120000, baseWindowMs)
+  if (heartbeatMarker) {
+    return heartbeatAgeMs <= runningWindowMs
+  }
+
+  return ageMs <= runningWindowMs
 }
 
 function selectedPacingOption(status?: AccountStatus | null) {

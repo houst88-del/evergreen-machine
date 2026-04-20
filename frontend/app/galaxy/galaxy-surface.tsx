@@ -515,6 +515,11 @@ export function GalaxySurface({
   const autoScopedRef = useRef(false);
   const accountsRef = useRef<ConnectedAccount[]>(embeddedAccounts || []);
   const visibleGalaxyRef = useRef<GalaxyResponse>({ nodes: [], meta: {} });
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const [surfaceInView, setSurfaceInView] = useState(!embedded);
+  const [documentVisible, setDocumentVisible] = useState(
+    typeof document === "undefined" ? true : document.visibilityState === "visible"
+  );
 
   useEffect(() => {
     if (embedded || typeof window === "undefined") return;
@@ -569,6 +574,50 @@ export function GalaxySurface({
   }, [accounts]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibility = () => {
+      setDocumentVisible(document.visibilityState === "visible");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!embedded) {
+      setSurfaceInView(true);
+      return;
+    }
+
+    const node = surfaceRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setSurfaceInView(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setSurfaceInView(Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.12));
+      },
+      {
+        threshold: [0, 0.12, 0.25, 0.5],
+        rootMargin: "180px 0px 220px 0px",
+      }
+    );
+
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [embedded]);
+
+  const surfaceActive = documentVisible && surfaceInView;
+
+  useEffect(() => {
     visibleGalaxyRef.current = galaxyScope === selected ? galaxy : { nodes: [], meta: {} };
   }, [galaxy, galaxyScope, selected]);
 
@@ -579,7 +628,10 @@ export function GalaxySurface({
   const waveTick = Math.floor(animMs / 1400);
 
   useEffect(() => {
+    if (!surfaceActive) return;
+
     let frameId = 0;
+    let lastCommitTs = 0;
 
     const tick = (timestamp: number) => {
       const state = animationRef.current;
@@ -593,22 +645,29 @@ export function GalaxySurface({
       if (Math.abs(state.speed - target) < 0.001) state.speed = target;
 
       state.elapsed += delta * state.speed;
-      setAnimMs(state.elapsed);
+      const commitIntervalMs = embedded ? 80 : 16;
+      if (timestamp - lastCommitTs >= commitIntervalMs) {
+        lastCommitTs = timestamp;
+        setAnimMs(state.elapsed);
+      }
       frameId = window.requestAnimationFrame(tick);
     };
 
     frameId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [timeLapseOn]);
+    return () => {
+      animationRef.current.lastTs = 0;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [embedded, surfaceActive, timeLapseOn]);
 
   useEffect(() => {
-    if (!timeLapseOn) return;
+    if (!timeLapseOn || !surfaceActive) return;
     const id = window.setInterval(
       () => setTimeWarp((v) => (v + 0.25) % 100),
       360
     );
     return () => window.clearInterval(id);
-  }, [timeLapseOn]);
+  }, [surfaceActive, timeLapseOn]);
 
   useEffect(() => {
     if (embedded && embeddedUserId) return;
@@ -663,6 +722,7 @@ export function GalaxySurface({
 
   useEffect(() => {
     if (!userId) return;
+    if (embedded && !surfaceActive) return;
     if (embedded && embeddedAccounts?.length) return;
 
     let cancelled = false;
@@ -711,10 +771,11 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [identityHints, selected, userId]);
+  }, [embedded, identityHints, selected, surfaceActive, userId]);
 
   useEffect(() => {
     if (!userId) return;
+    if (embedded && !surfaceActive) return;
     if (embedded && embeddedStatusMap && Object.keys(embeddedStatusMap).length) return;
 
     let cancelled = false;
@@ -751,7 +812,7 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts, identityHints, userId]);
+  }, [accounts, embedded, identityHints, surfaceActive, userId]);
 
   useEffect(() => {
     if (!embedded) return;
@@ -769,6 +830,7 @@ export function GalaxySurface({
 
   useEffect(() => {
     if (!userId) return;
+    if (embedded && !surfaceActive) return;
 
     let cancelled = false;
     setGalaxyScope("__loading__");
@@ -861,7 +923,7 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts, identityHints, selected, userId]);
+  }, [accounts, embedded, identityHints, selected, surfaceActive, userId]);
 
   const visibleGalaxy = useMemo(
     () => (galaxyScope === selected ? galaxy : { nodes: [], meta: {} }),
@@ -1220,6 +1282,7 @@ export function GalaxySurface({
 
   return (
     <div
+      ref={surfaceRef}
       className="starden-surface"
       style={{
         minHeight: embedded ? "auto" : "100vh",
