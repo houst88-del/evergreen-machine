@@ -454,6 +454,7 @@ export function GalaxySurface({
   const [identityHints, setIdentityHints] = useState<IdentityHints>(embeddedIdentityHints || {});
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
   const autoScopedRef = useRef(false);
+  const accountsRef = useRef<ConnectedAccount[]>(embeddedAccounts || []);
   const visibleGalaxyRef = useRef<GalaxyResponse>({ nodes: [], meta: {} });
 
   useEffect(() => {
@@ -503,6 +504,10 @@ export function GalaxySurface({
     embeddedUserId,
     selected,
   ]);
+
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
 
   useEffect(() => {
     visibleGalaxyRef.current = galaxyScope === selected ? galaxy : { nodes: [], meta: {} };
@@ -619,7 +624,13 @@ export function GalaxySurface({
           }
         }
       } catch {
-        if (!cancelled && accounts.length === 0) setError("Could not load connected accounts.");
+        const hasVisibleGalaxy =
+          Array.isArray(visibleGalaxyRef.current.nodes) && visibleGalaxyRef.current.nodes.length > 0;
+        const hasKnownAccounts = accountsRef.current.length > 0;
+
+        if (!cancelled && !hasVisibleGalaxy && !hasKnownAccounts) {
+          setError("Could not load connected accounts.");
+        }
       }
     }
     loadAccounts();
