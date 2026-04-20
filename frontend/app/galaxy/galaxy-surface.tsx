@@ -70,6 +70,14 @@ type IdentityHints = {
 
 type GalaxyPageProps = {
   embedded?: boolean;
+  embeddedUserId?: number | null;
+  embeddedIdentityHints?: IdentityHints;
+  embeddedAccounts?: ConnectedAccount[];
+  embeddedStatusMap?: Record<number, DashboardStatus>;
+  embeddedUnifiedGalaxy?: {
+    nodes?: unknown[];
+    meta?: Record<string, unknown>;
+  } | null;
 };
 
 const BACKEND =
@@ -274,6 +282,13 @@ const parseMeta = (meta?: GalaxyMeta) => {
   };
 };
 
+const normalizeEmbeddedGalaxy = (
+  value?: { nodes?: unknown[]; meta?: Record<string, unknown> } | null
+): GalaxyResponse => ({
+  nodes: Array.isArray(value?.nodes) ? (value?.nodes as GalaxyNode[]) : [],
+  meta: (value?.meta || {}) as GalaxyMeta,
+});
+
 const computeRadius = (node: GalaxyNode) => {
   const score = safeNum(node.normalized_score ?? node.score, 0);
   const gravityScore = safeNum(node.gravity_score, 0);
@@ -405,14 +420,23 @@ const isFreshPulse = (value?: string | null) => {
   return Date.now() - d.getTime() <= 1000 * 60 * 45;
 };
 
-export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
+export function GalaxySurface({
+  embedded = false,
+  embeddedUserId = null,
+  embeddedIdentityHints,
+  embeddedAccounts,
+  embeddedStatusMap,
+  embeddedUnifiedGalaxy,
+}: GalaxyPageProps = {}) {
   const router = useRouter();
-  const [userId, setUserId] = useState<number | null>(null);
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [userId, setUserId] = useState<number | null>(embeddedUserId);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>(embeddedAccounts || []);
   const [selected, setSelected] = useState<string>("unified");
-  const [galaxy, setGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} });
+  const [galaxy, setGalaxy] = useState<GalaxyResponse>(
+    normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy)
+  );
   const [galaxyScope, setGalaxyScope] = useState<string>("unified");
-  const [statusMap, setStatusMap] = useState<Record<number, DashboardStatus>>({});
+  const [statusMap, setStatusMap] = useState<Record<number, DashboardStatus>>(embeddedStatusMap || {});
   const [hovered, setHovered] = useState<GalaxyNode | null>(null);
   const [selectedStarId, setSelectedStarId] = useState<string | null>(null);
   const [animMs, setAnimMs] = useState(0);
@@ -427,13 +451,57 @@ export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
     "off" | "strong" | "viral" | "conversion"
   >("off");
   const [zoom, setZoom] = useState(1);
-  const [identityHints, setIdentityHints] = useState<IdentityHints>({});
+  const [identityHints, setIdentityHints] = useState<IdentityHints>(embeddedIdentityHints || {});
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
+  const autoScopedRef = useRef(false);
 
   useEffect(() => {
     if (embedded || typeof window === "undefined") return;
     router.replace("/dashboard#starden-panel");
   }, [embedded, router]);
+
+  useEffect(() => {
+    if (!embedded) return;
+
+    if (embeddedUserId) {
+      setUserId(embeddedUserId);
+      setError("");
+    }
+
+    if (embeddedIdentityHints) {
+      setIdentityHints((current) => ({
+        email: embeddedIdentityHints.email ?? current.email ?? null,
+        handle: embeddedIdentityHints.handle ?? current.handle ?? null,
+      }));
+    }
+
+    if (embeddedAccounts?.length) {
+      setAccounts(embeddedAccounts);
+    }
+
+    if (embeddedStatusMap && Object.keys(embeddedStatusMap).length) {
+      setStatusMap(embeddedStatusMap);
+    }
+
+    if (
+      selected === "unified" &&
+      embeddedUnifiedGalaxy &&
+      Array.isArray(embeddedUnifiedGalaxy.nodes) &&
+      embeddedUnifiedGalaxy.nodes.length > 0
+    ) {
+      setGalaxy(normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy));
+      setGalaxyScope("unified");
+      setError("");
+    }
+  }, [
+    embedded,
+    embeddedAccounts,
+    embeddedIdentityHints,
+    embeddedStatusMap,
+    embeddedUnifiedGalaxy,
+    embeddedUserId,
+    selected,
+  ]);
 
   const liveTick = animMs / 60;
   const cameraDriftTick = liveTick;
@@ -474,6 +542,8 @@ export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
   }, [timeLapseOn]);
 
   useEffect(() => {
+    if (embedded && embeddedUserId) return;
+
     let cancelled = false;
     async function loadSession() {
       const storedUser = getStoredUser();
@@ -511,6 +581,7 @@ export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
 
   useEffect(() => {
     if (!userId) return;
+    if (embedded && embeddedAccounts?.length) return;
 
     let cancelled = false;
     async function loadAccounts() {
@@ -556,6 +627,7 @@ export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
 
   useEffect(() => {
     if (!userId) return;
+    if (embedded && embeddedStatusMap && Object.keys(embeddedStatusMap).length) return;
 
     let cancelled = false;
     async function loadStatuses() {
@@ -592,11 +664,38 @@ export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
   }, [accounts, identityHints, userId]);
 
   useEffect(() => {
+    if (!embedded) return;
+    if (autoScopedRef.current) return;
+    if (selected !== "unified") return;
+    if (accounts.length === 0) return;
+    const embeddedUnifiedCount = Array.isArray(embeddedUnifiedGalaxy?.nodes)
+      ? embeddedUnifiedGalaxy?.nodes.length || 0
+      : 0;
+    if (embeddedUnifiedCount > 0) return;
+
+    autoScopedRef.current = true;
+    setSelected(String(accounts[0].id));
+  }, [accounts, embedded, embeddedUnifiedGalaxy, selected]);
+
+  useEffect(() => {
     if (!userId) return;
 
     let cancelled = false;
     setGalaxyScope("__loading__");
     async function loadGalaxy() {
+      if (
+        embedded &&
+        selected === "unified" &&
+        embeddedUnifiedGalaxy &&
+        Array.isArray(embeddedUnifiedGalaxy.nodes) &&
+        embeddedUnifiedGalaxy.nodes.length > 0
+      ) {
+        setGalaxy(normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy));
+        setGalaxyScope("unified");
+        setError("");
+        return;
+      }
+
       try {
         const requestedSelection = selected;
         const qs =

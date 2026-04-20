@@ -2009,6 +2009,12 @@ function DashboardPageClient() {
   const connectedLaneCount = resolvedAccounts.filter((account) =>
     isConnectedAccount(account, statusMap[account.id])
   ).length
+  const embeddedMissionUser = session?.user || getStoredUser() || null
+  const embeddedMissionUserId = embeddedMissionUser?.id ?? null
+  const embeddedMissionIdentityHints = {
+    email: embeddedMissionUser?.email ?? null,
+    handle: embeddedMissionUser?.handle ?? null,
+  }
   const runningLaneCount = deploymentWindows.filter(
     (lane) => isConnectedAccount(lane.account, statusMap[lane.account.id]) && lane.effectiveRunning
   ).length
@@ -3059,7 +3065,14 @@ function DashboardPageClient() {
             </div>
           </div>
 
-          <GalaxySurface embedded />
+          <GalaxySurface
+            embedded
+            embeddedUserId={embeddedMissionUserId}
+            embeddedIdentityHints={embeddedMissionIdentityHints}
+            embeddedAccounts={resolvedAccounts}
+            embeddedStatusMap={statusMap}
+            embeddedUnifiedGalaxy={missionGalaxy}
+          />
         </section>
       </div>
     </main>
