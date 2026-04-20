@@ -530,6 +530,52 @@ async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount
   })
 }
 
+function mergeConnectedAccounts(
+  primary: ConnectedAccount[],
+  discovered: ConnectedAccount[],
+): ConnectedAccount[] {
+  const merged = new Map<string, ConnectedAccount>()
+
+  for (const account of [...primary, ...discovered]) {
+    const provider = String(account.provider || '').trim().toLowerCase()
+    const handle = String(account.handle || '').trim().toLowerCase()
+    const key = `${provider}::${handle || account.id}`
+    const existing = merged.get(key)
+
+    if (!existing) {
+      merged.set(key, {
+        ...account,
+        connection_status:
+          String(account.connection_status || '').trim().toLowerCase() === 'connected'
+            ? 'connected'
+            : account.connection_status,
+      })
+      continue
+    }
+
+    const existingConnected =
+      String(existing.connection_status || '').trim().toLowerCase() === 'connected'
+    const accountConnected =
+      String(account.connection_status || '').trim().toLowerCase() === 'connected'
+
+    merged.set(key, {
+      ...existing,
+      ...account,
+      id: existingConnected ? existing.id : account.id || existing.id,
+      connection_status:
+        existingConnected || accountConnected
+          ? 'connected'
+          : account.connection_status || existing.connection_status,
+    })
+  }
+
+  return Array.from(merged.values()).sort((a, b) => {
+    const providerDiff = String(a.provider || '').localeCompare(String(b.provider || ''))
+    if (providerDiff !== 0) return providerDiff
+    return Number(a.id || 0) - Number(b.id || 0)
+  })
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -773,6 +819,13 @@ export default function DashboardPage() {
         setSystem(systemResult.value)
       }
 
+      let discoveredAccounts: ConnectedAccount[] = []
+      try {
+        discoveredAccounts = await fetchAccountsFromGalaxy(userId)
+      } catch {
+        // ignore galaxy fallback failures
+      }
+
       if (accountsResult.status === 'fulfilled') {
         const accountsJson = accountsResult.value
         let nextAccounts = Array.isArray(accountsJson.accounts)
@@ -781,13 +834,7 @@ export default function DashboardPage() {
             ? accountsJson
             : []
 
-        if (!nextAccounts.length) {
-          try {
-            nextAccounts = await fetchAccountsFromGalaxy(userId)
-          } catch {
-            // ignore galaxy fallback failures
-          }
-        }
+        nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
 
         const nextStatusMap: Record<number, AccountStatus> = {}
         await Promise.all(
@@ -805,6 +852,24 @@ export default function DashboardPage() {
         )
 
         setAccounts(nextAccounts)
+        setStatusMap(nextStatusMap)
+      } else if (discoveredAccounts.length) {
+        const nextStatusMap: Record<number, AccountStatus> = {}
+        await Promise.all(
+          discoveredAccounts.map(async (account) => {
+            try {
+              const res = await apiFetch(
+                `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+              )
+              if (!res.ok) return
+              nextStatusMap[account.id] = await res.json()
+            } catch {
+              // ignore account-specific failures
+            }
+          })
+        )
+
+        setAccounts(discoveredAccounts)
         setStatusMap(nextStatusMap)
       }
 
@@ -908,6 +973,13 @@ export default function DashboardPage() {
         setSystem((current) => current || { backend: { ok: true }, worker: { ok: false, heartbeat: { status: 'unknown' } } })
       }
 
+      let discoveredAccounts: ConnectedAccount[] = []
+      try {
+        discoveredAccounts = await fetchAccountsFromGalaxy(userId)
+      } catch {
+        // ignore galaxy fallback failures
+      }
+
       if (accountsResult.status === 'fulfilled') {
         const accountsJson = accountsResult.value
         let nextAccounts = Array.isArray(accountsJson.accounts)
@@ -916,13 +988,7 @@ export default function DashboardPage() {
             ? accountsJson
             : []
 
-        if (!nextAccounts.length) {
-          try {
-            nextAccounts = await fetchAccountsFromGalaxy(userId)
-          } catch {
-            // ignore galaxy fallback failures
-          }
-        }
+        nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
 
         const nextStatusMap: Record<number, AccountStatus> = {}
         await Promise.all(
@@ -941,6 +1007,25 @@ export default function DashboardPage() {
 
           if (!mounted) return
           setAccounts(nextAccounts)
+          setStatusMap(nextStatusMap)
+        } else if (discoveredAccounts.length) {
+          const nextStatusMap: Record<number, AccountStatus> = {}
+          await Promise.all(
+            discoveredAccounts.map(async (account) => {
+              try {
+                const res = await apiFetch(
+                  `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+                )
+                if (!res.ok) return
+                nextStatusMap[account.id] = await res.json()
+              } catch {
+                // ignore account-specific failures
+              }
+            })
+          )
+
+          if (!mounted) return
+          setAccounts(discoveredAccounts)
           setStatusMap(nextStatusMap)
         }
 

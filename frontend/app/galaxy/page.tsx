@@ -346,6 +346,7 @@ export default function GalaxyPage() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [selected, setSelected] = useState<string>("unified");
   const [galaxy, setGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} });
+  const [galaxyScope, setGalaxyScope] = useState<string>("unified");
   const [statusMap, setStatusMap] = useState<Record<number, DashboardStatus>>({});
   const [hovered, setHovered] = useState<GalaxyNode | null>(null);
   const [selectedStarId, setSelectedStarId] = useState<string | null>(null);
@@ -493,12 +494,14 @@ export default function GalaxyPage() {
     if (!userId) return;
 
     let cancelled = false;
+    setGalaxyScope("__loading__");
     async function loadGalaxy() {
       try {
+        const requestedSelection = selected;
         const qs =
-          selected === "unified"
+          requestedSelection === "unified"
             ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
-            : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(selected)}`;
+            : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(requestedSelection)}`;
         const res = await evergreenApiFetch(`/api/galaxy${qs}`);
         const json: GalaxyResponse = await res.json();
         if (!cancelled) {
@@ -506,15 +509,14 @@ export default function GalaxyPage() {
             nodes: Array.isArray(json.nodes) ? json.nodes : [],
             meta: json.meta || {},
           });
+          setGalaxyScope(requestedSelection);
           setError("");
         }
       } catch {
         if (cancelled) return;
-        setError((current) => {
-          const hasVisibleGalaxy =
-            galaxy.nodes.length > 0 || safeNum(galaxy.meta?.count, 0) > 0;
-          return hasVisibleGalaxy ? "" : "Could not load galaxy.";
-        });
+        setGalaxy({ nodes: [], meta: {} });
+        setGalaxyScope(selected);
+        setError("Could not load galaxy.");
       }
     }
     loadGalaxy();
@@ -525,13 +527,18 @@ export default function GalaxyPage() {
     };
   }, [selected, userId]);
 
-  const engine = useMemo(() => parseMeta(galaxy.meta), [galaxy.meta]);
+  const visibleGalaxy = useMemo(
+    () => (galaxyScope === selected ? galaxy : { nodes: [], meta: {} }),
+    [galaxy, galaxyScope, selected]
+  );
+
+  const engine = useMemo(() => parseMeta(visibleGalaxy.meta), [visibleGalaxy.meta]);
   const viewMotionBoost = selected === "unified" ? 1 : 0.72;
   const localMotionScale = selected === "unified" ? 1 : 0.42;
   const spatialTick = liveTick * 0.1;
 
   const workingNodes = useMemo(() => {
-    const nodes = [...galaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
+    const nodes = [...visibleGalaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
     const wells = nodes.slice(0, 5);
     const centerX = 50;
     const centerY = 54;
@@ -640,7 +647,7 @@ export default function GalaxyPage() {
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [galaxy.nodes, localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost]);
+  }, [localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost, visibleGalaxy.nodes]);
 
   const gravityWells = useMemo(
     () =>
