@@ -147,6 +147,40 @@ type JobPayload = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
+const MISSION_SNAPSHOT_KEY = 'evergreen_mission_snapshot_v1'
+
+type MissionSnapshot = {
+  savedAt?: string
+  accounts?: ConnectedAccount[]
+  statusMap?: Record<number, AccountStatus>
+  jobs?: JobItem[]
+  system?: SystemStatus | null
+  missionGalaxy?: GalaxyResponse | null
+}
+
+function loadMissionSnapshot(): MissionSnapshot | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(MISSION_SNAPSHOT_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as MissionSnapshot
+  } catch {
+    return null
+  }
+}
+
+function saveMissionSnapshot(patch: MissionSnapshot) {
+  if (typeof window === 'undefined') return
+  const current = loadMissionSnapshot() || {}
+  window.localStorage.setItem(
+    MISSION_SNAPSHOT_KEY,
+    JSON.stringify({
+      ...current,
+      ...patch,
+      savedAt: new Date().toISOString(),
+    }),
+  )
+}
 
 function parseApiDate(value?: string | null) {
   if (!value) return null
@@ -681,6 +715,29 @@ export default function DashboardPage() {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
 
+  useEffect(() => {
+    const snapshot = loadMissionSnapshot()
+    if (!snapshot) return
+
+    if (Array.isArray(snapshot.accounts) && snapshot.accounts.length) {
+      setAccounts((current) => (current.length ? current : snapshot.accounts || []))
+    }
+    if (snapshot.statusMap && Object.keys(snapshot.statusMap).length) {
+      setStatusMap((current) => (Object.keys(current).length ? current : snapshot.statusMap || {}))
+    }
+    if (Array.isArray(snapshot.jobs) && snapshot.jobs.length) {
+      setJobs((current) => (current.length ? current : snapshot.jobs || []))
+    }
+    if (snapshot.system) {
+      setSystem((current) => current || snapshot.system || null)
+    }
+    if (snapshot.missionGalaxy?.nodes?.length) {
+      setMissionGalaxy((current) =>
+        current.nodes?.length ? current : snapshot.missionGalaxy || { nodes: [], meta: {} }
+      )
+    }
+  }, [])
+
   async function refreshSessionUser() {
     try {
       const latest = await me()
@@ -895,6 +952,7 @@ export default function DashboardPage() {
       if (!activeUser) return
 
       const userId = activeUser.id || 1
+      let snapshotPatch: MissionSnapshot = {}
 
       const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
         fetchJsonOrThrow('/api/system-status'),
@@ -904,6 +962,7 @@ export default function DashboardPage() {
 
       if (systemResult.status === 'fulfilled') {
         setSystem(systemResult.value)
+        snapshotPatch.system = systemResult.value
       }
 
       let discoveredAccounts: ConnectedAccount[] = []
@@ -924,6 +983,10 @@ export default function DashboardPage() {
           nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
           meta: galaxySnapshot.meta || {},
         })
+        snapshotPatch.missionGalaxy = {
+          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
+          meta: galaxySnapshot.meta || {},
+        }
       }
 
       if (accountsResult.status === 'fulfilled') {
@@ -954,6 +1017,8 @@ export default function DashboardPage() {
         if (nextAccounts.length) {
           setAccounts(nextAccounts)
           setStatusMap(nextStatusMap)
+          snapshotPatch.accounts = nextAccounts
+          snapshotPatch.statusMap = nextStatusMap
         }
       } else if (discoveredAccounts.length) {
         const nextStatusMap: Record<number, AccountStatus> = {}
@@ -973,6 +1038,8 @@ export default function DashboardPage() {
 
         setAccounts(discoveredAccounts)
         setStatusMap(nextStatusMap)
+        snapshotPatch.accounts = discoveredAccounts
+        snapshotPatch.statusMap = nextStatusMap
       }
 
       if (jobsResult.status === 'fulfilled') {
@@ -983,6 +1050,11 @@ export default function DashboardPage() {
             ? jobsJson
             : []
         setJobs(nextJobs)
+        snapshotPatch.jobs = nextJobs
+      }
+
+      if (Object.keys(snapshotPatch).length) {
+        saveMissionSnapshot(snapshotPatch)
       }
 
       setError('')
@@ -1060,6 +1132,7 @@ export default function DashboardPage() {
         if (!activeUser) return
 
       const userId = activeUser.id || 1
+      let snapshotPatch: MissionSnapshot = {}
 
       const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
         fetchJsonOrThrow('/api/system-status'),
@@ -1071,6 +1144,7 @@ export default function DashboardPage() {
 
       if (systemResult.status === 'fulfilled') {
         setSystem(systemResult.value)
+        snapshotPatch.system = systemResult.value
       } else if (accountsResult.status === 'fulfilled' || jobsResult.status === 'fulfilled') {
         setSystem((current) => current || { backend: { ok: true }, worker: { ok: false, heartbeat: { status: 'unknown' } } })
       }
@@ -1093,6 +1167,10 @@ export default function DashboardPage() {
           nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
           meta: galaxySnapshot.meta || {},
         })
+        snapshotPatch.missionGalaxy = {
+          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
+          meta: galaxySnapshot.meta || {},
+        }
       }
 
       if (accountsResult.status === 'fulfilled') {
@@ -1124,6 +1202,8 @@ export default function DashboardPage() {
           if (nextAccounts.length) {
             setAccounts(nextAccounts)
             setStatusMap(nextStatusMap)
+            snapshotPatch.accounts = nextAccounts
+            snapshotPatch.statusMap = nextStatusMap
           }
         } else if (discoveredAccounts.length) {
           const nextStatusMap: Record<number, AccountStatus> = {}
@@ -1144,6 +1224,8 @@ export default function DashboardPage() {
           if (!mounted) return
           setAccounts(discoveredAccounts)
           setStatusMap(nextStatusMap)
+          snapshotPatch.accounts = discoveredAccounts
+          snapshotPatch.statusMap = nextStatusMap
         }
 
         if (jobsResult.status === 'fulfilled') {
@@ -1154,6 +1236,11 @@ export default function DashboardPage() {
               ? jobsJson
               : []
           setJobs(nextJobs)
+          snapshotPatch.jobs = nextJobs
+        }
+
+        if (Object.keys(snapshotPatch).length) {
+          saveMissionSnapshot(snapshotPatch)
         }
 
         setError('')
