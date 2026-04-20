@@ -13,6 +13,7 @@ import {
   logout,
   me,
   resetAuthState,
+  setStoredUser,
 } from '../lib/auth'
 import { STRIPE_LINKS } from '../lib/billing'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
@@ -148,6 +149,11 @@ type JobPayload = {
     velocity_stack_active?: boolean
     pending_pair_post_id?: string
   }
+}
+
+type IdentityHints = {
+  email?: string | null
+  handle?: string | null
 }
 
 const API_BASE =
@@ -496,7 +502,7 @@ function jobStateKind(value?: string) {
   return 'neutral'
 }
 
-async function apiFetch(path: string, init: RequestInit = {}) {
+async function apiFetch(path: string, init: RequestInit = {}, identityHints?: IdentityHints) {
   if (typeof window === 'undefined') {
     return authApiFetch(path, init)
   }
@@ -515,12 +521,15 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   }
 
   const storedUser = getStoredUser()
-  if (storedUser?.email && !headers.has('x-evergreen-email')) {
-    headers.set('x-evergreen-email', storedUser.email)
+  const emailHint = String(identityHints?.email || storedUser?.email || '').trim()
+  const handleHint = String(identityHints?.handle || storedUser?.handle || '').trim()
+
+  if (emailHint && !headers.has('x-evergreen-email')) {
+    headers.set('x-evergreen-email', emailHint)
   }
 
-  if (storedUser?.handle && !headers.has('x-evergreen-handle')) {
-    headers.set('x-evergreen-handle', storedUser.handle)
+  if (handleHint && !headers.has('x-evergreen-handle')) {
+    headers.set('x-evergreen-handle', handleHint)
   }
 
   const normalizedPath = path.startsWith('/api/') ? path.slice('/api/'.length) : path
@@ -553,8 +562,8 @@ function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountS
   return false
 }
 
-async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
-  const res = await apiFetch(path, init)
+async function fetchJsonOrThrow(path: string, init: RequestInit = {}, identityHints?: IdentityHints) {
+  const res = await apiFetch(path, init, identityHints)
   const json = await res.json().catch(() => ({}))
 
   if (!res.ok) {
@@ -570,9 +579,14 @@ async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
   return json
 }
 
-async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount[]> {
+async function fetchAccountsFromGalaxy(
+  userId: number,
+  identityHints?: IdentityHints,
+): Promise<ConnectedAccount[]> {
   const json = (await fetchJsonOrThrow(
-    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+    {},
+    identityHints,
   )) as GalaxyResponse
 
   const nodes = Array.isArray(json.nodes) ? json.nodes : []
@@ -730,6 +744,7 @@ function mergeAccountStatus(
 async function fetchLaneStatusMap(
   userId: number,
   accounts: ConnectedAccount[],
+  identityHints?: IdentityHints,
 ): Promise<Record<number, AccountStatus>> {
   const entries = await Promise.all(
     accounts.map(async (account) => {
@@ -737,7 +752,11 @@ async function fetchLaneStatusMap(
       let galaxyStatus: AccountStatus | null = null
 
       try {
-        const res = await apiFetch(`/api/status?user_id=${userId}&connected_account_id=${account.id}`)
+        const res = await apiFetch(
+          `/api/status?user_id=${userId}&connected_account_id=${account.id}`,
+          {},
+          identityHints,
+        )
         if (res.ok) {
           statusJson = (await res.json()) as AccountStatus
         }
@@ -747,7 +766,9 @@ async function fetchLaneStatusMap(
 
       try {
         const galaxyJson = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${account.id}`
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${account.id}`,
+          {},
+          identityHints,
         )) as GalaxyResponse
         galaxyStatus = deriveStatusFromGalaxy(account, galaxyJson)
       } catch {
@@ -1056,12 +1077,17 @@ export default function DashboardPage() {
       const activeSession = latestSession?.user ? latestSession : session
       const activeUser = activeSession?.user
       if (!activeUser) return
+      setStoredUser(activeUser)
+      const identityHints = {
+        email: activeUser.email,
+        handle: activeUser.handle,
+      }
 
       const userId = activeUser.id || 1
       const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
-        fetchJsonOrThrow('/api/system-status'),
-        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`),
-        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`),
+        fetchJsonOrThrow('/api/system-status', {}, identityHints),
+        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
+        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
       ])
 
       if (systemResult.status === 'fulfilled') {
@@ -1072,7 +1098,9 @@ export default function DashboardPage() {
       let galaxySnapshot: GalaxyResponse | null = null
       try {
         galaxySnapshot = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+          {},
+          identityHints,
         )) as GalaxyResponse
         discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
           ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
@@ -1097,14 +1125,14 @@ export default function DashboardPage() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts)
+        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
 
         if (nextAccounts.length) {
           setAccounts(nextAccounts)
           setStatusMap(nextStatusMap)
         }
       } else if (discoveredAccounts.length) {
-        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts)
+        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
 
         setAccounts(discoveredAccounts)
         setStatusMap(nextStatusMap)
@@ -1148,8 +1176,17 @@ export default function DashboardPage() {
         const latestSession = await refreshSessionUser()
         const activeUser = latestSession?.user || session.user
         if (!activeUser?.id) return false
+        setStoredUser(activeUser)
+        const identityHints = {
+          email: activeUser.email,
+          handle: activeUser.handle,
+        }
 
-        const res = await apiFetch(`/api/connected-accounts?user_id=${activeUser.id}`)
+        const res = await apiFetch(
+          `/api/connected-accounts?user_id=${activeUser.id}`,
+          {},
+          identityHints,
+        )
         const json = await res.json().catch(() => ({}))
         const nextAccounts = Array.isArray(json.accounts)
           ? json.accounts
@@ -1193,12 +1230,17 @@ export default function DashboardPage() {
         const activeSession = latestSession?.user ? latestSession : session
         const activeUser = activeSession?.user
         if (!activeUser) return
+        setStoredUser(activeUser)
+        const identityHints = {
+          email: activeUser.email,
+          handle: activeUser.handle,
+        }
 
       const userId = activeUser.id || 1
       const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
-        fetchJsonOrThrow('/api/system-status'),
-        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`),
-        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`),
+        fetchJsonOrThrow('/api/system-status', {}, identityHints),
+        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
+        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
       ])
 
         if (!mounted) return
@@ -1213,7 +1255,9 @@ export default function DashboardPage() {
       let galaxySnapshot: GalaxyResponse | null = null
       try {
         galaxySnapshot = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+          {},
+          identityHints,
         )) as GalaxyResponse
         discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
           ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
@@ -1238,7 +1282,7 @@ export default function DashboardPage() {
             : []
 
         nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts)
+        const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
 
           if (!mounted) return
           if (nextAccounts.length) {
@@ -1246,7 +1290,7 @@ export default function DashboardPage() {
             setStatusMap(nextStatusMap)
           }
         } else if (discoveredAccounts.length) {
-          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts)
+          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
 
           if (!mounted) return
           setAccounts(discoveredAccounts)

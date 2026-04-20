@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, getStoredUser, getToken, me } from "../lib/auth";
+import { apiFetch, getStoredUser, getToken, me, setStoredUser } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
@@ -62,11 +62,20 @@ type DashboardStatus = {
   metadata?: Record<string, unknown>;
 };
 
+type IdentityHints = {
+  email?: string | null;
+  handle?: string | null;
+};
+
 const BACKEND =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://backend-fixed-production.up.railway.app";
 
-async function evergreenApiFetch(path: string, init: RequestInit = {}) {
+async function evergreenApiFetch(
+  path: string,
+  init: RequestInit = {},
+  identityHints?: IdentityHints
+) {
   if (typeof window === "undefined") {
     return apiFetch(path, init);
   }
@@ -80,11 +89,13 @@ async function evergreenApiFetch(path: string, init: RequestInit = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
   const storedUser = getStoredUser();
-  if (storedUser?.email && !headers.has("x-evergreen-email")) {
-    headers.set("x-evergreen-email", storedUser.email);
+  const emailHint = String(identityHints?.email || storedUser?.email || "").trim();
+  const handleHint = String(identityHints?.handle || storedUser?.handle || "").trim();
+  if (emailHint && !headers.has("x-evergreen-email")) {
+    headers.set("x-evergreen-email", emailHint);
   }
-  if (storedUser?.handle && !headers.has("x-evergreen-handle")) {
-    headers.set("x-evergreen-handle", storedUser.handle);
+  if (handleHint && !headers.has("x-evergreen-handle")) {
+    headers.set("x-evergreen-handle", handleHint);
   }
   try {
     return await fetch(`/api/evergreen/${normalizedPath}`, {
@@ -98,8 +109,12 @@ async function evergreenApiFetch(path: string, init: RequestInit = {}) {
   }
 }
 
-async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
-  const res = await evergreenApiFetch(path, init);
+async function fetchJsonOrThrow(
+  path: string,
+  init: RequestInit = {},
+  identityHints?: IdentityHints
+) {
+  const res = await evergreenApiFetch(path, init, identityHints);
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail =
@@ -111,9 +126,14 @@ async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
   return json;
 }
 
-async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount[]> {
+async function fetchAccountsFromGalaxy(
+  userId: number,
+  identityHints?: IdentityHints
+): Promise<ConnectedAccount[]> {
   const json = (await fetchJsonOrThrow(
-    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+    {},
+    identityHints
   )) as GalaxyResponse;
 
   const nodes = Array.isArray(json.nodes) ? json.nodes : [];
@@ -401,6 +421,7 @@ export default function GalaxyPage() {
     "off" | "strong" | "viral" | "conversion"
   >("off");
   const [zoom, setZoom] = useState(1);
+  const [identityHints, setIdentityHints] = useState<IdentityHints>({});
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
 
   const liveTick = animMs / 60;
@@ -447,13 +468,24 @@ export default function GalaxyPage() {
       const storedUser = getStoredUser();
       if (storedUser && !cancelled) {
         setUserId(storedUser.id ?? null);
+        setIdentityHints({
+          email: storedUser.email,
+          handle: storedUser.handle,
+        });
         setError("");
       }
 
       const session = await me();
       if (cancelled) return;
+      if (session?.user) {
+        setStoredUser(session.user);
+      }
       const resolvedUserId = session?.user?.id ?? storedUser?.id ?? null;
       setUserId(resolvedUserId);
+      setIdentityHints({
+        email: session?.user?.email ?? storedUser?.email ?? null,
+        handle: session?.user?.handle ?? storedUser?.handle ?? null,
+      });
       if (!resolvedUserId) {
         setError("No active login found.");
       } else {
@@ -472,7 +504,11 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadAccounts() {
       try {
-        const json = await fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`);
+        const json = await fetchJsonOrThrow(
+          `/api/connected-accounts?user_id=${userId}`,
+          {},
+          identityHints
+        );
         if (!cancelled) {
           let next = Array.isArray((json as { accounts?: unknown }).accounts)
             ? ((json as { accounts?: ConnectedAccount[] }).accounts || [])
@@ -480,7 +516,7 @@ export default function GalaxyPage() {
 
           if (!next.length) {
             try {
-              next = await fetchAccountsFromGalaxy(userId as number);
+              next = await fetchAccountsFromGalaxy(userId as number, identityHints);
             } catch {
               // ignore fallback failure
             }
@@ -505,7 +541,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected, userId]);
+  }, [identityHints, selected, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -517,7 +553,9 @@ export default function GalaxyPage() {
         const results = await Promise.allSettled(
           accounts.map(async (account) => {
             const res = await evergreenApiFetch(
-              `/api/status?user_id=${userId}&connected_account_id=${account.id}`
+              `/api/status?user_id=${userId}&connected_account_id=${account.id}`,
+              {},
+              identityHints
             );
             if (!res.ok) return null;
             return { accountId: account.id, json: (await res.json()) as DashboardStatus };
@@ -540,7 +578,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts, userId]);
+  }, [accounts, identityHints, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -554,7 +592,7 @@ export default function GalaxyPage() {
           requestedSelection === "unified"
             ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
             : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(requestedSelection)}`;
-        const json = (await fetchJsonOrThrow(`/api/galaxy${qs}`)) as GalaxyResponse;
+        const json = (await fetchJsonOrThrow(`/api/galaxy${qs}`, {}, identityHints)) as GalaxyResponse;
         if (!cancelled) {
           const nextGalaxy = {
             nodes: Array.isArray(json.nodes) ? json.nodes : [],
@@ -577,7 +615,7 @@ export default function GalaxyPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selected, userId]);
+  }, [identityHints, selected, userId]);
 
   const visibleGalaxy = useMemo(
     () => (galaxyScope === selected ? galaxy : { nodes: [], meta: {} }),
