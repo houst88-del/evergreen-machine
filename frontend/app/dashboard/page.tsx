@@ -8,6 +8,7 @@ import {
   apiFetch as authApiFetch,
   getAppBase,
   getLastBootstrapError,
+  getStoredUser,
   getToken,
   logout,
   me,
@@ -546,11 +547,20 @@ export default function DashboardPage() {
       const latest = await me()
       if (latest?.user) {
         setSession(latest)
+        return latest
       }
-      return latest
     } catch {
-      return null
+      // fall through to stored-session fallback
     }
+
+    const storedUser = getStoredUser()
+    if (storedUser) {
+      const fallback = { user: storedUser }
+      setSession((current: any) => (current?.user ? current : fallback))
+      return fallback as any
+    }
+
+    return null
   }
 
   async function refreshSubscriptionInfo() {
@@ -641,10 +651,18 @@ export default function DashboardPage() {
     if (!clerkLoaded) return
 
     const token = getToken()
-    if (!userId && !token) {
+    const storedUser = getStoredUser()
+    if (!userId && !token && !storedUser) {
       setSession(null)
       setLoading(false)
       router.replace('/login')
+      return
+    }
+
+    if (storedUser) {
+      setSession((current: any) => (current?.user ? current : { user: storedUser }))
+      setBillingEmailInput((current) => current || storedUser.email || '')
+      setLoading(false)
     }
   }, [clerkEnabled, clerkLoaded, router, userId])
 
@@ -652,6 +670,14 @@ export default function DashboardPage() {
     let mounted = true
 
     async function checkSession() {
+      const storedUser = getStoredUser()
+
+      if (storedUser && mounted) {
+        setSession((current: any) => (current?.user ? current : { user: storedUser }))
+        setBillingEmailInput((current) => current || storedUser.email || '')
+        setLoading(false)
+      }
+
       try {
         const attempts = clerkEnabled ? 3 : 1
         let data = null
@@ -666,8 +692,10 @@ export default function DashboardPage() {
 
         if (!mounted) return
         if (!data?.user) {
-          setSession(null)
-          router.replace('/login')
+          if (!storedUser) {
+            setSession(null)
+            router.replace('/login')
+          }
           return
         }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, getToken, me } from "../lib/auth";
+import { apiFetch, getStoredUser, getToken, me } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
@@ -404,11 +404,20 @@ export default function GalaxyPage() {
   useEffect(() => {
     let cancelled = false;
     async function loadSession() {
+      const storedUser = getStoredUser();
+      if (storedUser && !cancelled) {
+        setUserId(storedUser.id ?? null);
+        setError("");
+      }
+
       const session = await me();
       if (cancelled) return;
-      setUserId(session?.user?.id ?? null);
-      if (!session?.user?.id) {
+      const resolvedUserId = session?.user?.id ?? storedUser?.id ?? null;
+      setUserId(resolvedUserId);
+      if (!resolvedUserId) {
         setError("No active login found.");
+      } else {
+        setError("");
       }
     }
     loadSession();
