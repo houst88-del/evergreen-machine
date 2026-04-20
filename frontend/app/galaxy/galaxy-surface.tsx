@@ -454,6 +454,7 @@ export function GalaxySurface({
   const [identityHints, setIdentityHints] = useState<IdentityHints>(embeddedIdentityHints || {});
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
   const autoScopedRef = useRef(false);
+  const visibleGalaxyRef = useRef<GalaxyResponse>({ nodes: [], meta: {} });
 
   useEffect(() => {
     if (embedded || typeof window === "undefined") return;
@@ -502,6 +503,10 @@ export function GalaxySurface({
     embeddedUserId,
     selected,
   ]);
+
+  useEffect(() => {
+    visibleGalaxyRef.current = galaxyScope === selected ? galaxy : { nodes: [], meta: {} };
+  }, [galaxy, galaxyScope, selected]);
 
   const liveTick = animMs / 60;
   const cameraDriftTick = liveTick;
@@ -614,7 +619,7 @@ export function GalaxySurface({
           }
         }
       } catch {
-        if (!cancelled) setError("Could not load connected accounts.");
+        if (!cancelled && accounts.length === 0) setError("Could not load connected accounts.");
       }
     }
     loadAccounts();
@@ -649,7 +654,9 @@ export function GalaxySurface({
           out[result.value.accountId] = result.value.json;
         });
         if (!cancelled) {
-          setStatusMap(out);
+          if (Object.keys(out).length > 0) {
+            setStatusMap(out);
+          }
         }
       } catch {
         // ignore
@@ -736,9 +743,14 @@ export function GalaxySurface({
             // fall through to visible error state
           }
         }
-        setGalaxy({ nodes: [], meta: {} });
-        setGalaxyScope(selected);
-        setError("Could not load galaxy.");
+        const hasVisibleRealData =
+          Array.isArray(visibleGalaxyRef.current.nodes) && visibleGalaxyRef.current.nodes.length > 0
+
+        if (!hasVisibleRealData) {
+          setGalaxy({ nodes: [], meta: {} });
+          setGalaxyScope(selected);
+          setError("Could not load galaxy.");
+        }
       }
     }
     loadGalaxy();

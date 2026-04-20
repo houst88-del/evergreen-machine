@@ -867,6 +867,21 @@ function DashboardPageClient() {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
+  const missionDataRef = useRef({
+    accounts: 0,
+    jobs: 0,
+    galaxyNodes: 0,
+    statusEntries: 0,
+  })
+
+  useEffect(() => {
+    missionDataRef.current = {
+      accounts: accounts.length,
+      jobs: jobs.length,
+      galaxyNodes: Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length : 0,
+      statusEntries: Object.keys(statusMap).length,
+    }
+  }, [accounts, jobs, missionGalaxy.nodes, statusMap])
 
   async function refreshSessionUser() {
     try {
@@ -1152,7 +1167,9 @@ function DashboardPageClient() {
           : Array.isArray(jobsJson)
             ? jobsJson
             : []
-        setJobs(nextJobs)
+        if (nextJobs.length > 0 || missionDataRef.current.jobs === 0) {
+          setJobs(nextJobs)
+        }
       }
 
       setError('')
@@ -1311,13 +1328,23 @@ function DashboardPageClient() {
             : Array.isArray(jobsJson)
               ? jobsJson
               : []
-          setJobs(nextJobs)
+          if (nextJobs.length > 0 || missionDataRef.current.jobs === 0) {
+            setJobs(nextJobs)
+          }
         }
 
         setError('')
       } catch (err) {
         if (!mounted) return
-        setError(err instanceof Error ? err.message : 'Could not load mission control')
+        const hasMissionData =
+          missionDataRef.current.accounts > 0 ||
+          missionDataRef.current.jobs > 0 ||
+          missionDataRef.current.galaxyNodes > 0 ||
+          missionDataRef.current.statusEntries > 0
+
+        if (!hasMissionData) {
+          setError(err instanceof Error ? err.message : 'Could not load mission control')
+        }
       }
     }
 
