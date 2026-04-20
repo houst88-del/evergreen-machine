@@ -152,12 +152,76 @@ def ensure_demo_seeded_once(db) -> None:
     seed_demo_data(db)
 
 
-def resolve_requested_user_id(authorization: str | None, fallback_user_id: int) -> int:
+def _normalized_handle(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    return raw if raw.startswith("@") else f"@{raw}"
+
+
+def _migrate_user_records(db, source: User, target: User) -> None:
+    if source.id == target.id:
+        return
+
+    for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == source.id).all():
+        account.user_id = target.id
+
+    for post in db.query(Post).filter(Post.user_id == source.id).all():
+        post.user_id = target.id
+
+    target_default_autopilot = (
+        db.query(AutopilotStatus)
+        .filter(
+            AutopilotStatus.user_id == target.id,
+            AutopilotStatus.connected_account_id.is_(None),
+        )
+        .first()
+    )
+
+    for autopilot in db.query(AutopilotStatus).filter(AutopilotStatus.user_id == source.id).all():
+        if autopilot.connected_account_id is None and target_default_autopilot:
+            db.delete(autopilot)
+            continue
+        autopilot.user_id = target.id
+
+    db.flush()
+    db.delete(source)
+    db.flush()
+
+
+def resolve_requested_user_id(db, authorization: str | None, fallback_user_id: int) -> int:
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
         payload = verify_token(token)
-        if payload and payload.get("user_id"):
-            return int(payload["user_id"])
+        if payload:
+            token_email = str(payload.get("email", "")).strip().lower()
+            token_handle = _normalized_handle(payload.get("handle"))
+
+            user_by_email = (
+                db.query(User).filter(User.email == token_email).first()
+                if token_email
+                else None
+            )
+            user_by_handle = (
+                db.query(User).filter(User.handle == token_handle).order_by(User.id.asc()).first()
+                if token_handle
+                else None
+            )
+
+            if user_by_email and user_by_handle and user_by_email.id != user_by_handle.id:
+                _migrate_user_records(db, source=user_by_handle, target=user_by_email)
+                db.commit()
+                db.refresh(user_by_email)
+                return int(user_by_email.id)
+
+            if user_by_email:
+                return int(user_by_email.id)
+
+            if user_by_handle:
+                return int(user_by_handle.id)
+
+            if payload.get("user_id"):
+                return int(payload["user_id"])
     return fallback_user_id
 
 
@@ -570,7 +634,11 @@ def get_jobs(
     user_id: int = Query(1, ge=1),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, _ = get_user_and_optional_account(resolved_user_id)
     try:
         jobs = list_jobs(limit)
@@ -599,7 +667,11 @@ def list_connected_accounts(
     user_id: int = Query(1, ge=1),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, _ = get_user_and_optional_account(resolved_user_id)
     try:
         accounts = (
@@ -632,7 +704,11 @@ def get_status(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:
@@ -655,7 +731,11 @@ def toggle_status(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:
@@ -688,7 +768,11 @@ def set_pacing_mode(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:
@@ -720,7 +804,11 @@ def connect_provider(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         provider = str(payload.get("provider", "x")).strip().lower() or "x"
@@ -821,7 +909,11 @@ def disconnect_provider(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:
@@ -847,7 +939,11 @@ def refresh_now(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:
@@ -878,7 +974,11 @@ def run_analytics(
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
 ):
-    resolved_user_id = resolve_requested_user_id(authorization, user_id)
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+    finally:
+        db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
     try:
         if account is None:

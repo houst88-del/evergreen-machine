@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.core.security import verify_token
-from app.models.models import AutopilotStatus, ConnectedAccount, Post
+from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 
 router = APIRouter(prefix="/api/galaxy", tags=["galaxy"])
 
@@ -276,12 +276,40 @@ def _candidate_flag(score: float, gravity: str, revival_score: float, percentile
     )
 
 
-def _resolve_requested_user_id(authorization: str | None, fallback_user_id: int) -> int:
+def _normalized_handle(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    return raw if raw.startswith("@") else f"@{raw}"
+
+
+def _resolve_requested_user_id(db: Session, authorization: str | None, fallback_user_id: int) -> int:
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
         payload = verify_token(token)
-        if payload and payload.get("user_id"):
-            return int(payload["user_id"])
+        if payload:
+            token_email = str(payload.get("email", "")).strip().lower()
+            token_handle = _normalized_handle(payload.get("handle"))
+
+            user_by_email = (
+                db.query(User).filter(User.email == token_email).first()
+                if token_email
+                else None
+            )
+            user_by_handle = (
+                db.query(User).filter(User.handle == token_handle).order_by(User.id.asc()).first()
+                if token_handle
+                else None
+            )
+
+            if user_by_email:
+                return int(user_by_email.id)
+
+            if user_by_handle:
+                return int(user_by_handle.id)
+
+            if payload.get("user_id"):
+                return int(payload["user_id"])
     return fallback_user_id
 
 
@@ -384,7 +412,7 @@ def get_galaxy(
 ):
     db: Session = SessionLocal()
     try:
-        resolved_user_id = _resolve_requested_user_id(authorization, user_id)
+        resolved_user_id = _resolve_requested_user_id(db, authorization, user_id)
         accounts = _fetch_accounts_for_mode(db, resolved_user_id, connected_account_id, unified)
         if not accounts:
             return {
