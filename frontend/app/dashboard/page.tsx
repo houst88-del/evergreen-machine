@@ -1106,10 +1106,15 @@ function DashboardPageClient() {
       }
 
       const userId = activeUser.id || 1
-      const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
+      const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
         fetchJsonOrThrow('/api/system-status', {}, identityHints),
         fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
         fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
+        fetchJsonOrThrow(
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+          {},
+          identityHints,
+        ),
       ])
 
       if (systemResult.status === 'fulfilled') {
@@ -1118,17 +1123,11 @@ function DashboardPageClient() {
 
       let discoveredAccounts: ConnectedAccount[] = []
       let galaxySnapshot: GalaxyResponse | null = null
-      try {
-        galaxySnapshot = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-          {},
-          identityHints,
-        )) as GalaxyResponse
+      if (galaxyResult.status === 'fulfilled') {
+        galaxySnapshot = galaxyResult.value as GalaxyResponse
         discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
           ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
           : []
-      } catch {
-        // ignore galaxy fallback failures
       }
 
       if (galaxySnapshot) {
@@ -1261,10 +1260,15 @@ function DashboardPageClient() {
         }
 
       const userId = activeUser.id || 1
-      const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
+      const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
         fetchJsonOrThrow('/api/system-status', {}, identityHints),
         fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
         fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
+        fetchJsonOrThrow(
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+          {},
+          identityHints,
+        ),
       ])
 
         if (!mounted) return
@@ -1277,17 +1281,11 @@ function DashboardPageClient() {
 
       let discoveredAccounts: ConnectedAccount[] = []
       let galaxySnapshot: GalaxyResponse | null = null
-      try {
-        galaxySnapshot = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-          {},
-          identityHints,
-        )) as GalaxyResponse
+      if (galaxyResult.status === 'fulfilled') {
+        galaxySnapshot = galaxyResult.value as GalaxyResponse
         discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
           ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
           : []
-      } catch {
-        // ignore galaxy fallback failures
       }
 
       if (galaxySnapshot) {
@@ -2036,6 +2034,12 @@ function DashboardPageClient() {
   const connectedLaneCount = resolvedAccounts.filter((account) =>
     isConnectedAccount(account, statusMap[account.id])
   ).length
+  const hasMissionSignals =
+    resolvedAccounts.length > 0 ||
+    jobs.length > 0 ||
+    (Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length > 0 : false) ||
+    Object.keys(statusMap).length > 0
+  const missionHydrating = !error && !hasMissionSignals
   const embeddedMissionUser = session?.user || getStoredUser() || null
   const embeddedMissionUserId = embeddedMissionUser?.id ?? null
   const embeddedMissionIdentityHints = {
@@ -2061,7 +2065,9 @@ function DashboardPageClient() {
           ? '▶ Resume Autopilot'
           : '▶ Start Autopilot'
   const onboardingCue =
-    connectedLaneCount === 0
+    missionHydrating
+      ? null
+      : connectedLaneCount === 0
       ? {
           eyebrow: 'First Flight',
           title: 'Connect your first lane to wake up Evergreen.',
@@ -2538,7 +2544,9 @@ function DashboardPageClient() {
             </div>
           </div>
 
-          {resolvedAccounts.length === 0 ? (
+          {missionHydrating ? (
+            <div>Syncing live mission data…</div>
+          ) : resolvedAccounts.length === 0 ? (
             <div>No connected accounts yet.</div>
           ) : (
             <div
