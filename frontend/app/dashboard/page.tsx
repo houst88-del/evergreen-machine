@@ -2532,6 +2532,33 @@ function DashboardPageClient() {
           </div>
         </section>
 
+        <section
+          id="starden-panel"
+          ref={stardenSectionRef}
+          className="card"
+          style={{
+            marginTop: 18,
+            padding: 18,
+            background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
+          }}
+        >
+          <div style={{ marginBottom: 14 }}>
+            <div style={missionEyebrowStyle}>Starden</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              Constellation View
+            </div>
+          </div>
+
+          <GalaxySurface
+            embedded
+            embeddedUserId={embeddedMissionUserId}
+            embeddedIdentityHints={embeddedMissionIdentityHints}
+            embeddedAccounts={resolvedAccounts}
+            embeddedStatusMap={statusMap}
+            embeddedUnifiedGalaxy={missionGalaxy}
+          />
+        </section>
+
         <section className="card">
           <div
             style={{
@@ -3088,32 +3115,6 @@ function DashboardPageClient() {
           )}
         </section>
 
-        <section
-          id="starden-panel"
-          ref={stardenSectionRef}
-          className="card"
-          style={{
-            marginTop: 18,
-            padding: 18,
-            background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
-          }}
-        >
-          <div style={{ marginBottom: 14 }}>
-            <div style={missionEyebrowStyle}>Starden</div>
-            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
-              Constellation View
-            </div>
-          </div>
-
-          <GalaxySurface
-            embedded
-            embeddedUserId={embeddedMissionUserId}
-            embeddedIdentityHints={embeddedMissionIdentityHints}
-            embeddedAccounts={resolvedAccounts}
-            embeddedStatusMap={statusMap}
-            embeddedUnifiedGalaxy={missionGalaxy}
-          />
-        </section>
       </div>
     </main>
   )
