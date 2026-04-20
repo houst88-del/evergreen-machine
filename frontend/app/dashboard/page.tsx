@@ -158,6 +158,14 @@ type MissionSnapshot = {
   missionGalaxy?: GalaxyResponse | null
 }
 
+function inferHealthyLane(status?: AccountStatus | null) {
+  if (!status) return false
+  if (Boolean(status.running)) return true
+  if (typeof status.posts_in_rotation === 'number' && status.posts_in_rotation > 0) return true
+  if (String(status.last_action_at || '').trim() && String(status.next_cycle_at || '').trim()) return true
+  return false
+}
+
 function loadMissionSnapshot(): MissionSnapshot | null {
   if (typeof window === 'undefined') return null
   const raw = window.localStorage.getItem(MISSION_SNAPSHOT_KEY)
@@ -709,6 +717,7 @@ export default function DashboardPage() {
   const [statusMap, setStatusMap] = useState<Record<number, AccountStatus>>({})
   const [jobs, setJobs] = useState<JobItem[]>([])
   const [missionGalaxy, setMissionGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} })
+  const [optimisticRunningMap, setOptimisticRunningMap] = useState<Record<number, boolean>>({})
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
@@ -1409,7 +1418,12 @@ export default function DashboardPage() {
           String(activeRefreshJob?.status || activeRefreshJob?.state || '')
             .trim()
             .toLowerCase() === 'queued'
-        const effectiveRunning = Boolean(status?.running || jobDerivedRunning || jobDerivedQueued)
+        const inferredHealthyRunning = inferHealthyLane(status)
+        const optimisticRunning = optimisticRunningMap[account.id]
+        const effectiveRunning =
+          typeof optimisticRunning === 'boolean'
+            ? optimisticRunning
+            : Boolean(status?.running || jobDerivedRunning || jobDerivedQueued || inferredHealthyRunning)
         const effectivePostsInRotation =
           typeof status?.posts_in_rotation === 'number' && status.posts_in_rotation > 0
             ? status.posts_in_rotation
@@ -1508,7 +1522,7 @@ export default function DashboardPage() {
           lastActionText: fmtWhen(effectiveLastActionAt),
         }
       })
-  }, [jobs, nowMs, resolvedAccounts, statusMap])
+  }, [jobs, nowMs, optimisticRunningMap, resolvedAccounts, statusMap])
 
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
@@ -1713,6 +1727,20 @@ export default function DashboardPage() {
       setActionMessage(
         `${enabled ? 'Started' : 'Paused'} autopilot for ${json.account_handle || 'account'}.`
       )
+      setOptimisticRunningMap((current) => ({
+        ...current,
+        [accountId]: enabled,
+      }))
+      setStatusMap((current) => ({
+        ...current,
+        [accountId]: {
+          ...(current[accountId] || {}),
+          connected_account_id: accountId,
+          connected:
+            typeof current[accountId]?.connected === 'boolean' ? current[accountId]?.connected : true,
+          running: enabled,
+        },
+      }))
       await refreshMissionControlNow()
       window.setTimeout(refreshMissionControlNow, 2000)
     } catch (err) {
@@ -1910,12 +1938,12 @@ export default function DashboardPage() {
   const blueskyAccount = resolvedAccounts.find(
     (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
   )
-  const anyAutopilotRunning = Object.values(statusMap).some((status) => Boolean(status?.running))
+  const anyAutopilotRunning = deploymentWindows.some((lane) => lane.effectiveRunning)
   const connectedLaneCount = resolvedAccounts.filter((account) =>
     isConnectedAccount(account, statusMap[account.id])
   ).length
-  const runningLaneCount = resolvedAccounts.filter(
-    (account) => isConnectedAccount(account, statusMap[account.id]) && statusMap[account.id]?.running
+  const runningLaneCount = deploymentWindows.filter(
+    (lane) => isConnectedAccount(lane.account, statusMap[lane.account.id]) && lane.effectiveRunning
   ).length
   const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
   const upgradeHref =
