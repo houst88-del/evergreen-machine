@@ -1557,20 +1557,6 @@ function DashboardPageClient() {
         const payload = activeRefreshPayload || displayPayload
         const rotationHealth =
           payload?.rotation_health || displayPayload?.rotation_health || activeRefreshPayload?.rotation_health || {}
-        const jobDerivedRunning =
-          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
-            .trim()
-            .toLowerCase() === 'running'
-        const jobDerivedQueued =
-          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
-            .trim()
-            .toLowerCase() === 'queued'
-        const inferredHealthyRunning = inferHealthyLane(status)
-        const optimisticRunning = optimisticRunningMap[account.id]
-        const effectiveRunning =
-          typeof optimisticRunning === 'boolean'
-            ? optimisticRunning
-            : Boolean(status?.running || jobDerivedRunning || jobDerivedQueued || inferredHealthyRunning)
         const effectivePostsInRotation =
           typeof status?.posts_in_rotation === 'number' && status.posts_in_rotation > 0
             ? status.posts_in_rotation
@@ -1591,6 +1577,31 @@ function DashboardPageClient() {
           null
         const effectiveNextCycleAt =
           status?.next_cycle_at || activeRefreshPayload?.next_cycle_at || displayPayload?.next_cycle_at || null
+        const jobDerivedRunning =
+          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
+            .trim()
+            .toLowerCase() === 'running'
+        const jobDerivedQueued =
+          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
+            .trim()
+            .toLowerCase() === 'queued'
+        const inferredHealthyRunning = inferHealthyLane(status)
+        const laneHasLiveCycleSignal = Boolean(
+          effectivePostsInRotation > 0 ||
+            (String(effectiveLastActionAt || '').trim() &&
+              String(effectiveNextCycleAt || '').trim()),
+        )
+        const optimisticRunning = optimisticRunningMap[account.id]
+        const effectiveRunning =
+          typeof optimisticRunning === 'boolean'
+            ? optimisticRunning
+            : Boolean(
+                status?.running ||
+                  jobDerivedRunning ||
+                  jobDerivedQueued ||
+                  inferredHealthyRunning ||
+                  laneHasLiveCycleSignal,
+              )
 
         const latestPost =
           status?.last_post_text ||
