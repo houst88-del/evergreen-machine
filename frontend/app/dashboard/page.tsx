@@ -851,8 +851,10 @@ export default function DashboardPage() {
           })
         )
 
-        setAccounts(nextAccounts)
-        setStatusMap(nextStatusMap)
+        if (nextAccounts.length) {
+          setAccounts(nextAccounts)
+          setStatusMap(nextStatusMap)
+        }
       } else if (discoveredAccounts.length) {
         const nextStatusMap: Record<number, AccountStatus> = {}
         await Promise.all(
@@ -1006,8 +1008,10 @@ export default function DashboardPage() {
           )
 
           if (!mounted) return
-          setAccounts(nextAccounts)
-          setStatusMap(nextStatusMap)
+          if (nextAccounts.length) {
+            setAccounts(nextAccounts)
+            setStatusMap(nextStatusMap)
+          }
         } else if (discoveredAccounts.length) {
           const nextStatusMap: Record<number, AccountStatus> = {}
           await Promise.all(

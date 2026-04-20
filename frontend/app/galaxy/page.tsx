@@ -100,6 +100,47 @@ async function evergreenApiFetch(path: string, init: RequestInit = {}) {
   }
 }
 
+async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
+  const res = await evergreenApiFetch(path, init);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail =
+      typeof (json as { detail?: unknown }).detail === "string"
+        ? String((json as { detail?: unknown }).detail)
+        : `Evergreen request failed (${res.status})`;
+    throw new Error(detail);
+  }
+  return json;
+}
+
+async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount[]> {
+  const json = (await fetchJsonOrThrow(
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+  )) as GalaxyResponse;
+
+  const nodes = Array.isArray(json.nodes) ? json.nodes : [];
+  const deduped = new Map<number, ConnectedAccount>();
+
+  for (const node of nodes) {
+    const accountId = Number(node.connected_account_id || 0);
+    const provider = String(node.provider || "").trim().toLowerCase();
+    const handle = String(node.handle || "").trim();
+    if (!accountId || !provider || !handle || deduped.has(accountId)) continue;
+
+    deduped.set(accountId, {
+      id: accountId,
+      provider,
+      handle,
+    });
+  }
+
+  return Array.from(deduped.values()).sort((a, b) => {
+    const providerDiff = String(a.provider || "").localeCompare(String(b.provider || ""));
+    if (providerDiff !== 0) return providerDiff;
+    return Number(a.id || 0) - Number(b.id || 0);
+  });
+}
+
 const safeNum = (v: unknown, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -433,13 +474,24 @@ export default function GalaxyPage() {
     let cancelled = false;
     async function loadAccounts() {
       try {
-        const res = await evergreenApiFetch(`/api/connected-accounts?user_id=${userId}`);
-        const json = await res.json();
+        const json = await fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`);
         if (!cancelled) {
-          const next = Array.isArray(json.accounts) ? json.accounts : [];
-          setAccounts(next);
+          let next = Array.isArray((json as { accounts?: unknown }).accounts)
+            ? ((json as { accounts?: ConnectedAccount[] }).accounts || [])
+            : [];
+
+          if (!next.length) {
+            try {
+              next = await fetchAccountsFromGalaxy(userId as number);
+            } catch {
+              // ignore fallback failure
+            }
+          }
+
+          setAccounts((current) => (next.length ? next : current));
           if (
             selected !== "unified" &&
+            next.length > 0 &&
             !next.some((a: ConnectedAccount) => String(a.id) === selected)
           ) {
             setSelected("unified");
@@ -502,8 +554,7 @@ export default function GalaxyPage() {
           requestedSelection === "unified"
             ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
             : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(requestedSelection)}`;
-        const res = await evergreenApiFetch(`/api/galaxy${qs}`);
-        const json: GalaxyResponse = await res.json();
+        const json = (await fetchJsonOrThrow(`/api/galaxy${qs}`)) as GalaxyResponse;
         if (!cancelled) {
           setGalaxy({
             nodes: Array.isArray(json.nodes) ? json.nodes : [],
