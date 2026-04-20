@@ -505,6 +505,11 @@ function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountS
 
   if (accountConnected) return true
   if (typeof status?.connected === 'boolean') return status.connected
+  if (Boolean(status?.running)) return true
+  if (typeof status?.posts_in_rotation === 'number' && status.posts_in_rotation > 0) return true
+  if (String(status?.last_action_at || '').trim()) return true
+  if (String(status?.next_cycle_at || '').trim()) return true
+  if (String(status?.account_handle || '').trim() && String(status?.provider || '').trim()) return true
   return false
 }
 
@@ -1533,8 +1538,8 @@ export default function DashboardPage() {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
     const upgradeHref =
-      accounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
-      accounts.length > 1
+      resolvedAccounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
+      resolvedAccounts.length > 1
         ? STRIPE_LINKS.pro
         : STRIPE_LINKS.standard
 
@@ -1575,14 +1580,14 @@ export default function DashboardPage() {
   async function handleGlobalAutopilotAction() {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
-    const readyAccounts = accounts.filter((account) =>
+    const readyAccounts = resolvedAccounts.filter((account) =>
       isConnectedAccount(account, statusMap[account.id])
     )
     const runningTargets = readyAccounts.filter((account) => statusMap[account.id]?.running)
     const idleTargets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
     const upgradeHref =
-      accounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
-      accounts.length > 1
+      resolvedAccounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
+      resolvedAccounts.length > 1
         ? STRIPE_LINKS.pro
         : STRIPE_LINKS.standard
 
@@ -2257,7 +2262,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {accounts.length === 0 ? (
+          {resolvedAccounts.length === 0 ? (
             <div>No connected accounts yet.</div>
           ) : (
             <div
