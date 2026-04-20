@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import {
   apiFetch as authApiFetch,
@@ -525,6 +526,7 @@ async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -633,6 +635,18 @@ export default function DashboardPage() {
       canRunAutopilot: Boolean(effectiveCanRunAutopilot),
     }
   }
+
+  useEffect(() => {
+    if (!clerkEnabled) return
+    if (!clerkLoaded) return
+
+    const token = getToken()
+    if (!userId && !token) {
+      setSession(null)
+      setLoading(false)
+      router.replace('/login')
+    }
+  }, [clerkEnabled, clerkLoaded, router, userId])
 
   useEffect(() => {
     let mounted = true
