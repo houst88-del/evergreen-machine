@@ -626,12 +626,28 @@ export function GalaxySurface({
   const parallaxTick = liveTick;
   const flashTick = Math.floor(animMs / 1800);
   const waveTick = Math.floor(animMs / 1400);
+  const embeddedMotionScale = embedded ? 0.16 : 1;
 
   useEffect(() => {
     if (!surfaceActive) return;
 
+    if (embedded) {
+      const id = window.setInterval(() => {
+        const state = animationRef.current;
+        const target = timeLapseOn ? 1 : 0;
+        state.speed += (target - state.speed) * 0.25;
+        if (Math.abs(state.speed - target) < 0.001) state.speed = target;
+
+        state.elapsed += 650 * state.speed;
+        setAnimMs(state.elapsed);
+      }, 650);
+
+      return () => {
+        window.clearInterval(id);
+      };
+    }
+
     let frameId = 0;
-    let lastCommitTs = 0;
 
     const tick = (timestamp: number) => {
       const state = animationRef.current;
@@ -645,11 +661,7 @@ export function GalaxySurface({
       if (Math.abs(state.speed - target) < 0.001) state.speed = target;
 
       state.elapsed += delta * state.speed;
-      const commitIntervalMs = embedded ? 80 : 16;
-      if (timestamp - lastCommitTs >= commitIntervalMs) {
-        lastCommitTs = timestamp;
-        setAnimMs(state.elapsed);
-      }
+      setAnimMs(state.elapsed);
       frameId = window.requestAnimationFrame(tick);
     };
 
@@ -664,10 +676,10 @@ export function GalaxySurface({
     if (!timeLapseOn || !surfaceActive) return;
     const id = window.setInterval(
       () => setTimeWarp((v) => (v + 0.25) % 100),
-      360
+      embedded ? 1800 : 360
     );
     return () => window.clearInterval(id);
-  }, [surfaceActive, timeLapseOn]);
+  }, [embedded, surfaceActive, timeLapseOn]);
 
   useEffect(() => {
     if (embedded && embeddedUserId) return;
@@ -931,9 +943,9 @@ export function GalaxySurface({
   );
 
   const engine = useMemo(() => parseMeta(visibleGalaxy.meta), [visibleGalaxy.meta]);
-  const viewMotionBoost = selected === "unified" ? 1 : 0.72;
-  const localMotionScale = selected === "unified" ? 1 : 0.42;
-  const spatialTick = liveTick * 0.1;
+  const viewMotionBoost = (selected === "unified" ? 1 : 0.72) * embeddedMotionScale;
+  const localMotionScale = (selected === "unified" ? 1 : 0.42) * embeddedMotionScale;
+  const spatialTick = liveTick * (embedded ? 0.015 : 0.1);
 
   const workingNodes = useMemo(() => {
     const nodes = [...visibleGalaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -957,7 +969,7 @@ export function GalaxySurface({
           (node.cold_archive ? 0.002 : 0)) *
         viewMotionBoost;
       const orbitBreathe =
-        0.5 + mv(0.018, spatialTick + timeWarp * 2 + temporalShift, phase) * 0.8;
+        0.5 + mv(0.018, spatialTick + timeWarp * 2 + temporalShift, phase) * (0.8 * embeddedMotionScale);
       const t = index * 0.42 + spatialTick * orbitSpeed + warp + temporalShift * 0.03;
       const temporalRadiusBias = Math.max(-8, Math.min(14, (timeTravel - 50) * 0.08));
       const contentAgeBias = Math.max(
@@ -1045,7 +1057,7 @@ export function GalaxySurface({
 
       return { ...node, _phase: phase, _px: px, _py: py, _r: computeRadius(node) };
     });
-  }, [localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost, visibleGalaxy.nodes]);
+  }, [embeddedMotionScale, localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost, visibleGalaxy.nodes]);
 
   const gravityWells = useMemo(
     () =>
