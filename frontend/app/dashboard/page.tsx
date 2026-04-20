@@ -434,6 +434,8 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     if (typeof window === 'undefined') throw new Error('Evergreen API request failed')
   }
 
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 8000)
   const token = getToken()
   const headers = new Headers(init.headers || {})
 
@@ -447,11 +449,16 @@ async function apiFetch(path: string, init: RequestInit = {}) {
 
   const normalizedPath = path.startsWith('/api/') ? path.slice('/api/'.length) : path
 
-  return fetch(`/api/evergreen/${normalizedPath}`, {
-    ...init,
-    headers,
-    cache: 'no-store',
-  })
+  try {
+    return await fetch(`/api/evergreen/${normalizedPath}`, {
+      ...init,
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+  } finally {
+    window.clearTimeout(timer)
+  }
 }
 
 function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountStatus | null) {

@@ -80,17 +80,24 @@ async function evergreenApiFetch(path: string, init: RequestInit = {}) {
     }
   }
 
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 8000);
   const normalizedPath = path.startsWith("/api/") ? path.slice("/api/".length) : path;
   const headers = new Headers(init.headers || {});
   const token = getToken();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  return fetch(`/api/evergreen/${normalizedPath}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  try {
+    return await fetch(`/api/evergreen/${normalizedPath}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 const safeNum = (v: unknown, fallback = 0) => {
