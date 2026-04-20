@@ -7,6 +7,7 @@ import tweepy
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
+from app.core.security import verify_token
 from app.core.db import SessionLocal
 from app.core.subscription_state import ensure_user_subscription_state
 from app.models.models import AutopilotStatus, ConnectedAccount, User
@@ -177,8 +178,16 @@ def save_or_update_x_account(
 
 
 @router.get("/start")
-def start_oauth(user_id: int = Query(..., ge=1)):
+def start_oauth(user_id: int = Query(..., ge=1), auth_token: str | None = Query(default=None)):
     api_key, api_secret, callback = oauth_config()
+
+    resolved_user_id = user_id
+    if auth_token:
+        payload = verify_token(str(auth_token).strip())
+        token_user_id = payload.get("user_id") if payload else None
+        if not token_user_id:
+            raise HTTPException(status_code=401, detail="Invalid or expired auth token")
+        resolved_user_id = int(token_user_id)
 
     auth = tweepy.OAuth1UserHandler(
         api_key,
@@ -218,7 +227,7 @@ def start_oauth(user_id: int = Query(..., ge=1)):
         )
         response.set_cookie(
             key="x_oauth_user_id",
-            value=str(user_id),
+            value=str(resolved_user_id),
             httponly=True,
             secure=True,
             samesite="lax",

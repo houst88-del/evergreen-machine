@@ -1191,12 +1191,18 @@ export default function DashboardPage() {
       return
     }
 
+    const token = getToken()
+    if (!token) {
+      setError('Missing Evergreen session token. Please sign in again.')
+      return
+    }
+
     setActionMessage('')
     setError('')
     setBusyAction('connect-x')
 
     window.location.assign(
-      `${API_BASE}/api/providers/x/start?user_id=${encodeURIComponent(String(session.user.id))}`
+      `${API_BASE}/api/providers/x/start?user_id=${encodeURIComponent(String(session.user.id))}&auth_token=${encodeURIComponent(token)}`
     )
   }
 
