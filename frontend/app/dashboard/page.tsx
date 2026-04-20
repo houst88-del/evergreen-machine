@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   apiFetch as authApiFetch,
   getAppBase,
@@ -16,6 +16,7 @@ import {
   setStoredUser,
 } from '../lib/auth'
 import { STRIPE_LINKS } from '../lib/billing'
+import { GalaxySurface } from '../galaxy/galaxy-surface'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
 
 type SystemStatus = {
@@ -847,11 +848,13 @@ function inferAccountsFromMissionData(
 
 export default function DashboardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [surfaceView, setSurfaceView] = useState<'control' | 'starden'>('control')
 
   const [system, setSystem] = useState<SystemStatus | null>(null)
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
@@ -1051,6 +1054,18 @@ export default function DashboardPage() {
       window.clearTimeout(timeoutId)
     }
   }, [error, loading, router])
+
+  useEffect(() => {
+    const requestedView = searchParams.get('view')
+    setSurfaceView(requestedView === 'starden' ? 'starden' : 'control')
+  }, [searchParams])
+
+  function switchSurfaceView(nextView: 'control' | 'starden') {
+    setSurfaceView(nextView)
+    const nextUrl =
+      nextView === 'starden' ? '/dashboard?view=starden' : '/dashboard'
+    router.replace(nextUrl, { scroll: false })
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -2087,6 +2102,38 @@ export default function DashboardPage() {
         : null
   const activePlanLabel = subscriptionInfo?.plan || (subscriptionStatus === 'active' ? 'Paid' : null)
 
+  if (surfaceView === 'starden') {
+    return (
+      <main className="page mission-page">
+        <div className="shell">
+          <header className="header mission-header-block">
+            <div>
+              <div className="wordmark">Evergreen Mission Control</div>
+              <div className="subtle">One live surface for controls and constellation view.</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn"
+                onClick={() => switchSurfaceView('control')}
+              >
+                Mission Control
+              </button>
+              <button
+                className="btn primary"
+                style={{ cursor: 'default' }}
+              >
+                Starden
+              </button>
+            </div>
+          </header>
+
+          <GalaxySurface embedded onBack={() => switchSurfaceView('control')} />
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="page mission-page">
       <div className="shell">
@@ -2096,20 +2143,34 @@ export default function DashboardPage() {
             <div className="subtle">Live command deck for your resurfacing engine.</div>
           </div>
 
-          <button
-            className="btn"
-            onClick={async () => {
-              setBusyAction('logout')
-              try {
-                await logout()
-              } finally {
-                window.location.assign(`${getAppBase()}/login`)
-              }
-            }}
-            disabled={busyAction === 'logout'}
-          >
-            {busyAction === 'logout' ? 'Logging out...' : 'Logout'}
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              className="btn primary"
+              style={{ cursor: 'default' }}
+            >
+              Mission Control
+            </button>
+            <button
+              className="btn"
+              onClick={() => switchSurfaceView('starden')}
+            >
+              Starden
+            </button>
+            <button
+              className="btn"
+              onClick={async () => {
+                setBusyAction('logout')
+                try {
+                  await logout()
+                } finally {
+                  window.location.assign(`${getAppBase()}/login`)
+                }
+              }}
+              disabled={busyAction === 'logout'}
+            >
+              {busyAction === 'logout' ? 'Logging out...' : 'Logout'}
+            </button>
+          </div>
         </header>
 
         {error ? (
@@ -2425,9 +2486,12 @@ export default function DashboardPage() {
                   : globalAutopilotLabel}
               </button>
 
-              <Link className="btn primary" href="/galaxy">
+              <button
+                className="btn primary"
+                onClick={() => switchSurfaceView('starden')}
+              >
                 ✦ Open Starden
-              </Link>
+              </button>
             </div>
           </div>
 
