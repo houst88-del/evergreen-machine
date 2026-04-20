@@ -303,6 +303,24 @@ def _normalized_handle(value: Any) -> str:
     return raw if raw.startswith("@") else f"@{raw}"
 
 
+def _migrate_user_records(db: Session, source: User, target: User) -> None:
+    if source.id == target.id:
+        return
+
+    for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == source.id).all():
+        account.user_id = target.id
+
+    for post in db.query(Post).filter(Post.user_id == source.id).all():
+        post.user_id = target.id
+
+    for autopilot in db.query(AutopilotStatus).filter(AutopilotStatus.user_id == source.id).all():
+        autopilot.user_id = target.id
+
+    db.flush()
+    db.delete(source)
+    db.flush()
+
+
 def _resolve_requested_user_id(
     db: Session,
     authorization: str | None,
@@ -325,11 +343,19 @@ def _resolve_requested_user_id(
         if candidate_email
         else None
     )
+    if not candidate_handle and user_by_email:
+        candidate_handle = _normalized_handle(getattr(user_by_email, "handle", None))
     user_by_handle = (
         db.query(User).filter(User.handle == candidate_handle).order_by(User.id.asc()).first()
         if candidate_handle
         else None
     )
+
+    if user_by_email and user_by_handle and user_by_email.id != user_by_handle.id:
+        _migrate_user_records(db, source=user_by_handle, target=user_by_email)
+        db.commit()
+        db.refresh(user_by_email)
+        return int(user_by_email.id)
 
     if user_by_email:
         return int(user_by_email.id)

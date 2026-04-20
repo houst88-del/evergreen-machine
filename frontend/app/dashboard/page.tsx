@@ -1321,6 +1321,13 @@ function DashboardPageClient() {
             )
           })
         ) {
+          setAccounts((current) => mergeConnectedAccounts(current, nextAccounts))
+          const nextStatusMap = await fetchLaneStatusMap(activeUser.id, nextAccounts, identityHints)
+          setStatusMap((current) =>
+            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+              ? nextStatusMap
+              : current,
+          )
           await refreshMissionControlNow()
           return true
         }

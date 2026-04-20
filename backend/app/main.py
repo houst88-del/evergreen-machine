@@ -211,6 +211,8 @@ def resolve_requested_user_id(
         if candidate_email
         else None
     )
+    if not candidate_handle and user_by_email:
+        candidate_handle = _normalized_handle(getattr(user_by_email, "handle", None))
     user_by_handle = (
         db.query(User).filter(User.handle == candidate_handle).order_by(User.id.asc()).first()
         if candidate_handle
