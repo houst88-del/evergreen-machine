@@ -91,6 +91,9 @@ type JobItem = {
   state?: string
   status?: string
   created_at?: string
+  started_at?: string | null
+  finished_at?: string | null
+  last_heartbeat_at?: string | null
   updated_at?: string
   message?: unknown
   result?: unknown
@@ -424,6 +427,18 @@ function headlineForJob(job: JobItem, payload: JobPayload) {
   }
 
   return `${provider} mission update`
+}
+
+function hasInformativeJobPayload(payload: JobPayload | null) {
+  if (!payload) return false
+  return Boolean(
+    String(payload.message || '').trim() ||
+      String(payload.next_step || '').trim() ||
+      String(payload.last_action_at || '').trim() ||
+      String(payload.next_cycle_at || '').trim() ||
+      (payload.rotation_health &&
+        Object.values(payload.rotation_health).some((value) => value !== null && value !== undefined && value !== ''))
+  )
 }
 
 function jobStateKind(value?: string) {
@@ -1177,19 +1192,58 @@ export default function DashboardPage() {
       .map((account) => {
         const status = statusMap[account.id]
         const meta = asRecord(status?.metadata)
-        const latestJob = jobs.find((job) => job.connected_account_id === account.id)
-        const activeRefreshJob = jobs.find((job) => {
+        const laneJobs = jobs.filter((job) => job.connected_account_id === account.id)
+        const latestJob = laneJobs[0]
+        const activeRefreshJob = laneJobs.find((job) => {
           if (job.connected_account_id !== account.id) return false
           const jobType = String(job.job_type || job.type || '').trim().toLowerCase()
           const jobState = String(job.status || job.state || '').trim().toLowerCase()
-          return jobType === 'refresh' && (jobState === 'queued' || jobState === 'running')
+          return jobType.includes('refresh') && (jobState === 'queued' || jobState === 'running')
         })
-        const payload = latestJob ? parseJobPayload(latestJob) : null
-        const rotationHealth = payload?.rotation_health || {}
+        const latestInformativeJob =
+          laneJobs.find((job) => {
+            const payload = parseJobPayload(job)
+            return hasInformativeJobPayload(payload)
+          }) || latestJob
+        const activeRefreshPayload = activeRefreshJob ? parseJobPayload(activeRefreshJob) : null
+        const displayPayload = latestInformativeJob ? parseJobPayload(latestInformativeJob) : null
+        const payload = activeRefreshPayload || displayPayload
+        const rotationHealth =
+          payload?.rotation_health || displayPayload?.rotation_health || activeRefreshPayload?.rotation_health || {}
+        const jobDerivedRunning =
+          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
+            .trim()
+            .toLowerCase() === 'running'
+        const jobDerivedQueued =
+          String(activeRefreshJob?.status || activeRefreshJob?.state || '')
+            .trim()
+            .toLowerCase() === 'queued'
+        const effectiveRunning = Boolean(status?.running || jobDerivedRunning || jobDerivedQueued)
+        const effectivePostsInRotation =
+          typeof status?.posts_in_rotation === 'number' && status.posts_in_rotation > 0
+            ? status.posts_in_rotation
+            : typeof rotationHealth.pool_size === 'number'
+              ? rotationHealth.pool_size
+              : 0
+        const effectiveLastActionAt =
+          status?.last_action_at ||
+          displayPayload?.last_action_at ||
+          activeRefreshPayload?.last_action_at ||
+          latestInformativeJob?.finished_at ||
+          latestInformativeJob?.last_heartbeat_at ||
+          latestInformativeJob?.started_at ||
+          latestInformativeJob?.created_at ||
+          activeRefreshJob?.last_heartbeat_at ||
+          activeRefreshJob?.started_at ||
+          activeRefreshJob?.created_at ||
+          null
+        const effectiveNextCycleAt =
+          status?.next_cycle_at || activeRefreshPayload?.next_cycle_at || displayPayload?.next_cycle_at || null
 
         const latestPost =
           status?.last_post_text ||
-          payload?.message ||
+          displayPayload?.message ||
+          activeRefreshPayload?.message ||
           metadataValue(meta, 'last_candidate_provider_post_id') ||
           ''
 
@@ -1236,8 +1290,15 @@ export default function DashboardPage() {
           account,
           status,
           latestJob,
+          latestInformativeJob,
           activeRefreshJob,
-          latestHeadline: latestJob ? headlineForJob(latestJob, payload || {}) : 'Deployment lane idle',
+          effectiveRunning,
+          effectivePostsInRotation,
+          latestHeadline: latestInformativeJob
+            ? headlineForJob(latestInformativeJob, displayPayload || {})
+            : latestJob
+              ? headlineForJob(latestJob, activeRefreshPayload || {})
+              : 'Deployment lane idle',
           latestState: latestJob ? String(latestJob.state || latestJob.status || 'unknown') : 'idle',
           latestPost: compactText(latestPost),
           strategy,
@@ -1251,9 +1312,9 @@ export default function DashboardPage() {
               ? 'Running now'
               : String(activeRefreshJob?.status || activeRefreshJob?.state || '').trim().toLowerCase() === 'queued'
                 ? 'Queued now'
-                : countdownUntil(status?.next_cycle_at, nowMs),
-          nextCycleText: fmtWhen(status?.next_cycle_at),
-          lastActionText: fmtWhen(status?.last_action_at),
+                : countdownUntil(effectiveNextCycleAt, nowMs),
+          nextCycleText: fmtWhen(effectiveNextCycleAt),
+          lastActionText: fmtWhen(effectiveLastActionAt),
         }
       })
   }, [accounts, jobs, nowMs, statusMap])
@@ -2180,7 +2241,6 @@ export default function DashboardPage() {
                   activePacingOption?.display_name ||
                   status?.pacing_label ||
                   'Moderate'
-                const nextCycleText = cycleLabel(status?.next_cycle_at)
                 const activeRefreshState = String(
                   lane.activeRefreshJob?.status || lane.activeRefreshJob?.state || ''
                 )
@@ -2188,12 +2248,7 @@ export default function DashboardPage() {
                   .toLowerCase()
                 const refreshBusy =
                   activeRefreshState === 'queued' || activeRefreshState === 'running'
-                const nextRefreshCountdown = refreshBusy
-                  ? activeRefreshState === 'running'
-                    ? 'Running now'
-                    : 'Queued now'
-                  : countdownUntil(status?.next_cycle_at, nowMs)
-                const isOverdue = nextCycleText === 'Overdue' && !refreshBusy
+                const nextRefreshCountdown = lane.nextRefreshCountdown
                 const freshPostProtectionEnabled =
                   status?.fresh_post_protection_enabled !== false
                 const breathingRoomActive = Boolean(status?.breathing_room_active)
@@ -2265,11 +2320,11 @@ export default function DashboardPage() {
                         marginTop: 14,
                       }}
                     >
-                      <button
-                        className="btn"
-                        onClick={() => handleToggleAutopilot(account.id, !status?.running)}
-                      >
-                        {status?.running
+                        <button
+                          className="btn"
+                          onClick={() => handleToggleAutopilot(account.id, !lane.effectiveRunning)}
+                        >
+                        {lane.effectiveRunning
                           ? 'Pause Autopilot'
                           : canRunAutopilot
                             ? 'Start Autopilot'
@@ -2385,11 +2440,11 @@ export default function DashboardPage() {
                             style={{
                               cursor: 'default',
                             ...statusPillStyle(
-                              status?.running ? 'good' : canRunAutopilot ? 'neutral' : 'warn'
+                              lane.effectiveRunning ? 'good' : canRunAutopilot ? 'neutral' : 'warn'
                             ),
                           }}
                         >
-                          Autopilot {status?.running ? 'Running' : canRunAutopilot ? 'Idle' : 'Locked'}
+                          Autopilot {lane.effectiveRunning ? 'Running' : canRunAutopilot ? 'Idle' : 'Locked'}
                         </span>
 
                           <span
@@ -2399,7 +2454,7 @@ export default function DashboardPage() {
                               ...statusPillStyle('neutral'),
                           }}
                           >
-                            Rotation {status?.posts_in_rotation ?? 0}
+                            Rotation {lane.effectivePostsInRotation}
                           </span>
                         </div>
 
