@@ -701,6 +701,11 @@ function accountScopedGalaxyFromUnified(
 ): GalaxyResponse {
   const accountProvider = String(account.provider || '').trim().toLowerCase()
   const accountHandle = String(account.handle || '').trim().toLowerCase()
+  const unifiedMeta = asRecord(unifiedGalaxy.meta) || {}
+  const unifiedMetadata = asRecord(unifiedMeta.metadata) || {}
+  const { next_cycle_at: _sharedNextCycleAt, ...sanitizedUnifiedMeta } = unifiedMeta
+  const { next_cycle_at: _sharedMetadataNextCycleAt, ...sanitizedUnifiedMetadata } =
+    unifiedMetadata
   const nodes = Array.isArray(unifiedGalaxy.nodes)
     ? unifiedGalaxy.nodes.filter((node) => {
         const nodeAccountId = Number(node.connected_account_id || 0)
@@ -725,12 +730,14 @@ function accountScopedGalaxyFromUnified(
   return {
     nodes,
     meta: {
-      ...unifiedGalaxy.meta,
+      ...sanitizedUnifiedMeta,
       connected_account_id: account.id,
       count: nodes.length,
       connected: true,
       mode: 'single',
       last_action_at: latestActionAt,
+      next_cycle_at: null,
+      metadata: sanitizedUnifiedMetadata,
     },
   }
 }
@@ -1130,6 +1137,26 @@ function DashboardPageClient() {
     if (loading || session?.user) return
     router.replace('/login')
   }, [error, loading, router, session])
+
+  useEffect(() => {
+    function handleAuthChanged() {
+      refreshSessionUser()
+        .then((latest) => {
+          if (latest?.user) {
+            refreshMissionControlNow()
+            scheduleFollowupRefreshes()
+          }
+        })
+        .catch(() => {
+          // ignore transient auth change refresh failures
+        })
+    }
+
+    window.addEventListener('evergreen-auth-changed', handleAuthChanged)
+    return () => {
+      window.removeEventListener('evergreen-auth-changed', handleAuthChanged)
+    }
+  }, [session])
 
   async function refreshMissionControlNow() {
     if (!session?.user) return
