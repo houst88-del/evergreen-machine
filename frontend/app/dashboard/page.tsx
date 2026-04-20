@@ -915,6 +915,7 @@ function DashboardPageClient() {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
+  const emptyBootstrapRefreshRef = useRef(false)
   const missionDataRef = useRef({
     accounts: 0,
     jobs: 0,
@@ -1280,24 +1281,21 @@ function DashboardPageClient() {
     provider: string,
     options?: { attempts?: number; delayMs?: number; connectedAccountId?: number | null }
   ) {
-    if (!session?.user) return false
+    const storedUser = getStoredUser()
+    const activeUser = session?.user || storedUser
+    if (!activeUser?.id) return false
 
-    const attempts = options?.attempts ?? 14
-    const delayMs = options?.delayMs ?? 800
+    const attempts = options?.attempts ?? 20
+    const delayMs = options?.delayMs ?? 350
     const expectedAccountId = options?.connectedAccountId ?? null
     const target = provider.toLowerCase()
+    const identityHints = {
+      email: activeUser.email,
+      handle: activeUser.handle,
+    }
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        const latestSession = await refreshSessionUser()
-        const activeUser = latestSession?.user || session.user
-        if (!activeUser?.id) return false
-        setStoredUser(activeUser)
-        const identityHints = {
-          email: activeUser.email,
-          handle: activeUser.handle,
-        }
-
         const res = await apiFetch(
           `/api/connected-accounts?user_id=${activeUser.id}`,
           {},
@@ -1322,13 +1320,14 @@ function DashboardPageClient() {
           })
         ) {
           setAccounts((current) => mergeConnectedAccounts(current, nextAccounts))
-          const nextStatusMap = await fetchLaneStatusMap(activeUser.id, nextAccounts, identityHints)
-          setStatusMap((current) =>
-            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-              ? nextStatusMap
-              : current,
-          )
-          await refreshMissionControlNow()
+          void fetchLaneStatusMap(activeUser.id, nextAccounts, identityHints).then((nextStatusMap) => {
+            setStatusMap((current) =>
+              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+                ? nextStatusMap
+                : current,
+            )
+          })
+          void refreshMissionControlNow()
           return true
         }
       } catch {
@@ -1486,6 +1485,8 @@ function DashboardPageClient() {
     if (params.get('provider') === 'x' && params.get('connected') === '1' && session?.user) {
       const connectedAccountId = Number(params.get('connected_account_id') || 0) || null
       setActionMessage('Finalizing X connection…')
+      void refreshMissionControlNow()
+      scheduleFollowupRefreshes()
       ;(async () => {
         const connected = await waitForConnectedProvider('x', { connectedAccountId })
         if (connected) {
@@ -1524,6 +1525,32 @@ function DashboardPageClient() {
       ),
     [accounts, jobs, missionGalaxy.nodes, statusMap]
   )
+
+  useEffect(() => {
+    if (!session?.user || loading || !missionHydratedOnce) return
+
+    const hasMissionData =
+      resolvedAccounts.length > 0 ||
+      jobs.length > 0 ||
+      (Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length > 0 : false) ||
+      Object.keys(statusMap).length > 0
+
+    if (hasMissionData) {
+      emptyBootstrapRefreshRef.current = false
+      return
+    }
+
+    if (emptyBootstrapRefreshRef.current) return
+    emptyBootstrapRefreshRef.current = true
+
+    void refreshMissionControlNow()
+    window.setTimeout(() => {
+      void refreshMissionControlNow()
+    }, 1200)
+    window.setTimeout(() => {
+      void refreshMissionControlNow()
+    }, 3200)
+  }, [jobs.length, loading, missionGalaxy.nodes, missionHydratedOnce, resolvedAccounts.length, session, statusMap])
 
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
