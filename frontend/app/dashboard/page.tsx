@@ -2295,9 +2295,14 @@ function DashboardPageClient() {
               onClick={async () => {
                 setBusyAction('logout')
                 try {
-                  await logout()
+                  await Promise.race([
+                    logout(),
+                    new Promise<void>((resolve) => {
+                      window.setTimeout(resolve, 3000)
+                    }),
+                  ])
                 } finally {
-                  window.location.assign(`${getAppBase()}/login`)
+                  window.location.assign(`${getAppBase()}/login?fresh=1`)
                 }
               }}
               disabled={busyAction === 'logout'}

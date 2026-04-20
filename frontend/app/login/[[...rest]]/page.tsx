@@ -48,7 +48,12 @@ export default function LoginPage() {
 
       async function finalizeClerkSession() {
         try {
-          const session = await me()
+          const session = await Promise.race([
+            me(),
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), 7000)
+            }),
+          ])
           if (!mounted) return
 
           if (session?.user) {

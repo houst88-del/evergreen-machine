@@ -59,6 +59,24 @@ function emitAuthChanged() {
   window.dispatchEvent(new Event(AUTH_EVENT))
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
@@ -176,7 +194,7 @@ export async function resetAuthState(options?: { includeClerk?: boolean }) {
 
   if (options?.includeClerk && typeof window !== 'undefined' && typeof window.Clerk?.signOut === 'function') {
     try {
-      await window.Clerk.signOut()
+      await withTimeout(window.Clerk.signOut(), 2500, 'Clerk sign-out')
     } catch {
       // ignore Clerk sign-out failures during hard reset
     }

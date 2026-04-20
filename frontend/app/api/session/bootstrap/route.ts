@@ -19,6 +19,24 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 export async function POST() {
   try {
     const { userId } = await auth({ treatPendingAsSignedOut: false })
@@ -38,7 +56,7 @@ export async function POST() {
     const client = await clerkClient()
     let user: Awaited<ReturnType<typeof client.users.getUser>> | null = null
     try {
-      user = await client.users.getUser(userId)
+      user = await withTimeout(client.users.getUser(userId), 4000, 'Clerk user lookup')
     } catch {
       return NextResponse.json({ detail: 'No Clerk session' }, { status: 401 })
     }
