@@ -26,7 +26,6 @@ export function CanonicalHostGuard({ appOrigin }: CanonicalHostGuardProps) {
 
     if (currentHost === canonicalHost) return
     if (currentHost === 'localhost' || currentHost === '127.0.0.1') return
-    if (!currentHost.endsWith('.vercel.app')) return
 
     const nextUrl = `${canonicalUrl.origin}${current.pathname}${current.search}${current.hash}`
     window.location.replace(nextUrl)

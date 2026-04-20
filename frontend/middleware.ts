@@ -18,8 +18,7 @@ export default clerkMiddleware(async (_auth, req) => {
     appUrl &&
     currentHost !== appUrl.hostname.toLowerCase() &&
     currentHost !== 'localhost' &&
-    currentHost !== '127.0.0.1' &&
-    currentHost.endsWith('.vercel.app')
+    currentHost !== '127.0.0.1'
   ) {
     const redirectUrl = new URL(req.nextUrl.pathname + req.nextUrl.search, appUrl.origin)
     return NextResponse.redirect(redirectUrl)
