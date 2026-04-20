@@ -18,6 +18,14 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+function requestTimeoutMs(path: string[]) {
+  const joined = path.join('/').toLowerCase()
+  if (joined.startsWith('galaxy')) return 20000
+  if (joined.startsWith('jobs')) return 15000
+  if (joined.startsWith('status')) return 15000
+  return 8000
+}
+
 function buildTargetUrl(request: NextRequest, path: string[]) {
   const suffix = path.join('/')
   const target = new URL(`${BACKEND_BASE}/api/${suffix}`)
@@ -63,7 +71,7 @@ async function forward(request: NextRequest, path: string[]) {
         cache: 'no-store',
         redirect: 'manual',
       },
-      8000
+      requestTimeoutMs(path)
     )
   } catch (error) {
     return new Response(

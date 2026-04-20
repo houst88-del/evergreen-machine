@@ -35,6 +35,26 @@ def _normalize_string(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _account_sort_key(account: ConnectedAccount) -> tuple[int, int]:
+    connected = str(getattr(account, "connection_status", "") or "").strip().lower() == "connected"
+    return (0 if connected else 1, -int(getattr(account, "id", 0) or 0))
+
+
+def _preferred_accounts(accounts: list[ConnectedAccount]) -> list[ConnectedAccount]:
+    ranked = sorted(accounts, key=_account_sort_key)
+    deduped: list[ConnectedAccount] = []
+    seen_providers: set[str] = set()
+
+    for account in ranked:
+        provider = str(getattr(account, "provider", "") or "").strip().lower()
+        if provider in seen_providers:
+            continue
+        seen_providers.add(provider)
+        deduped.append(account)
+
+    return deduped
+
+
 def _score_percentile_map(values: list[float]) -> dict[float, float]:
     if not values:
         return {}
@@ -329,21 +349,21 @@ def _fetch_accounts_for_mode(
     unified: bool,
 ) -> list[ConnectedAccount]:
     if unified:
-        return (
+        accounts = (
             db.query(ConnectedAccount)
             .filter(ConnectedAccount.user_id == user_id)
-            .order_by(ConnectedAccount.id.asc())
             .all()
         )
+        return sorted(_preferred_accounts(accounts), key=lambda account: str(account.provider or "").lower())
 
     if connected_account_id is None:
-        first = (
+        accounts = (
             db.query(ConnectedAccount)
             .filter(ConnectedAccount.user_id == user_id)
-            .order_by(ConnectedAccount.id.asc())
-            .first()
+            .all()
         )
-        return [first] if first else []
+        preferred = _preferred_accounts(accounts)
+        return [preferred[0]] if preferred else []
 
     account = (
         db.query(ConnectedAccount)
