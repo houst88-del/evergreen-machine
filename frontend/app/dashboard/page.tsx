@@ -459,6 +459,15 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
+  const storedUser = getStoredUser()
+  if (storedUser?.email && !headers.has('x-evergreen-email')) {
+    headers.set('x-evergreen-email', storedUser.email)
+  }
+
+  if (storedUser?.handle && !headers.has('x-evergreen-handle')) {
+    headers.set('x-evergreen-handle', storedUser.handle)
+  }
+
   const normalizedPath = path.startsWith('/api/') ? path.slice('/api/'.length) : path
 
   try {

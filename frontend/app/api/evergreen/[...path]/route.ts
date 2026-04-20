@@ -30,6 +30,8 @@ async function forward(request: NextRequest, path: string[]) {
   const headers = new Headers()
   const contentType = request.headers.get('content-type')
   const authorization = request.headers.get('authorization')
+  const evergreenEmail = request.headers.get('x-evergreen-email')
+  const evergreenHandle = request.headers.get('x-evergreen-handle')
 
   if (contentType) {
     headers.set('content-type', contentType)
@@ -37,6 +39,14 @@ async function forward(request: NextRequest, path: string[]) {
 
   if (authorization) {
     headers.set('authorization', authorization)
+  }
+
+  if (evergreenEmail) {
+    headers.set('x-evergreen-email', evergreenEmail)
+  }
+
+  if (evergreenHandle) {
+    headers.set('x-evergreen-handle', evergreenHandle)
   }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD'

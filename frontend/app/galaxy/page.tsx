@@ -88,6 +88,13 @@ async function evergreenApiFetch(path: string, init: RequestInit = {}) {
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  const storedUser = getStoredUser();
+  if (storedUser?.email && !headers.has("x-evergreen-email")) {
+    headers.set("x-evergreen-email", storedUser.email);
+  }
+  if (storedUser?.handle && !headers.has("x-evergreen-handle")) {
+    headers.set("x-evergreen-handle", storedUser.handle);
+  }
   try {
     return await fetch(`/api/evergreen/${normalizedPath}`, {
       ...init,

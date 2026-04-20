@@ -189,39 +189,48 @@ def _migrate_user_records(db, source: User, target: User) -> None:
     db.flush()
 
 
-def resolve_requested_user_id(db, authorization: str | None, fallback_user_id: int) -> int:
+def resolve_requested_user_id(
+    db,
+    authorization: str | None,
+    fallback_user_id: int,
+    hinted_email: str | None = None,
+    hinted_handle: str | None = None,
+) -> int:
+    payload = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
         payload = verify_token(token)
-        if payload:
-            token_email = str(payload.get("email", "")).strip().lower()
-            token_handle = _normalized_handle(payload.get("handle"))
 
-            user_by_email = (
-                db.query(User).filter(User.email == token_email).first()
-                if token_email
-                else None
-            )
-            user_by_handle = (
-                db.query(User).filter(User.handle == token_handle).order_by(User.id.asc()).first()
-                if token_handle
-                else None
-            )
+    token_email = str((payload or {}).get("email", "")).strip().lower()
+    token_handle = _normalized_handle((payload or {}).get("handle"))
+    candidate_email = str(hinted_email or token_email).strip().lower()
+    candidate_handle = _normalized_handle(hinted_handle or token_handle)
 
-            if user_by_email and user_by_handle and user_by_email.id != user_by_handle.id:
-                _migrate_user_records(db, source=user_by_handle, target=user_by_email)
-                db.commit()
-                db.refresh(user_by_email)
-                return int(user_by_email.id)
+    user_by_email = (
+        db.query(User).filter(User.email == candidate_email).first()
+        if candidate_email
+        else None
+    )
+    user_by_handle = (
+        db.query(User).filter(User.handle == candidate_handle).order_by(User.id.asc()).first()
+        if candidate_handle
+        else None
+    )
 
-            if user_by_email:
-                return int(user_by_email.id)
+    if user_by_email and user_by_handle and user_by_email.id != user_by_handle.id:
+        _migrate_user_records(db, source=user_by_handle, target=user_by_email)
+        db.commit()
+        db.refresh(user_by_email)
+        return int(user_by_email.id)
 
-            if user_by_handle:
-                return int(user_by_handle.id)
+    if user_by_email:
+        return int(user_by_email.id)
 
-            if payload.get("user_id"):
-                return int(payload["user_id"])
+    if user_by_handle:
+        return int(user_by_handle.id)
+
+    if payload and payload.get("user_id"):
+        return int(payload["user_id"])
     return fallback_user_id
 
 
@@ -633,10 +642,14 @@ def get_jobs(
     connected_account_id: int | None = Query(default=None),
     user_id: int = Query(1, ge=1),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, _ = get_user_and_optional_account(resolved_user_id)
@@ -666,10 +679,14 @@ def get_jobs(
 def list_connected_accounts(
     user_id: int = Query(1, ge=1),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, _ = get_user_and_optional_account(resolved_user_id)
@@ -703,10 +720,14 @@ def get_status(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -730,10 +751,14 @@ def toggle_status(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -767,10 +792,14 @@ def set_pacing_mode(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -803,10 +832,14 @@ def connect_provider(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -908,10 +941,14 @@ def disconnect_provider(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -938,10 +975,14 @@ def refresh_now(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
@@ -973,10 +1014,14 @@ def run_analytics(
     user_id: int = Query(1, ge=1),
     connected_account_id: int | None = Query(default=None),
     authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
 ):
     db = SessionLocal()
     try:
-        resolved_user_id = resolve_requested_user_id(db, authorization, user_id)
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
     finally:
         db.close()
     db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)

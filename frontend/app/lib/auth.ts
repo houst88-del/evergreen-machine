@@ -187,6 +187,7 @@ export async function resetAuthState(options?: { includeClerk?: boolean }) {
 
 export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 8000) {
   const token = getToken()
+  const storedUser = getStoredUser()
   const headers = new Headers(init.headers || {})
 
   if (!headers.has('Content-Type') && init.method && init.method !== 'GET') {
@@ -195,6 +196,14 @@ export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs =
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  if (storedUser?.email && !headers.has('x-evergreen-email')) {
+    headers.set('x-evergreen-email', storedUser.email)
+  }
+
+  if (storedUser?.handle && !headers.has('x-evergreen-handle')) {
+    headers.set('x-evergreen-handle', storedUser.handle)
   }
 
   return fetchWithTimeout(`${API_BASE}${path}`, {
