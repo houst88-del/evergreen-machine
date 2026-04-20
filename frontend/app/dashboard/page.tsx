@@ -464,13 +464,8 @@ function jobStateKind(value?: string) {
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
-  try {
-    const res = await authApiFetch(path, init)
-
-    if (typeof window === 'undefined') return res
-    if (res.ok || API_BASE === window.location.origin) return res
-  } catch {
-    if (typeof window === 'undefined') throw new Error('Evergreen API request failed')
+  if (typeof window === 'undefined') {
+    return authApiFetch(path, init)
   }
 
   const controller = new AbortController()
@@ -1170,6 +1165,8 @@ export default function DashboardPage() {
     }
 
     loadMissionControl()
+    window.setTimeout(loadMissionControl, 1200)
+    window.setTimeout(loadMissionControl, 3500)
     const id = window.setInterval(loadMissionControl, 6000)
 
     function handleVisibilityRefresh() {
