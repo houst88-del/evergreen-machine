@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { PLANS } from './lib/billing'
-import { me } from './lib/auth'
+import { getStoredUser, me } from './lib/auth'
 
 const comparisonRows = [
   { label: 'Platforms', standard: 'Choose X or Bluesky', pro: 'X + Bluesky' },
@@ -20,6 +20,14 @@ export default function HomePage() {
   const [finalizingSession, setFinalizingSession] = useState(false)
 
   useEffect(() => {
+    const storedUser = getStoredUser()
+
+    if (storedUser) {
+      setFinalizingSession(true)
+      router.replace('/dashboard')
+      return
+    }
+
     if (!clerkEnabled) {
       return
     }
