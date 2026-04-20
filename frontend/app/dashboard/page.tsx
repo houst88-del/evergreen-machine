@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
@@ -932,6 +932,26 @@ function DashboardPageClient() {
   }, [accounts, jobs, missionGalaxy.nodes, statusMap])
 
   async function refreshSessionUser() {
+    const storedUser = getStoredUser()
+    const existingToken = getToken()
+    const attempts = !existingToken && storedUser ? 3 : 1
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const latest = await me()
+        if (latest?.user) {
+          setSession(latest)
+          return latest
+        }
+      } catch {
+        // fall through to retry or stored-session fallback
+      }
+
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 700))
+      }
+    }
+
     try {
       const latest = await me()
       if (latest?.user) {
@@ -942,7 +962,6 @@ function DashboardPageClient() {
       // fall through to stored-session fallback
     }
 
-    const storedUser = getStoredUser()
     if (storedUser) {
       const fallback = { user: storedUser }
       setSession((current: any) => (current?.user ? current : fallback))

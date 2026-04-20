@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, getStoredUser, getToken, me, setStoredUser } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
@@ -496,6 +496,7 @@ export function GalaxySurface({
   const [galaxyScope, setGalaxyScope] = useState<string>("unified");
   const [statusMap, setStatusMap] = useState<Record<number, DashboardStatus>>(embeddedStatusMap || {});
   const [hovered, setHovered] = useState<GalaxyNode | null>(null);
+  const deferredHovered = useDeferredValue(hovered);
   const [selectedStarId, setSelectedStarId] = useState<string | null>(null);
   const [animMs, setAnimMs] = useState(0);
   const [error, setError] = useState("");
@@ -624,7 +625,18 @@ export function GalaxySurface({
         setError("");
       }
 
-      const session = await me();
+      const existingToken = getToken();
+      const attempts = !existingToken && storedUser ? 3 : 1;
+      let session = null;
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        session = await me();
+        if (session?.user) break;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 700));
+        }
+      }
+
       if (cancelled) return;
       if (session?.user) {
         setStoredUser(session.user);
@@ -642,8 +654,10 @@ export function GalaxySurface({
       }
     }
     loadSession();
+    window.addEventListener("evergreen-auth-changed", loadSession);
     return () => {
       cancelled = true;
+      window.removeEventListener("evergreen-auth-changed", loadSession);
     };
   }, []);
 
@@ -1889,9 +1903,15 @@ export function GalaxySurface({
                         onDoubleClick={() => {
                           if (node.url) window.open(node.url, "_blank", "noopener,noreferrer");
                         }}
-                        onMouseEnter={() => setHovered(node)}
+                        onMouseEnter={() =>
+                          startTransition(() => {
+                            setHovered((current) => (current?.id === node.id ? current : node));
+                          })
+                        }
                         onMouseLeave={() =>
-                          setHovered((current) => (current?.id === node.id ? null : current))
+                          startTransition(() => {
+                            setHovered((current) => (current?.id === node.id ? null : current));
+                          })
                         }
                         style={{
                           position: "absolute",
@@ -2015,7 +2035,7 @@ export function GalaxySurface({
                 </div>
               </div>
 
-              {hovered ? (
+              {deferredHovered ? (
                 <div
                   style={{
                     position: "absolute",
@@ -2037,7 +2057,7 @@ export function GalaxySurface({
                       <div
                         style={missionEyebrowStyle}
                       >
-                        Mission Brief · {providerLabel(hovered.provider)} · {hovered.handle || "handle"}
+                        Mission Brief · {providerLabel(deferredHovered.provider)} · {deferredHovered.handle || "handle"}
                       </div>
                       <div
                         style={{
@@ -2047,7 +2067,7 @@ export function GalaxySurface({
                           lineHeight: 1.35,
                         }}
                       >
-                        {shortText(hovered.label || hovered.url || hovered.id, 90)}
+                        {shortText(deferredHovered.label || deferredHovered.url || deferredHovered.id, 90)}
                       </div>
                       <div
                         style={{
@@ -2058,15 +2078,15 @@ export function GalaxySurface({
                         }}
                       >
                         <span style={missionBadgeStyle("neutral", true)}>
-                          {humanizeStrategy(hovered.selection_strategy)}
+                          {humanizeStrategy(deferredHovered.selection_strategy)}
                         </span>
-                        {likelyNext(hovered) ? (
+                        {likelyNext(deferredHovered) ? (
                           <span style={missionBadgeStyle("gold", true)}>Likely next</span>
                         ) : null}
-                        {hovered.current_cycle ? (
+                        {deferredHovered.current_cycle ? (
                           <span style={missionBadgeStyle("gold", true)}>Current live star</span>
                         ) : null}
-                        {hovered.cold_archive ? (
+                        {deferredHovered.cold_archive ? (
                           <span style={missionBadgeStyle("neutral", true)}>Outer field</span>
                         ) : null}
                       </div>
@@ -2075,50 +2095,50 @@ export function GalaxySurface({
                       <div
                         style={{
                           ...missionBadgeStyle(
-                            hovered.provider?.toLowerCase() === "bluesky" ? "sky" : "mint"
+                            deferredHovered.provider?.toLowerCase() === "bluesky" ? "sky" : "mint"
                           ),
-                          background: providerColor(hovered.provider).replace("0.95", "0.14"),
-                          border: `1px solid ${providerColor(hovered.provider).replace("0.95", "0.28")}`,
+                          background: providerColor(deferredHovered.provider).replace("0.95", "0.14"),
+                          border: `1px solid ${providerColor(deferredHovered.provider).replace("0.95", "0.28")}`,
                         }}
                       >
-                        {hovered.gravity || "standard"}
+                        {deferredHovered.gravity || "standard"}
                       </div>
                       <div
                         style={missionBadgeStyle("gold")}
                       >
-                        {rarityAccent(hovered).tag}
+                        {rarityAccent(deferredHovered).tag}
                       </div>
                       <div
                         style={{
                           ...missionBadgeStyle(
-                            safeNum(hovered.predicted_velocity, 0) >= 0.65 ? "gold" : "neutral"
+                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65 ? "gold" : "neutral"
                           ),
                           background:
-                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
                               ? "rgba(250,228,120,0.1)"
                               : "rgba(255,255,255,0.05)",
                           border:
-                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
                               ? "1px solid rgba(250,228,120,0.22)"
                               : "1px solid rgba(255,255,255,0.1)",
                           color:
-                            safeNum(hovered.predicted_velocity, 0) >= 0.65
+                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
                               ? "rgba(255,248,210,0.94)"
                               : "rgba(236,253,245,0.8)",
                         }}
                       >
-                        {safeNum(hovered.predicted_velocity, 0) >= 0.65 ? "Likely next" : "Monitoring"}
+                        {safeNum(deferredHovered.predicted_velocity, 0) >= 0.65 ? "Likely next" : "Monitoring"}
                       </div>
                     </div>
                   </div>
 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
                     {[
-                      hovered.current_cycle ? "Current cycle" : "",
-                      hovered.candidate ? "Candidate" : "",
-                      hovered.cold_archive ? "Peripheral field" : "",
-                      isFreshPulse(hovered.last_resurfaced_at) ? "Fresh pulse" : "",
-                      `Account ${hovered.connected_account_id ?? "—"}`,
+                      deferredHovered.current_cycle ? "Current cycle" : "",
+                      deferredHovered.candidate ? "Candidate" : "",
+                      deferredHovered.cold_archive ? "Peripheral field" : "",
+                      isFreshPulse(deferredHovered.last_resurfaced_at) ? "Fresh pulse" : "",
+                      `Account ${deferredHovered.connected_account_id ?? "—"}`,
                     ]
                       .filter(Boolean)
                       .map((label) => (
@@ -2141,14 +2161,14 @@ export function GalaxySurface({
                       color: "rgba(236,253,245,0.72)",
                     }}
                   >
-                    <div>Score: {safeNum(hovered.normalized_score ?? hovered.score, 0)}</div>
-                    <div>Gravity score: {safeNum(hovered.gravity_score, 0)}</div>
-                    <div>Velocity: {safeNum(hovered.predicted_velocity, 0).toFixed(2)}</div>
-                    <div>Revival: {safeNum(hovered.revival_score, 0)}</div>
-                    <div>Refreshes: {safeNum(hovered.refresh_count, 0)}</div>
-                    <div>Last pulse: {minutesAgo(hovered.last_resurfaced_at)}</div>
-                    <div>State: {hovered.state || "active"}</div>
-                    <div>Archetype: {hovered.archetype || "unclassified"}</div>
+                    <div>Score: {safeNum(deferredHovered.normalized_score ?? deferredHovered.score, 0)}</div>
+                    <div>Gravity score: {safeNum(deferredHovered.gravity_score, 0)}</div>
+                    <div>Velocity: {safeNum(deferredHovered.predicted_velocity, 0).toFixed(2)}</div>
+                    <div>Revival: {safeNum(deferredHovered.revival_score, 0)}</div>
+                    <div>Refreshes: {safeNum(deferredHovered.refresh_count, 0)}</div>
+                    <div>Last pulse: {minutesAgo(deferredHovered.last_resurfaced_at)}</div>
+                    <div>State: {deferredHovered.state || "active"}</div>
+                    <div>Archetype: {deferredHovered.archetype || "unclassified"}</div>
                   </div>
 
                   <div
@@ -2177,7 +2197,7 @@ export function GalaxySurface({
                           color: "rgba(236,253,245,0.9)",
                         }}
                       >
-                        {humanizeStrategy(hovered.selection_strategy)}
+                        {humanizeStrategy(deferredHovered.selection_strategy)}
                       </div>
                     </div>
                     <div>
@@ -2203,13 +2223,13 @@ export function GalaxySurface({
                           background: "rgba(255,255,255,0.03)",
                         }}
                       >
-                        {hovered.selection_reason || "No selection reason recorded."}
+                        {deferredHovered.selection_reason || "No selection reason recorded."}
                       </div>
                     </div>
-                    {hovered.url ? (
+                    {deferredHovered.url ? (
                       <div style={{ marginTop: 8 }}>
                         <a
-                          href={hovered.url}
+                          href={deferredHovered.url}
                           target="_blank"
                           rel="noreferrer"
                           style={{ color: "rgba(186,230,253,1)", textDecoration: "underline" }}
@@ -2274,7 +2294,11 @@ export function GalaxySurface({
                 {forecastNodes.map((n, i) => (
                   <div
                     key={n.id}
-                    onMouseEnter={() => setHovered(n)}
+                    onMouseEnter={() =>
+                      startTransition(() => {
+                        setHovered((current) => (current?.id === n.id ? current : n));
+                      })
+                    }
                     onClick={() => setSelectedStarId(n.id)}
                     style={{
                       display: "grid",
