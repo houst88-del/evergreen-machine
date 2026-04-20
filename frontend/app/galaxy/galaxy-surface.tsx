@@ -70,7 +70,6 @@ type IdentityHints = {
 
 type GalaxyPageProps = {
   embedded?: boolean;
-  onBack?: () => void;
 };
 
 const BACKEND =
@@ -406,7 +405,7 @@ const isFreshPulse = (value?: string | null) => {
   return Date.now() - d.getTime() <= 1000 * 60 * 45;
 };
 
-export function GalaxySurface({ embedded = false, onBack }: GalaxyPageProps = {}) {
+export function GalaxySurface({ embedded = false }: GalaxyPageProps = {}) {
   const router = useRouter();
   const [userId, setUserId] = useState<number | null>(null);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -433,7 +432,7 @@ export function GalaxySurface({ embedded = false, onBack }: GalaxyPageProps = {}
 
   useEffect(() => {
     if (embedded || typeof window === "undefined") return;
-    router.replace("/dashboard?view=starden");
+    router.replace("/dashboard#starden-panel");
   }, [embedded, router]);
 
   const liveTick = animMs / 60;
@@ -616,6 +615,28 @@ export function GalaxySurface({ embedded = false, onBack }: GalaxyPageProps = {}
         }
       } catch {
         if (cancelled) return;
+        if (selected === "unified" && accounts.length > 0) {
+          try {
+            const fallbackAccount = accounts[0];
+            const fallbackQs = `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(String(fallbackAccount.id))}`;
+            const fallbackJson = (await fetchJsonOrThrow(
+              `/api/galaxy${fallbackQs}`,
+              {},
+              identityHints
+            )) as GalaxyResponse;
+            if (cancelled) return;
+            setGalaxy({
+              nodes: Array.isArray(fallbackJson.nodes) ? fallbackJson.nodes : [],
+              meta: fallbackJson.meta || {},
+            });
+            setGalaxyScope(String(fallbackAccount.id));
+            setSelected(String(fallbackAccount.id));
+            setError("");
+            return;
+          } catch {
+            // fall through to visible error state
+          }
+        }
         setGalaxy({ nodes: [], meta: {} });
         setGalaxyScope(selected);
         setError("Could not load galaxy.");
@@ -627,7 +648,7 @@ export function GalaxySurface({ embedded = false, onBack }: GalaxyPageProps = {}
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [identityHints, selected, userId]);
+  }, [accounts, identityHints, selected, userId]);
 
   const visibleGalaxy = useMemo(
     () => (galaxyScope === selected ? galaxy : { nodes: [], meta: {} }),
@@ -1085,37 +1106,49 @@ export function GalaxySurface({ embedded = false, onBack }: GalaxyPageProps = {}
               justifyContent: "flex-end",
             }}
           >
-            <button
-              onClick={() => {
-                if (embedded && onBack) {
-                  onBack();
-                  return;
-                }
-                window.location.href = "/dashboard";
-              }}
-              style={{
-                borderRadius: 999,
-                border: "1px solid rgba(52,211,153,0.28)",
-                background: "rgba(16,185,129,0.08)",
-                color: "white",
-                padding: "8px 14px",
-                cursor: "pointer",
-              }}
-            >
-              {embedded ? "← Mission Control" : "← Dashboard"}
-            </button>
-            <div
-              style={{
-                borderRadius: 999,
-                border: "1px solid rgba(52,211,153,0.18)",
-                background: "rgba(0,0,0,0.28)",
-                color: "rgba(236,253,245,0.78)",
-                padding: "8px 12px",
-                fontSize: 11,
-              }}
-            >
-              Starden View
-            </div>
+            {!embedded ? (
+              <button
+                onClick={() => {
+                  window.location.href = "/dashboard";
+                }}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(52,211,153,0.28)",
+                  background: "rgba(16,185,129,0.08)",
+                  color: "white",
+                  padding: "8px 14px",
+                  cursor: "pointer",
+                }}
+              >
+                ← Dashboard
+              </button>
+            ) : (
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.56)",
+                  paddingRight: 2,
+                }}
+              >
+                Scope
+              </div>
+            )}
+            {!embedded ? (
+              <div
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(52,211,153,0.18)",
+                  background: "rgba(0,0,0,0.28)",
+                  color: "rgba(236,253,245,0.78)",
+                  padding: "8px 12px",
+                  fontSize: 11,
+                }}
+              >
+                Starden View
+              </div>
+            ) : null}
             <select
               value={selected}
               onChange={(e) => setSelected(e.target.value)}

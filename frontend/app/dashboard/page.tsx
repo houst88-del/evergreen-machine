@@ -2105,18 +2105,6 @@ function DashboardPageClient() {
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button
-              className="btn primary"
-              style={{ cursor: 'default' }}
-            >
-              Mission Control
-            </button>
-            <button
-              className="btn"
-              onClick={scrollToStarden}
-            >
-              Starden
-            </button>
-            <button
               className="btn"
               onClick={async () => {
                 setBusyAction('logout')
@@ -3068,9 +3056,6 @@ function DashboardPageClient() {
             <div style={missionEyebrowStyle}>Starden</div>
             <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
               Constellation View
-            </div>
-            <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.72)', maxWidth: 760, lineHeight: 1.6 }}>
-              Mission Control and Starden now live on one continuous surface so the app doesn’t have to rebuild its state when you move between views.
             </div>
           </div>
 
