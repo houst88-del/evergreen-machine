@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
@@ -854,7 +854,6 @@ function DashboardPageClient() {
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const [surfaceView, setSurfaceView] = useState<'control' | 'starden'>('control')
 
   const [system, setSystem] = useState<SystemStatus | null>(null)
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
@@ -867,6 +866,7 @@ function DashboardPageClient() {
   const [error, setError] = useState('')
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
+  const stardenSectionRef = useRef<HTMLDivElement | null>(null)
 
   async function refreshSessionUser() {
     try {
@@ -1055,28 +1055,8 @@ function DashboardPageClient() {
     }
   }, [error, loading, router])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const syncSurfaceView = () => {
-      const params = new URLSearchParams(window.location.search)
-      const requestedView = params.get('view')
-      setSurfaceView(requestedView === 'starden' ? 'starden' : 'control')
-    }
-
-    syncSurfaceView()
-    window.addEventListener('popstate', syncSurfaceView)
-
-    return () => {
-      window.removeEventListener('popstate', syncSurfaceView)
-    }
-  }, [])
-
-  function switchSurfaceView(nextView: 'control' | 'starden') {
-    setSurfaceView(nextView)
-    const nextUrl =
-      nextView === 'starden' ? '/dashboard?view=starden' : '/dashboard'
-    router.replace(nextUrl, { scroll: false })
+  function scrollToStarden() {
+    stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   useEffect(() => {
@@ -2114,45 +2094,13 @@ function DashboardPageClient() {
         : null
   const activePlanLabel = subscriptionInfo?.plan || (subscriptionStatus === 'active' ? 'Paid' : null)
 
-  if (surfaceView === 'starden') {
-    return (
-      <main className="page mission-page">
-        <div className="shell">
-          <header className="header mission-header-block">
-            <div>
-              <div className="wordmark">Evergreen Mission Control</div>
-              <div className="subtle">One live surface for controls and constellation view.</div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button
-                className="btn"
-                onClick={() => switchSurfaceView('control')}
-              >
-                Mission Control
-              </button>
-              <button
-                className="btn primary"
-                style={{ cursor: 'default' }}
-              >
-                Starden
-              </button>
-            </div>
-          </header>
-
-          <GalaxySurface embedded onBack={() => switchSurfaceView('control')} />
-        </div>
-      </main>
-    )
-  }
-
   return (
     <main className="page mission-page">
       <div className="shell">
         <header className="header mission-header-block">
           <div>
             <div className="wordmark">Evergreen Mission Control</div>
-            <div className="subtle">Live command deck for your resurfacing engine.</div>
+            <div className="subtle">One live surface for your resurfacing engine and Starden.</div>
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -2164,7 +2112,7 @@ function DashboardPageClient() {
             </button>
             <button
               className="btn"
-              onClick={() => switchSurfaceView('starden')}
+              onClick={scrollToStarden}
             >
               Starden
             </button>
@@ -2500,9 +2448,9 @@ function DashboardPageClient() {
 
               <button
                 className="btn primary"
-                onClick={() => switchSurfaceView('starden')}
+                onClick={scrollToStarden}
               >
-                ✦ Open Starden
+                ✦ Jump to Starden
               </button>
             </div>
           </div>
@@ -3104,6 +3052,29 @@ function DashboardPageClient() {
               })}
             </div>
           )}
+        </section>
+
+        <section
+          id="starden-panel"
+          ref={stardenSectionRef}
+          className="card"
+          style={{
+            marginTop: 18,
+            padding: 18,
+            background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
+          }}
+        >
+          <div style={{ marginBottom: 14 }}>
+            <div style={missionEyebrowStyle}>Starden</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              Constellation View
+            </div>
+            <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.72)', maxWidth: 760, lineHeight: 1.6 }}>
+              Mission Control and Starden now live on one continuous surface so the app doesn’t have to rebuild its state when you move between views.
+            </div>
+          </div>
+
+          <GalaxySurface embedded />
         </section>
       </div>
     </main>
