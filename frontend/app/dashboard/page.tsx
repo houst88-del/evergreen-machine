@@ -81,6 +81,11 @@ type GalaxyNode = {
 
 type GalaxyResponse = {
   nodes?: GalaxyNode[]
+  meta?: {
+    count?: number
+    running?: boolean
+    account_count?: number
+  }
 }
 
 type JobItem = {
@@ -609,6 +614,7 @@ function inferAccountsFromMissionData(
   primary: ConnectedAccount[],
   statusMap: Record<number, AccountStatus>,
   jobs: JobItem[],
+  galaxyNodes: GalaxyNode[],
 ): ConnectedAccount[] {
   const discovered: ConnectedAccount[] = []
 
@@ -640,6 +646,19 @@ function inferAccountsFromMissionData(
     })
   }
 
+  for (const node of galaxyNodes) {
+    const id = Number(node.connected_account_id || 0)
+    const provider = String(node.provider || '').trim().toLowerCase()
+    const handle = String(node.handle || '').trim()
+    if (!id || !provider || !handle) continue
+    discovered.push({
+      id,
+      provider,
+      handle,
+      connection_status: 'connected',
+    })
+  }
+
   return mergeConnectedAccounts(primary, discovered)
 }
 
@@ -655,6 +674,7 @@ export default function DashboardPage() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [statusMap, setStatusMap] = useState<Record<number, AccountStatus>>({})
   const [jobs, setJobs] = useState<JobItem[]>([])
+  const [missionGalaxy, setMissionGalaxy] = useState<GalaxyResponse>({ nodes: [], meta: {} })
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
   const [error, setError] = useState('')
@@ -887,10 +907,23 @@ export default function DashboardPage() {
       }
 
       let discoveredAccounts: ConnectedAccount[] = []
+      let galaxySnapshot: GalaxyResponse | null = null
       try {
-        discoveredAccounts = await fetchAccountsFromGalaxy(userId)
+        galaxySnapshot = (await fetchJsonOrThrow(
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+        )) as GalaxyResponse
+        discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
+          ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
+          : []
       } catch {
         // ignore galaxy fallback failures
+      }
+
+      if (galaxySnapshot) {
+        setMissionGalaxy({
+          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
+          meta: galaxySnapshot.meta || {},
+        })
       }
 
       if (accountsResult.status === 'fulfilled') {
@@ -1043,10 +1076,23 @@ export default function DashboardPage() {
       }
 
       let discoveredAccounts: ConnectedAccount[] = []
+      let galaxySnapshot: GalaxyResponse | null = null
       try {
-        discoveredAccounts = await fetchAccountsFromGalaxy(userId)
+        galaxySnapshot = (await fetchJsonOrThrow(
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+        )) as GalaxyResponse
+        discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
+          ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
+          : []
       } catch {
         // ignore galaxy fallback failures
+      }
+
+      if (galaxySnapshot) {
+        setMissionGalaxy({
+          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
+          meta: galaxySnapshot.meta || {},
+        })
       }
 
       if (accountsResult.status === 'fulfilled') {
@@ -1172,20 +1218,28 @@ export default function DashboardPage() {
   }, [session])
 
   const resolvedAccounts = useMemo(
-    () => inferAccountsFromMissionData(accounts, statusMap, jobs),
-    [accounts, jobs, statusMap]
+    () =>
+      inferAccountsFromMissionData(
+        accounts,
+        statusMap,
+        jobs,
+        Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes : []
+      ),
+    [accounts, jobs, missionGalaxy.nodes, statusMap]
   )
 
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
     const accountStatuses = Object.values(statusMap)
+    const galaxyCount = Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length : 0
     const hasMissionData =
-      resolvedAccounts.length > 0 || accountStatuses.length > 0 || jobs.length > 0
+      resolvedAccounts.length > 0 || accountStatuses.length > 0 || jobs.length > 0 || galaxyCount > 0
 
-    const postsInRotation = accountStatuses.reduce(
+    const postsInRotationFromStatus = accountStatuses.reduce(
       (sum, item) => sum + (item.posts_in_rotation || 0),
       0
     )
+    const postsInRotation = postsInRotationFromStatus > 0 ? postsInRotationFromStatus : galaxyCount
 
     const connectedCount = resolvedAccounts.filter((account) =>
       isConnectedAccount(account, statusMap[account.id])
@@ -1205,6 +1259,8 @@ export default function DashboardPage() {
         ? heartbeat.status || 'running'
         : accountStatuses.some((item) => item.running)
           ? 'running'
+          : missionGalaxy.meta?.running
+            ? 'running'
           : hasMissionData
             ? 'idle'
             : 'offline'
@@ -1220,10 +1276,10 @@ export default function DashboardPage() {
       heartbeatAt: heartbeat.timestamp ?? null,
       workerError: heartbeat.error || null,
       postsInRotation,
-      connectedCount,
+      connectedCount: connectedCount || Number(missionGalaxy.meta?.account_count || 0),
       nextCycle,
     }
-  }, [jobs, resolvedAccounts, system, statusMap])
+  }, [jobs, missionGalaxy.meta, missionGalaxy.nodes, resolvedAccounts, system, statusMap])
 
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']
