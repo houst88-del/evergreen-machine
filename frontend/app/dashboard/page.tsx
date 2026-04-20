@@ -1,9 +1,10 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@clerk/nextjs'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import {
   apiFetch as authApiFetch,
   getAppBase,
@@ -846,9 +847,8 @@ function inferAccountsFromMissionData(
   return mergeConnectedAccounts(primary, discovered)
 }
 
-export default function DashboardPage() {
+function DashboardPageClient() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const [session, setSession] = useState<any>(null)
@@ -1056,9 +1056,21 @@ export default function DashboardPage() {
   }, [error, loading, router])
 
   useEffect(() => {
-    const requestedView = searchParams.get('view')
-    setSurfaceView(requestedView === 'starden' ? 'starden' : 'control')
-  }, [searchParams])
+    if (typeof window === 'undefined') return
+
+    const syncSurfaceView = () => {
+      const params = new URLSearchParams(window.location.search)
+      const requestedView = params.get('view')
+      setSurfaceView(requestedView === 'starden' ? 'starden' : 'control')
+    }
+
+    syncSurfaceView()
+    window.addEventListener('popstate', syncSurfaceView)
+
+    return () => {
+      window.removeEventListener('popstate', syncSurfaceView)
+    }
+  }, [])
 
   function switchSurfaceView(nextView: 'control' | 'starden') {
     setSurfaceView(nextView)
@@ -3097,3 +3109,9 @@ export default function DashboardPage() {
     </main>
   )
 }
+
+const DashboardPage = dynamic(async () => DashboardPageClient, {
+  ssr: false,
+})
+
+export default DashboardPage
