@@ -459,6 +459,23 @@ function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountS
   return String(account?.connection_status || '').trim().toLowerCase() === 'connected'
 }
 
+async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
+  const res = await apiFetch(path, init)
+  const json = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const message =
+      typeof json?.detail === 'string'
+        ? json.detail
+        : typeof json?.message === 'string'
+          ? json.message
+          : `Evergreen request failed (${res.status})`
+    throw new Error(message)
+  }
+
+  return json
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -653,23 +670,17 @@ export default function DashboardPage() {
       const userId = activeUser.id || 1
 
       const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
-        apiFetch('/api/system-status')
-          .then((res) => res.json())
-          .then((json) => ({ ok: true, json })),
-        apiFetch(`/api/connected-accounts?user_id=${userId}`)
-          .then((res) => res.json())
-          .then((json) => ({ ok: true, json })),
-        apiFetch(`/api/jobs?user_id=${userId}`)
-          .then((res) => res.json())
-          .then((json) => ({ ok: true, json })),
+        fetchJsonOrThrow('/api/system-status'),
+        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`),
+        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`),
       ])
 
-      if (systemResult.status === 'fulfilled' && systemResult.value.ok) {
-        setSystem(systemResult.value.json)
+      if (systemResult.status === 'fulfilled') {
+        setSystem(systemResult.value)
       }
 
-      if (accountsResult.status === 'fulfilled' && accountsResult.value.ok) {
-        const accountsJson = accountsResult.value.json
+      if (accountsResult.status === 'fulfilled') {
+        const accountsJson = accountsResult.value
         const nextAccounts = Array.isArray(accountsJson.accounts)
           ? accountsJson.accounts
           : Array.isArray(accountsJson)
@@ -695,8 +706,8 @@ export default function DashboardPage() {
         setStatusMap(nextStatusMap)
       }
 
-      if (jobsResult.status === 'fulfilled' && jobsResult.value.ok) {
-        const jobsJson = jobsResult.value.json
+      if (jobsResult.status === 'fulfilled') {
+        const jobsJson = jobsResult.value
         const nextJobs = Array.isArray(jobsJson.jobs)
           ? jobsJson.jobs
           : Array.isArray(jobsJson)
@@ -779,28 +790,22 @@ export default function DashboardPage() {
         const activeUser = activeSession?.user
         if (!activeUser) return
 
-        const userId = activeUser.id || 1
+      const userId = activeUser.id || 1
 
-        const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
-          apiFetch('/api/system-status')
-            .then((res) => res.json())
-            .then((json) => ({ ok: true, json })),
-          apiFetch(`/api/connected-accounts?user_id=${userId}`)
-            .then((res) => res.json())
-            .then((json) => ({ ok: true, json })),
-          apiFetch(`/api/jobs?user_id=${userId}`)
-            .then((res) => res.json())
-            .then((json) => ({ ok: true, json })),
-        ])
+      const [systemResult, accountsResult, jobsResult] = await Promise.allSettled([
+        fetchJsonOrThrow('/api/system-status'),
+        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`),
+        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`),
+      ])
 
         if (!mounted) return
 
-        if (systemResult.status === 'fulfilled' && systemResult.value.ok) {
-          setSystem(systemResult.value.json)
+        if (systemResult.status === 'fulfilled') {
+          setSystem(systemResult.value)
         }
 
-        if (accountsResult.status === 'fulfilled' && accountsResult.value.ok) {
-          const accountsJson = accountsResult.value.json
+        if (accountsResult.status === 'fulfilled') {
+          const accountsJson = accountsResult.value
           const nextAccounts = Array.isArray(accountsJson.accounts)
             ? accountsJson.accounts
             : Array.isArray(accountsJson)
@@ -827,8 +832,8 @@ export default function DashboardPage() {
           setStatusMap(nextStatusMap)
         }
 
-        if (jobsResult.status === 'fulfilled' && jobsResult.value.ok) {
-          const jobsJson = jobsResult.value.json
+        if (jobsResult.status === 'fulfilled') {
+          const jobsJson = jobsResult.value
           const nextJobs = Array.isArray(jobsJson.jobs)
             ? jobsJson.jobs
             : Array.isArray(jobsJson)
