@@ -929,6 +929,10 @@ function DashboardPageClient() {
     galaxyNodes: 0,
     statusEntries: 0,
   })
+  const sessionRef = useRef<any>(null)
+  const missionRefreshPromiseRef = useRef<Promise<void> | null>(null)
+  const pendingMissionRefreshRef = useRef(false)
+  const subscriptionRefreshPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
     missionDataRef.current = {
@@ -938,6 +942,14 @@ function DashboardPageClient() {
       statusEntries: Object.keys(statusMap).length,
     }
   }, [accounts, jobs, missionGalaxy.nodes, statusMap])
+
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
+
+  function getActiveUserSnapshot() {
+    return sessionRef.current?.user || getStoredUser()
+  }
 
   async function refreshSessionUser() {
     const storedUser = getStoredUser()
@@ -980,6 +992,11 @@ function DashboardPageClient() {
   }
 
   async function refreshSubscriptionInfo() {
+    if (subscriptionRefreshPromiseRef.current) {
+      return subscriptionRefreshPromiseRef.current
+    }
+
+    subscriptionRefreshPromiseRef.current = (async () => {
     try {
       const res = await apiFetch('/api/auth/subscription')
       const json = await res.json()
@@ -1011,6 +1028,11 @@ function DashboardPageClient() {
     } catch {
       // ignore subscription panel refresh failures during polling
     }
+    })().finally(() => {
+      subscriptionRefreshPromiseRef.current = null
+    })
+
+    return subscriptionRefreshPromiseRef.current
   }
 
   function currentSubscriptionState() {
@@ -1167,10 +1189,16 @@ function DashboardPageClient() {
 
   useEffect(() => {
     function handleAuthChanged() {
+      const activeUser = getActiveUserSnapshot()
+      if (activeUser) {
+        void refreshMissionControlNow()
+        scheduleFollowupRefreshes()
+      }
+
       refreshSessionUser()
         .then((latest) => {
-          if (latest?.user) {
-            refreshMissionControlNow()
+          if (latest?.user && !activeUser) {
+            void refreshMissionControlNow()
             scheduleFollowupRefreshes()
           }
         })
@@ -1186,96 +1214,116 @@ function DashboardPageClient() {
   }, [session])
 
   async function refreshMissionControlNow() {
-    if (!session?.user) return
-
-    try {
-      const latestSession = await refreshSessionUser()
-      await refreshSubscriptionInfo()
-      const activeSession = latestSession?.user ? latestSession : session
-      const activeUser = activeSession?.user
-      if (!activeUser) return
-      setStoredUser(activeUser)
-      const identityHints = {
-        email: activeUser.email,
-        handle: activeUser.handle,
-      }
-
-      const userId = activeUser.id || 1
-      const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
-        fetchJsonOrThrow('/api/system-status', {}, identityHints),
-        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
-        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
-        fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-          {},
-          identityHints,
-        ),
-      ])
-
-      if (systemResult.status === 'fulfilled') {
-        setSystem(systemResult.value)
-      }
-
-      let discoveredAccounts: ConnectedAccount[] = []
-      let galaxySnapshot: GalaxyResponse | null = null
-      if (galaxyResult.status === 'fulfilled') {
-        galaxySnapshot = galaxyResult.value as GalaxyResponse
-        discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
-          ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
-          : []
-      }
-
-      if (galaxySnapshot) {
-        setMissionGalaxy({
-          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
-          meta: galaxySnapshot.meta || {},
-        })
-      }
-
-      if (accountsResult.status === 'fulfilled') {
-        const accountsJson = accountsResult.value
-        let nextAccounts = Array.isArray(accountsJson.accounts)
-          ? accountsJson.accounts
-          : Array.isArray(accountsJson)
-            ? accountsJson
-            : []
-
-        nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-        if (nextAccounts.length) {
-          setAccounts(nextAccounts)
-          const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
-          setStatusMap((current) =>
-            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-              ? nextStatusMap
-              : current,
-          )
-        }
-      } else if (discoveredAccounts.length) {
-        setAccounts(discoveredAccounts)
-        const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
-        setStatusMap((current) =>
-          Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-            ? nextStatusMap
-            : current,
-        )
-      }
-
-      if (jobsResult.status === 'fulfilled') {
-        const jobsJson = jobsResult.value
-        const nextJobs = Array.isArray(jobsJson.jobs)
-          ? jobsJson.jobs
-          : Array.isArray(jobsJson)
-            ? jobsJson
-            : []
-        if (nextJobs.length > 0 || missionDataRef.current.jobs === 0) {
-          setJobs(nextJobs)
-        }
-      }
-
-      setError('')
-    } catch {
-      // ignore silent refresh failures
+    if (missionRefreshPromiseRef.current) {
+      pendingMissionRefreshRef.current = true
+      return missionRefreshPromiseRef.current
     }
+
+    missionRefreshPromiseRef.current = (async () => {
+      do {
+        pendingMissionRefreshRef.current = false
+
+        try {
+          let activeUser = getActiveUserSnapshot()
+
+          if (!activeUser) {
+            const latestSession = await refreshSessionUser()
+            activeUser = latestSession?.user || null
+          } else {
+            void refreshSessionUser().catch(() => {
+              // keep using current local Evergreen identity if background verification lags
+            })
+          }
+
+          if (!activeUser) return
+
+          setStoredUser(activeUser)
+          setSession((current: any) =>
+            current?.user ? { ...current, user: { ...current.user, ...activeUser } } : { user: activeUser }
+          )
+          void refreshSubscriptionInfo()
+
+          const identityHints = {
+            email: activeUser.email,
+            handle: activeUser.handle,
+          }
+
+          const userId = activeUser.id || 1
+          const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
+            fetchJsonOrThrow('/api/system-status', {}, identityHints),
+            fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
+            fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
+            fetchJsonOrThrow(
+              `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+              {},
+              identityHints,
+            ),
+          ])
+
+          if (systemResult.status === 'fulfilled') {
+            setSystem(systemResult.value)
+          }
+
+          let discoveredAccounts: ConnectedAccount[] = []
+          let galaxySnapshot: GalaxyResponse | null = null
+          if (galaxyResult.status === 'fulfilled') {
+            galaxySnapshot = galaxyResult.value as GalaxyResponse
+            discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
+              ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
+              : []
+          }
+
+          if (galaxySnapshot) {
+            setMissionGalaxy({
+              nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
+              meta: galaxySnapshot.meta || {},
+            })
+          }
+
+          let nextAccounts: ConnectedAccount[] = []
+          if (accountsResult.status === 'fulfilled') {
+            const accountsJson = accountsResult.value
+            nextAccounts = Array.isArray(accountsJson.accounts)
+              ? accountsJson.accounts
+              : Array.isArray(accountsJson)
+                ? accountsJson
+                : []
+          }
+
+          nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
+
+          if (nextAccounts.length > 0) {
+            setAccounts(nextAccounts)
+            const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
+            setStatusMap((current) =>
+              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
+                ? nextStatusMap
+                : current,
+            )
+          }
+
+          if (jobsResult.status === 'fulfilled') {
+            const jobsJson = jobsResult.value
+            const nextJobs = Array.isArray(jobsJson.jobs)
+              ? jobsJson.jobs
+              : Array.isArray(jobsJson)
+                ? jobsJson
+                : []
+            if (nextJobs.length > 0 || missionDataRef.current.jobs === 0) {
+              setJobs(nextJobs)
+            }
+          }
+
+          setError('')
+        } catch {
+          // ignore silent refresh failures
+        }
+      } while (pendingMissionRefreshRef.current)
+    })().finally(() => {
+      missionRefreshPromiseRef.current = null
+    })
+
+    return missionRefreshPromiseRef.current
   }
 
   function scheduleFollowupRefreshes() {
@@ -1354,109 +1402,7 @@ function DashboardPageClient() {
 
     async function loadMissionControl() {
       try {
-        const latestSession = await refreshSessionUser()
-        await refreshSubscriptionInfo()
-        const activeSession = latestSession?.user ? latestSession : session
-        const activeUser = activeSession?.user
-        if (!activeUser) return
-        setStoredUser(activeUser)
-        const identityHints = {
-          email: activeUser.email,
-          handle: activeUser.handle,
-        }
-
-      const userId = activeUser.id || 1
-      const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
-        fetchJsonOrThrow('/api/system-status', {}, identityHints),
-        fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
-        fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
-        fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-          {},
-          identityHints,
-        ),
-      ])
-
-        if (!mounted) return
-
-      if (systemResult.status === 'fulfilled') {
-        setSystem(systemResult.value)
-      } else if (accountsResult.status === 'fulfilled' || jobsResult.status === 'fulfilled') {
-        setSystem((current) => current || { backend: { ok: true }, worker: { ok: false, heartbeat: { status: 'unknown' } } })
-      }
-
-      let discoveredAccounts: ConnectedAccount[] = []
-      let galaxySnapshot: GalaxyResponse | null = null
-      if (galaxyResult.status === 'fulfilled') {
-        galaxySnapshot = galaxyResult.value as GalaxyResponse
-        discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
-          ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
-          : []
-      }
-
-      if (galaxySnapshot) {
-        setMissionGalaxy({
-          nodes: Array.isArray(galaxySnapshot.nodes) ? galaxySnapshot.nodes : [],
-          meta: galaxySnapshot.meta || {},
-        })
-      }
-
-      if (accountsResult.status === 'fulfilled') {
-        const accountsJson = accountsResult.value
-        let nextAccounts = Array.isArray(accountsJson.accounts)
-          ? accountsJson.accounts
-          : Array.isArray(accountsJson)
-            ? accountsJson
-            : []
-
-        nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
-          if (!mounted) return
-          if (nextAccounts.length) {
-            setAccounts(nextAccounts)
-            const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
-            if (!mounted) return
-            setStatusMap((current) =>
-              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-                ? nextStatusMap
-                : current,
-            )
-          }
-        } else if (discoveredAccounts.length) {
-          if (!mounted) return
-          setAccounts(discoveredAccounts)
-          const nextStatusMap = await fetchLaneStatusMap(userId, discoveredAccounts, identityHints)
-          if (!mounted) return
-          setStatusMap((current) =>
-            Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-              ? nextStatusMap
-              : current,
-          )
-        }
-
-        if (jobsResult.status === 'fulfilled') {
-          const jobsJson = jobsResult.value
-          const nextJobs = Array.isArray(jobsJson.jobs)
-            ? jobsJson.jobs
-            : Array.isArray(jobsJson)
-              ? jobsJson
-              : []
-          if (nextJobs.length > 0 || missionDataRef.current.jobs === 0) {
-            setJobs(nextJobs)
-          }
-        }
-
-        setError('')
-      } catch (err) {
-        if (!mounted) return
-        const hasMissionData =
-          missionDataRef.current.accounts > 0 ||
-          missionDataRef.current.jobs > 0 ||
-          missionDataRef.current.galaxyNodes > 0 ||
-          missionDataRef.current.statusEntries > 0
-
-        if (!hasMissionData) {
-          setError(err instanceof Error ? err.message : 'Could not load mission control')
-        }
+        await refreshMissionControlNow()
       } finally {
         if (mounted) {
           setMissionHydratedOnce(true)
