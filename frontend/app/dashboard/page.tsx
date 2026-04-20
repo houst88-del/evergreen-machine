@@ -71,6 +71,16 @@ type AccountStatus = {
   metadata?: Record<string, unknown>
 }
 
+type GalaxyNode = {
+  connected_account_id?: number | null
+  provider?: string
+  handle?: string
+}
+
+type GalaxyResponse = {
+  nodes?: GalaxyNode[]
+}
+
 type JobItem = {
   id?: string
   job_id?: string
@@ -483,6 +493,35 @@ async function fetchJsonOrThrow(path: string, init: RequestInit = {}) {
   return json
 }
 
+async function fetchAccountsFromGalaxy(userId: number): Promise<ConnectedAccount[]> {
+  const json = (await fetchJsonOrThrow(
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+  )) as GalaxyResponse
+
+  const nodes = Array.isArray(json.nodes) ? json.nodes : []
+  const deduped = new Map<number, ConnectedAccount>()
+
+  for (const node of nodes) {
+    const accountId = Number(node.connected_account_id || 0)
+    const provider = String(node.provider || '').trim().toLowerCase()
+    const handle = String(node.handle || '').trim()
+    if (!accountId || !provider || !handle || deduped.has(accountId)) continue
+
+    deduped.set(accountId, {
+      id: accountId,
+      provider,
+      handle,
+      connection_status: 'connected',
+    })
+  }
+
+  return Array.from(deduped.values()).sort((a, b) => {
+    const providerDiff = String(a.provider).localeCompare(String(b.provider))
+    if (providerDiff !== 0) return providerDiff
+    return a.id - b.id
+  })
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
@@ -688,11 +727,19 @@ export default function DashboardPage() {
 
       if (accountsResult.status === 'fulfilled') {
         const accountsJson = accountsResult.value
-        const nextAccounts = Array.isArray(accountsJson.accounts)
+        let nextAccounts = Array.isArray(accountsJson.accounts)
           ? accountsJson.accounts
           : Array.isArray(accountsJson)
             ? accountsJson
             : []
+
+        if (!nextAccounts.length) {
+          try {
+            nextAccounts = await fetchAccountsFromGalaxy(userId)
+          } catch {
+            // ignore galaxy fallback failures
+          }
+        }
 
         const nextStatusMap: Record<number, AccountStatus> = {}
         await Promise.all(
@@ -807,20 +854,30 @@ export default function DashboardPage() {
 
         if (!mounted) return
 
-        if (systemResult.status === 'fulfilled') {
-          setSystem(systemResult.value)
+      if (systemResult.status === 'fulfilled') {
+        setSystem(systemResult.value)
+      } else if (accountsResult.status === 'fulfilled' || jobsResult.status === 'fulfilled') {
+        setSystem((current) => current || { backend: { ok: true }, worker: { ok: false, heartbeat: { status: 'unknown' } } })
+      }
+
+      if (accountsResult.status === 'fulfilled') {
+        const accountsJson = accountsResult.value
+        let nextAccounts = Array.isArray(accountsJson.accounts)
+          ? accountsJson.accounts
+          : Array.isArray(accountsJson)
+            ? accountsJson
+            : []
+
+        if (!nextAccounts.length) {
+          try {
+            nextAccounts = await fetchAccountsFromGalaxy(userId)
+          } catch {
+            // ignore galaxy fallback failures
+          }
         }
 
-        if (accountsResult.status === 'fulfilled') {
-          const accountsJson = accountsResult.value
-          const nextAccounts = Array.isArray(accountsJson.accounts)
-            ? accountsJson.accounts
-            : Array.isArray(accountsJson)
-              ? accountsJson
-              : []
-
-          const nextStatusMap: Record<number, AccountStatus> = {}
-          await Promise.all(
+        const nextStatusMap: Record<number, AccountStatus> = {}
+        await Promise.all(
             nextAccounts.map(async (account: ConnectedAccount) => {
               try {
                 const res = await apiFetch(
