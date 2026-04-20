@@ -1059,9 +1059,35 @@ export function GalaxySurface({
     });
   }, [embeddedMotionScale, localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost, visibleGalaxy.nodes]);
 
+  const renderedNodes = useMemo(() => {
+    if (!embedded) return workingNodes;
+    if (workingNodes.length <= 180) return workingNodes;
+
+    const priorityScore = (node: GalaxyNode) =>
+      (node.id === selectedStarId ? 10000 : 0) +
+      (!!node.current_cycle ? 5000 : 0) +
+      (!!node.candidate ? 2500 : 0) +
+      rankGravity(node) * 4 +
+      intelligenceScore(node, intelligenceView) * 3 +
+      safeNum(node.refresh_count, 0);
+
+    const prioritized = [...workingNodes].sort((a, b) => priorityScore(b) - priorityScore(a));
+    const locked = prioritized.slice(0, Math.min(72, prioritized.length));
+    const lockedIds = new Set(locked.map((node) => node.id));
+    const remainder = workingNodes.filter((node) => !lockedIds.has(node.id));
+    const sampled: GalaxyNode[] = [];
+    const stride = Math.max(1, Math.floor(remainder.length / 108));
+
+    for (let index = 0; index < remainder.length && sampled.length < 108; index += stride) {
+      sampled.push(remainder[index]);
+    }
+
+    return [...locked, ...sampled].slice(0, 180);
+  }, [embedded, intelligenceView, selectedStarId, workingNodes]);
+
   const gravityWells = useMemo(
     () =>
-      [...workingNodes]
+      [...renderedNodes]
         .sort((a, b) => rankGravity(b) - rankGravity(a))
         .slice(0, 4)
         .map((node, index) => {
@@ -1073,11 +1099,13 @@ export function GalaxySurface({
             index,
           };
         }),
-    [workingNodes, liveTick]
+    [renderedNodes, liveTick]
   );
 
   const heatNebulae = useMemo(() => {
-    const hubs = [...workingNodes]
+    if (embedded) return [];
+
+    const hubs = [...renderedNodes]
       .sort(
         (a, b) =>
           intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)
@@ -1090,7 +1118,7 @@ export function GalaxySurface({
       ry: 82 + i * 9 + safeNum(node.predicted_velocity, 0) * 48,
       o: Math.max(0.07, 0.15 - i * 0.01),
     }));
-  }, [workingNodes, intelligenceView]);
+  }, [embedded, renderedNodes, intelligenceView]);
 
   const currentStatus = useMemo(
     () => (selected === "unified" ? null : statusMap[Number(selected)] || null),
@@ -1165,6 +1193,8 @@ export function GalaxySurface({
   );
 
   const labeledStarIds = useMemo(() => {
+    if (embedded) return new Set<string>();
+
     const picked = [...workingNodes]
       .sort(
         (a, b) =>
@@ -1179,7 +1209,7 @@ export function GalaxySurface({
       )
       .map((node) => node.id);
     return new Set(picked);
-  }, [workingNodes, intelligenceView]);
+  }, [embedded, workingNodes, intelligenceView]);
 
   const providerCounts = useMemo(() => {
     return workingNodes.reduce(
@@ -1802,7 +1832,7 @@ export function GalaxySurface({
                   backfaceVisibility: "hidden",
                 }}
               >
-                {supernovaNode
+                {!embedded && supernovaNode
                   ? [0, 1, 2].map((i) => {
                       const r = 40 + ((waveTick + i * 20) % 120) * 2;
                       const o = Math.max(0, 0.25 - r / 400);
@@ -1860,14 +1890,16 @@ export function GalaxySurface({
                       transform: "translate(-50%, -50%)",
                       borderRadius: "9999px",
                       background:
-                        "radial-gradient(circle, rgba(255,246,190,0.16) 0%, rgba(255,246,190,0.06) 30%, transparent 72%)",
-                      opacity,
+                        embedded
+                          ? "radial-gradient(circle, rgba(255,246,190,0.08) 0%, rgba(255,246,190,0.03) 30%, transparent 72%)"
+                          : "radial-gradient(circle, rgba(255,246,190,0.16) 0%, rgba(255,246,190,0.06) 30%, transparent 72%)",
+                      opacity: embedded ? opacity * 0.45 : opacity,
                       pointerEvents: "none",
                     }}
                   />
                 ))}
 
-                {workingNodes.map((node, index) => {
+                {renderedNodes.map((node, index) => {
                   const accent = rarityAccent(node);
                   const selectedNow = selectedStarId === node.id;
                   const freshPulse = isFreshPulse(node.last_resurfaced_at);
@@ -1898,7 +1930,7 @@ export function GalaxySurface({
 
                   return (
                     <React.Fragment key={node.id}>
-                      {(selectedNow || freshPulse) && (
+                      {!embedded && (selectedNow || freshPulse) && (
                         <>
                           <span
                             style={{
@@ -1978,15 +2010,21 @@ export function GalaxySurface({
                         onDoubleClick={() => {
                           if (node.url) window.open(node.url, "_blank", "noopener,noreferrer");
                         }}
-                        onMouseEnter={() =>
-                          startTransition(() => {
-                            setHovered((current) => (current?.id === node.id ? current : node));
-                          })
+                        onMouseEnter={
+                          embedded
+                            ? undefined
+                            : () =>
+                                startTransition(() => {
+                                  setHovered((current) => (current?.id === node.id ? current : node));
+                                })
                         }
-                        onMouseLeave={() =>
-                          startTransition(() => {
-                            setHovered((current) => (current?.id === node.id ? null : current));
-                          })
+                        onMouseLeave={
+                          embedded
+                            ? undefined
+                            : () =>
+                                startTransition(() => {
+                                  setHovered((current) => (current?.id === node.id ? null : current));
+                                })
                         }
                         style={{
                           position: "absolute",
@@ -1996,12 +2034,18 @@ export function GalaxySurface({
                           height: `${size * 2}px`,
                           transform: "translate3d(-50%, -50%, 0)",
                           borderRadius: "9999px",
-                          border: `1px solid ${accent.border}`,
-                          background: `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
-                          boxShadow: `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.8}px ${accent.aura}, inset 0 0 ${Math.max(
-                            4,
-                            size * 0.9
-                          )}px rgba(255,255,255,0.18)`,
+                          border: embedded
+                            ? `1px solid ${selectedNow ? "rgba(236,253,245,0.52)" : accent.border}`
+                            : `1px solid ${accent.border}`,
+                          background: embedded
+                            ? `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9) 0%, ${accent.fill} 48%, ${accent.aura} 78%, rgba(255,255,255,0) 100%)`
+                            : `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
+                          boxShadow: embedded
+                            ? `0 0 ${Math.max(6, glow * 0.55)}px ${accent.aura}`
+                            : `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.8}px ${accent.aura}, inset 0 0 ${Math.max(
+                                4,
+                                size * 0.9
+                              )}px rgba(255,255,255,0.18)`,
                           cursor: "pointer",
                           opacity: opacity * (outerField ? 0.72 : circulationHot ? 1 : 0.92),
                           zIndex: selectedNow ? 6 : node.current_cycle ? 4 : 3,
@@ -2014,9 +2058,9 @@ export function GalaxySurface({
                           backfaceVisibility: "hidden",
                         }}
                         aria-label={shortText(node.label || node.id, 64)}
-                        title={node.url ? "Double-click to open post" : shortText(node.label || node.id, 64)}
+                          title={node.url ? "Double-click to open post" : shortText(node.label || node.id, 64)}
                       >
-                        {node.current_cycle ? (
+                        {!embedded && node.current_cycle ? (
                           <span
                             style={{
                               position: "absolute",
@@ -2050,7 +2094,7 @@ export function GalaxySurface({
                           />
                         ) : null}
                       </button>
-                      {labeledStarIds.has(node.id) ? (
+                      {!embedded && labeledStarIds.has(node.id) ? (
                         <div
                           style={{
                             position: "absolute",
@@ -2110,7 +2154,7 @@ export function GalaxySurface({
                 </div>
               </div>
 
-              {deferredHovered ? (
+              {!embedded && deferredHovered ? (
                 <div
                   style={{
                     position: "absolute",
