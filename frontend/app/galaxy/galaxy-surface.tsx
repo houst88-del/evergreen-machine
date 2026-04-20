@@ -300,9 +300,23 @@ const scopedGalaxyFromUnified = (
   const accountId = Number(selected || 0);
   const account = accounts.find((item) => item.id === accountId);
   if (!accountId || !account) return null;
+  const accountProvider = String(account.provider || "").trim().toLowerCase();
+  const accountHandle = String(account.handle || "").trim().toLowerCase();
 
   const nodes = Array.isArray(unifiedGalaxy.nodes)
-    ? unifiedGalaxy.nodes.filter((node) => Number(node.connected_account_id || 0) === accountId)
+    ? unifiedGalaxy.nodes.filter((node) => {
+        const nodeAccountId = Number(node.connected_account_id || 0);
+        if (nodeAccountId === accountId) return true;
+
+        const nodeProvider = String(node.provider || "").trim().toLowerCase();
+        const nodeHandle = String(node.handle || "").trim().toLowerCase();
+        return Boolean(
+          accountProvider &&
+            accountHandle &&
+            nodeProvider === accountProvider &&
+            nodeHandle === accountHandle,
+        );
+      })
     : [];
 
   const status = statusMap[accountId];

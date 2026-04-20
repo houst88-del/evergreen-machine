@@ -699,8 +699,22 @@ function accountScopedGalaxyFromUnified(
   unifiedGalaxy: GalaxyResponse,
   account: ConnectedAccount,
 ): GalaxyResponse {
+  const accountProvider = String(account.provider || '').trim().toLowerCase()
+  const accountHandle = String(account.handle || '').trim().toLowerCase()
   const nodes = Array.isArray(unifiedGalaxy.nodes)
-    ? unifiedGalaxy.nodes.filter((node) => Number(node.connected_account_id || 0) === account.id)
+    ? unifiedGalaxy.nodes.filter((node) => {
+        const nodeAccountId = Number(node.connected_account_id || 0)
+        if (nodeAccountId === account.id) return true
+
+        const nodeProvider = String(node.provider || '').trim().toLowerCase()
+        const nodeHandle = String(node.handle || '').trim().toLowerCase()
+        return Boolean(
+          accountProvider &&
+            accountHandle &&
+            nodeProvider === accountProvider &&
+            nodeHandle === accountHandle,
+        )
+      })
     : []
 
   const latestActionAt = nodes
@@ -1457,9 +1471,9 @@ function DashboardPageClient() {
     )
     const postsInRotation = postsInRotationFromStatus > 0 ? postsInRotationFromStatus : galaxyCount
 
-    const connectedCount = resolvedAccounts.filter((account) =>
-      isConnectedAccount(account, statusMap[account.id])
-    ).length
+    const connectedCount =
+      resolvedAccounts.filter((account) => isConnectedAccount(account, statusMap[account.id]))
+        .length || resolvedAccounts.length
 
     const nextCycleCandidates = accountStatuses
       .map((item) => item.next_cycle_at)
@@ -2105,7 +2119,7 @@ function DashboardPageClient() {
     jobs.length > 0 ||
     (Array.isArray(missionGalaxy.nodes) ? missionGalaxy.nodes.length > 0 : false) ||
     Object.keys(statusMap).length > 0
-  const missionHydrating = !error && (!missionHydratedOnce || !hasMissionSignals)
+  const missionHydrating = !error && !missionHydratedOnce && !hasMissionSignals
   const embeddedMissionUser = session?.user || getStoredUser() || null
   const embeddedMissionUserId = embeddedMissionUser?.id ?? null
   const embeddedMissionIdentityHints = {
