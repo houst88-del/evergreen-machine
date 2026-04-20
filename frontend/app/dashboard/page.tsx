@@ -241,6 +241,33 @@ function countdownUntil(value?: string | null, nowMs = Date.now()) {
   return `${seconds}s`
 }
 
+function isFreshJobActivity(
+  job: JobItem | null | undefined,
+  nowMs: number,
+  pollSeconds?: number | null,
+) {
+  if (!job) return false
+
+  const state = String(job.status || job.state || '').trim().toLowerCase()
+  if (state !== 'queued' && state !== 'running') return false
+
+  const marker =
+    parseApiDate(job.last_heartbeat_at) ||
+    parseApiDate(job.started_at) ||
+    parseApiDate(job.created_at)
+
+  if (!marker) return false
+
+  const ageMs = nowMs - marker.getTime()
+  const baseWindowMs = Math.max(90000, Number(pollSeconds || 0) * 5000)
+
+  if (state === 'queued') {
+    return ageMs <= baseWindowMs
+  }
+
+  return ageMs <= Math.max(120000, baseWindowMs)
+}
+
 function selectedPacingOption(status?: AccountStatus | null) {
   const options = status?.pacing_options || []
   return options.find((option) => option.mode === status?.pacing_mode) || options[0] || null
@@ -1365,6 +1392,7 @@ export default function DashboardPage() {
 
   const deploymentWindows = useMemo(() => {
     const providerOrder = ['x', 'bluesky']
+    const jobFreshnessWindowSeconds = Number(system?.worker?.heartbeat?.poll_seconds || 0)
 
     return resolvedAccounts
       .slice()
@@ -1383,8 +1411,10 @@ export default function DashboardPage() {
         const activeRefreshJob = laneJobs.find((job) => {
           if (job.connected_account_id !== account.id) return false
           const jobType = String(job.job_type || job.type || '').trim().toLowerCase()
-          const jobState = String(job.status || job.state || '').trim().toLowerCase()
-          return jobType.includes('refresh') && (jobState === 'queued' || jobState === 'running')
+          return (
+            jobType.includes('refresh') &&
+            isFreshJobActivity(job, nowMs, jobFreshnessWindowSeconds)
+          )
         })
         const latestInformativeJob =
           laneJobs.find((job) => {
@@ -1508,7 +1538,7 @@ export default function DashboardPage() {
           lastActionText: fmtWhen(effectiveLastActionAt),
         }
       })
-  }, [jobs, nowMs, optimisticRunningMap, resolvedAccounts, statusMap])
+  }, [jobs, nowMs, optimisticRunningMap, resolvedAccounts, statusMap, system?.worker?.heartbeat?.poll_seconds])
 
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
