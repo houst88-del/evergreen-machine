@@ -2050,21 +2050,15 @@ export function GalaxySurface({
                         onDoubleClick={() => {
                           if (node.url) window.open(node.url, "_blank", "noopener,noreferrer");
                         }}
-                        onMouseEnter={
-                          embedded
-                            ? undefined
-                            : () =>
-                                startTransition(() => {
-                                  setHovered((current) => (current?.id === node.id ? current : node));
-                                })
+                        onMouseEnter={() =>
+                          startTransition(() => {
+                            setHovered((current) => (current?.id === node.id ? current : node));
+                          })
                         }
-                        onMouseLeave={
-                          embedded
-                            ? undefined
-                            : () =>
-                                startTransition(() => {
-                                  setHovered((current) => (current?.id === node.id ? null : current));
-                                })
+                        onMouseLeave={() =>
+                          startTransition(() => {
+                            setHovered((current) => (current?.id === node.id ? null : current));
+                          })
                         }
                         style={{
                           position: "absolute",
@@ -2162,53 +2156,58 @@ export function GalaxySurface({
                   );
                 })}
 
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: 4,
-                    fontSize: 13,
-                    color: "rgba(236,253,245,0.82)",
-                    pointerEvents: "none",
-                    zIndex: 3,
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>
-                    Cinematic Spiral Starden · centered view tuned for dense unified mode
-                  </div>
-                </div>
+                {!embedded ? (
+                  <>
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 14,
+                        top: 4,
+                        fontSize: 13,
+                        color: "rgba(236,253,245,0.82)",
+                        pointerEvents: "none",
+                        zIndex: 3,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>
+                        Cinematic Spiral Starden · centered view tuned for dense unified mode
+                      </div>
+                    </div>
 
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 14,
-                    top: 4,
-                    fontSize: 13,
-                    color: "rgba(236,253,245,0.75)",
-                    pointerEvents: "none",
-                    zIndex: 3,
-                  }}
-                >
-                  {renderedNodes.length} visible stars ·{" "}
-                  {currentStatus?.running ? "Autopilot running" : "Autopilot idle"}
-                </div>
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 14,
+                        top: 4,
+                        fontSize: 13,
+                        color: "rgba(236,253,245,0.75)",
+                        pointerEvents: "none",
+                        zIndex: 3,
+                      }}
+                    >
+                      {renderedNodes.length} visible stars ·{" "}
+                      {currentStatus?.running ? "Autopilot running" : "Autopilot idle"}
+                    </div>
+                  </>
+                ) : null}
               </div>
 
-              {!embedded && deferredHovered ? (
+              {deferredHovered ? (
                 <div
                   style={{
                     position: "absolute",
-                    bottom: 20,
-                    left: 20,
-                    maxWidth: 400,
+                    bottom: embedded ? 16 : 20,
+                    left: embedded ? 16 : 20,
+                    maxWidth: embedded ? 320 : 400,
                     borderRadius: 24,
                     border: "1px solid rgba(110,231,183,0.22)",
                     background:
                       "linear-gradient(145deg, rgba(2,14,12,0.92), rgba(1,10,10,0.84))",
-                    padding: 16,
+                    padding: embedded ? 14 : 16,
                     boxShadow: "0 25px 50px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.02)",
                     backdropFilter: "blur(14px)",
-                    zIndex: 5,
+                    zIndex: 7,
+                    pointerEvents: "none",
                   }}
                 >
                   <div style={missionEyebrowStyle}>
@@ -2217,12 +2216,12 @@ export function GalaxySurface({
                   <div
                     style={{
                       marginTop: 6,
-                      fontSize: 18,
+                      fontSize: embedded ? 16 : 18,
                       fontWeight: 700,
                       lineHeight: 1.4,
                     }}
                   >
-                    {shortText(deferredHovered.label || deferredHovered.id, 72)}
+                    {shortText(deferredHovered.label || deferredHovered.id, embedded ? 54 : 72)}
                   </div>
                   <div
                     style={{
@@ -2248,7 +2247,7 @@ export function GalaxySurface({
                       display: "grid",
                       gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                       gap: 8,
-                      fontSize: 12,
+                      fontSize: embedded ? 11 : 12,
                       color: "rgba(236,253,245,0.74)",
                     }}
                   >
@@ -2260,7 +2259,7 @@ export function GalaxySurface({
                   <div
                     style={{
                       marginTop: 12,
-                      fontSize: 13,
+                      fontSize: embedded ? 12 : 13,
                       lineHeight: 1.65,
                       color: "rgba(236,253,245,0.82)",
                     }}
