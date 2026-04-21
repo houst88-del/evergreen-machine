@@ -82,6 +82,13 @@ type GalaxyPageProps = {
 
 const MAX_EMBEDDED_STARS = 180;
 const MAX_STANDALONE_STARS = 260;
+const FUTURE_SCOPE_PLATFORMS = [
+  "Instagram",
+  "TikTok",
+  "YouTube",
+  "LinkedIn",
+  "Threads",
+] as const;
 
 const BACKEND =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
@@ -1133,7 +1140,7 @@ export function GalaxySurface({
 
   const scopeOptions = useMemo(
     () => [
-      { value: "unified", label: "Unified" },
+      { value: "unified", label: "Unified", available: true },
       ...accounts.map((account) => ({
         value: String(account.id),
         label:
@@ -1142,6 +1149,17 @@ export function GalaxySurface({
             : providerLabel(account.provider) === "X"
               ? "X"
               : providerLabel(account.provider),
+        available: true,
+      })),
+      ...FUTURE_SCOPE_PLATFORMS.filter(
+        (platform) =>
+          !accounts.some(
+            (account) => providerLabel(account.provider).toLowerCase() === platform.toLowerCase()
+          )
+      ).map((platform) => ({
+        value: `future-${platform.toLowerCase()}`,
+        label: platform,
+        available: false,
       })),
     ],
     [accounts]
@@ -1598,20 +1616,32 @@ export function GalaxySurface({
                   return (
                     <button
                       key={option.value}
-                      onClick={() => setSelected(option.value)}
+                      onClick={() => {
+                        if (!option.available) return;
+                        setSelected(option.value);
+                      }}
+                      disabled={!option.available}
                       style={{
                         borderRadius: 999,
                         border: active
                           ? "1px solid rgba(125,211,252,0.48)"
-                          : "1px solid rgba(52,211,153,0.18)",
-                        background: active ? "rgba(59,130,246,0.18)" : "rgba(0,0,0,0.28)",
-                        color: "white",
+                          : option.available
+                            ? "1px solid rgba(52,211,153,0.18)"
+                            : "1px solid rgba(255,255,255,0.08)",
+                        background: active
+                          ? "rgba(59,130,246,0.18)"
+                          : option.available
+                            ? "rgba(0,0,0,0.28)"
+                            : "rgba(255,255,255,0.02)",
+                        color: option.available ? "white" : "rgba(236,253,245,0.44)",
                         padding: "8px 12px",
-                        cursor: "pointer",
+                        cursor: option.available ? "pointer" : "default",
                         fontSize: 13,
                         fontWeight: active ? 700 : 500,
                         boxShadow: active ? "0 0 0 1px rgba(147,197,253,0.18)" : "none",
+                        opacity: option.available ? 1 : 0.72,
                       }}
+                      title={option.available ? option.label : `${option.label} signal view coming soon`}
                     >
                       {option.label}
                     </button>
