@@ -359,7 +359,12 @@ def serialize_status(db, user: User, autopilot: AutopilotStatus | None) -> dict:
     account = getattr(autopilot, "connected_account", None) if autopilot else None
     provider = getattr(autopilot, "provider", None) or getattr(account, "provider", None) or "x"
     pacing_mode = _account_pacing_mode(account)
-    metadata = dict(getattr(autopilot, "metadata_json", None) or {}) if autopilot else {}
+    account_metadata = dict(getattr(account, "metadata_json", None) or {}) if account else {}
+    autopilot_metadata = dict(getattr(autopilot, "metadata_json", None) or {}) if autopilot else {}
+    metadata = {
+        **account_metadata,
+        **autopilot_metadata,
+    }
     next_refresh_at = metadata.get("next_refresh_at")
     visible_next_cycle_at = next_refresh_at or (
         autopilot.next_cycle_at.isoformat() if autopilot and autopilot.next_cycle_at else None
@@ -844,6 +849,67 @@ def set_pacing_mode(
         autopilot.provider = account.provider
         autopilot.connected = account.connection_status == "connected"
         autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
+
+        db.commit()
+        db.refresh(account)
+        db.refresh(autopilot)
+        return serialize_status(db, user, autopilot)
+    finally:
+        db.close()
+
+
+@app.post("/api/status/breathing-room")
+def set_breathing_room(
+    payload: dict,
+    user_id: int = Query(1, ge=1),
+    connected_account_id: int | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+    x_evergreen_email: str | None = Header(default=None),
+    x_evergreen_handle: str | None = Header(default=None),
+):
+    db = SessionLocal()
+    try:
+        resolved_user_id = resolve_requested_user_id(
+            db, authorization, user_id, x_evergreen_email, x_evergreen_handle
+        )
+    finally:
+        db.close()
+    db, user, account = get_user_and_optional_account(resolved_user_id, connected_account_id)
+    try:
+        if account is None:
+            account = get_default_connected_account(db, user)
+            if not account:
+                raise HTTPException(status_code=400, detail="No connected account available")
+
+        autopilot = get_or_create_autopilot_for_account(db, user, account)
+        enabled = bool(payload.get("enabled"))
+
+        account_metadata = dict(account.metadata_json or {})
+        account_metadata["fresh_post_protection_enabled"] = enabled
+        if not enabled:
+            account_metadata["breathing_room_active"] = False
+            account_metadata["breathing_room_until"] = ""
+            account_metadata["breathing_room_reason"] = ""
+            account_metadata["latest_original_post_at"] = ""
+            account_metadata["latest_original_post_id"] = ""
+            account_metadata["next_refresh_at"] = ""
+            account_metadata["next_refresh_delay_minutes"] = ""
+        account.metadata_json = account_metadata
+
+        autopilot_metadata = dict(getattr(autopilot, "metadata_json", None) or {})
+        autopilot_metadata["fresh_post_protection_enabled"] = enabled
+        if not enabled:
+            autopilot_metadata["breathing_room_active"] = False
+            autopilot_metadata["breathing_room_until"] = ""
+            autopilot_metadata["breathing_room_reason"] = ""
+            autopilot_metadata["latest_original_post_at"] = ""
+            autopilot_metadata["latest_original_post_id"] = ""
+            autopilot_metadata["next_refresh_at"] = ""
+            autopilot_metadata["next_refresh_delay_minutes"] = ""
+            autopilot.next_cycle_at = None
+        autopilot.metadata_json = autopilot_metadata
+        autopilot.updated_at = datetime.now(UTC).replace(tzinfo=None)
+        account.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
         db.commit()
         db.refresh(account)
