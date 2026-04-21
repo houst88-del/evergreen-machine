@@ -80,8 +80,8 @@ type GalaxyPageProps = {
   } | null;
 };
 
-const MAX_EMBEDDED_STARS = 180;
-const MAX_STANDALONE_STARS = 260;
+const MAX_EMBEDDED_STARS = 360;
+const MAX_STANDALONE_STARS = 1200;
 const FUTURE_SCOPE_PLATFORMS = [
   "Instagram",
   "TikTok",
@@ -2323,6 +2323,17 @@ export function GalaxySurface({
                     safeNum(node.revival_score, 0) >= temporalInsights.reviveThreshold &&
                     !node.current_cycle &&
                     safeNum(node.predicted_velocity, 0) > 0.3;
+                  const lowSignal =
+                    !selectedNow &&
+                    !hoveredNow &&
+                    !relatedNow &&
+                    !freshPulse &&
+                    !faintPulse &&
+                    !approachingCycle &&
+                    !reviving &&
+                    !node.current_cycle &&
+                    !node.candidate &&
+                    rankGravity(node) < 180;
                   const opacity = highlightOpacity(node, highlightMode);
                   const outerField = !!node.cold_archive;
                   const circulationHot = !!node.current_cycle || !!node.candidate || rankGravity(node) >= 240;
@@ -2343,6 +2354,8 @@ export function GalaxySurface({
                           ? 1.1
                           : node.candidate
                             ? 1.04
+                            : lowSignal
+                              ? 0.9
                             : 1;
                   const twinkle = 1 + Math.sin(liveTick * 0.04 + index * 0.8) * 0.08;
                   const size =
@@ -2363,6 +2376,8 @@ export function GalaxySurface({
                               ? 6.2
                               : cooling
                                 ? 4
+                                : lowSignal
+                                  ? 3.4
                                 : circulationHot
                                   ? 5.8
                                   : outerField
@@ -2371,6 +2386,7 @@ export function GalaxySurface({
                   );
                   const theme = providerTheme(node.provider);
                   const coolingOpacity = cooling ? 0.68 : 1;
+                  const lowSignalOpacity = lowSignal ? 0.58 : 1;
                   const temporalHaloOpacity = freshPulse ? 0.28 : faintPulse ? 0.14 : 0;
                   const pulseTrailWidth = size * (freshPulse ? 5.6 : 4.6);
                   const pulseTrailHeight = Math.max(12, size * (freshPulse ? 1.7 : 1.4));
@@ -2539,11 +2555,14 @@ export function GalaxySurface({
                             ? `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9) 0%, ${accent.fill} 48%, ${accent.aura} 78%, rgba(255,255,255,0) 100%)`
                             : `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
                           boxShadow: embedded
-                            ? `0 0 ${Math.max(6, glow * (hoveredNow ? 0.78 : relatedNow ? 0.68 : 0.55))}px ${accent.aura}`
+                            ? `0 0 ${Math.max(
+                                5,
+                                glow * (hoveredNow ? 0.78 : relatedNow ? 0.68 : lowSignal ? 0.36 : 0.55)
+                              )}px ${accent.aura}`
                             : `0 0 ${glow * (hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)}px ${
                                 reviving ? "rgba(250,228,120,0.16)" : accent.aura
                               }, 0 0 ${
-                                glow * (hoveredNow ? 2.2 : relatedNow ? 1.95 : 1.8)
+                                glow * (hoveredNow ? 2.2 : relatedNow ? 1.95 : lowSignal ? 1.15 : 1.8)
                               }px ${reviving ? "rgba(250,228,120,0.12)" : accent.aura}, inset 0 0 ${Math.max(
                                 4,
                                 size * 0.9
@@ -2552,6 +2571,7 @@ export function GalaxySurface({
                           opacity:
                             opacity *
                             coolingOpacity *
+                            lowSignalOpacity *
                             (hoveredNow
                               ? 1
                               : relatedNow
@@ -2569,6 +2589,7 @@ export function GalaxySurface({
                           outline: "none",
                           willChange: "transform, opacity",
                           backfaceVisibility: "hidden",
+                          filter: lowSignal ? "saturate(0.52) brightness(0.84)" : cooling ? "saturate(0.74)" : "none",
                         }}
                         aria-label={shortText(node.label || node.id, 64)}
                           title={node.url ? "Double-click to open post" : shortText(node.label || node.id, 64)}
