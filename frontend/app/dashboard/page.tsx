@@ -2326,6 +2326,20 @@ function DashboardPageClient() {
         throw new Error(json.detail || json.message || json.error || 'Could not update fresh-post protection')
       }
 
+      setStatusMap((current) => {
+        const existing = current[accountId] || {}
+        return {
+          ...current,
+          [accountId]: {
+            ...existing,
+            fresh_post_protection_enabled: enabled,
+            breathing_room_active: enabled ? existing.breathing_room_active : false,
+            breathing_room_until: enabled ? existing.breathing_room_until : null,
+            breathing_room_reason: enabled ? existing.breathing_room_reason : null,
+          },
+        }
+      })
+
       setActionMessage(
         `${enabled ? 'Enabled' : 'Disabled'} fresh-post protection for ${json.account_handle || 'account'}.`
       )
