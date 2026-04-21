@@ -2364,12 +2364,14 @@ function DashboardPageClient() {
       setActionMessage(
         `${enabled ? 'Enabled' : 'Disabled'} fresh-post protection for ${json.account_handle || 'account'}.`
       )
-      await refreshMissionControlNow()
+      setBusyAction(null)
+      void refreshMissionControlNow()
       requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update fresh-post protection')
-    } finally {
       setBusyAction(null)
+    } finally {
+      // handled in success/error branches so the button doesn't stay visually stuck
     }
   }
 
