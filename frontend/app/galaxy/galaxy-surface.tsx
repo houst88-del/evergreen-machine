@@ -80,6 +80,9 @@ type GalaxyPageProps = {
   } | null;
 };
 
+const MAX_EMBEDDED_STARS = 180;
+const MAX_STANDALONE_STARS = 260;
+
 const BACKEND =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://backend-fixed-production.up.railway.app";
@@ -842,8 +845,6 @@ export function GalaxySurface({
   useEffect(() => {
     if (!userId) return;
     if (embeddedSnapshotMode) {
-      setGalaxyScope("__loading__");
-
       const unifiedGalaxy = normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy);
       const scopedGalaxy = scopedGalaxyFromUnified(unifiedGalaxy, selected, accounts, statusMap);
       const nextGalaxy =
@@ -860,64 +861,6 @@ export function GalaxySurface({
     let cancelled = false;
     setGalaxyScope("__loading__");
     async function loadGalaxy() {
-      let scopedUnifiedFallback: GalaxyResponse | null = null;
-      let liveUnifiedFallback: GalaxyResponse | null = null;
-      if (embedded && embeddedUnifiedGalaxy) {
-        const unifiedGalaxy = normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy);
-        if (Array.isArray(unifiedGalaxy.nodes) && unifiedGalaxy.nodes.length > 0) {
-          scopedUnifiedFallback = scopedGalaxyFromUnified(
-            unifiedGalaxy,
-            selected,
-            accounts,
-            statusMap
-          );
-          if (scopedUnifiedFallback && Array.isArray(scopedUnifiedFallback.nodes)) {
-            setGalaxy(scopedUnifiedFallback);
-            setGalaxyScope(selected);
-            setError("");
-          }
-          if (selected === "unified") {
-            return;
-          }
-        }
-      }
-
-      if (embedded && !scopedUnifiedFallback) {
-        try {
-          const liveUnifiedJson = (await fetchJsonOrThrow(
-            `?user_id=${encodeURIComponent(String(userId))}&unified=true`.startsWith("?")
-              ? `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
-              : `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-            {},
-            identityHints
-          )) as GalaxyResponse;
-
-          const normalizedUnified = {
-            nodes: Array.isArray(liveUnifiedJson.nodes) ? liveUnifiedJson.nodes : [],
-            meta: liveUnifiedJson.meta || {},
-          };
-
-          if (normalizedUnified.nodes.length > 0) {
-            liveUnifiedFallback =
-              selected === "unified"
-                ? normalizedUnified
-                : scopedGalaxyFromUnified(normalizedUnified, selected, accounts, statusMap);
-
-            if (liveUnifiedFallback && Array.isArray(liveUnifiedFallback.nodes)) {
-              setGalaxy(liveUnifiedFallback);
-              setGalaxyScope(selected);
-              setError("");
-
-              if (selected === "unified" || liveUnifiedFallback.nodes.length > 0) {
-                return;
-              }
-            }
-          }
-        } catch {
-          // continue to the narrower scoped fetch below
-        }
-      }
-
       try {
         const requestedSelection = selected;
         const qs =
@@ -926,60 +869,15 @@ export function GalaxySurface({
             : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(requestedSelection)}`;
         const json = (await fetchJsonOrThrow(`/api/galaxy${qs}`, {}, identityHints)) as GalaxyResponse;
         if (!cancelled) {
-          const nextGalaxy = {
+          setGalaxy({
             nodes: Array.isArray(json.nodes) ? json.nodes : [],
             meta: json.meta || {},
-          };
-          if (
-            scopedUnifiedFallback &&
-            Array.isArray(scopedUnifiedFallback.nodes) &&
-            scopedUnifiedFallback.nodes.length > 0 &&
-            nextGalaxy.nodes.length === 0
-          ) {
-            setGalaxy(scopedUnifiedFallback);
-            setGalaxyScope(selected);
-            setError("");
-            return;
-          }
-          if (
-            liveUnifiedFallback &&
-            Array.isArray(liveUnifiedFallback.nodes) &&
-            liveUnifiedFallback.nodes.length > 0 &&
-            nextGalaxy.nodes.length === 0
-          ) {
-            setGalaxy(liveUnifiedFallback);
-            setGalaxyScope(selected);
-            setError("");
-            return;
-          }
-          setGalaxy(nextGalaxy);
+          });
           setGalaxyScope(requestedSelection);
           setError("");
         }
       } catch {
         if (cancelled) return;
-        if (selected === "unified" && accounts.length > 0) {
-          try {
-            const fallbackAccount = accounts[0];
-            const fallbackQs = `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(String(fallbackAccount.id))}`;
-            const fallbackJson = (await fetchJsonOrThrow(
-              `/api/galaxy${fallbackQs}`,
-              {},
-              identityHints
-            )) as GalaxyResponse;
-            if (cancelled) return;
-            setGalaxy({
-              nodes: Array.isArray(fallbackJson.nodes) ? fallbackJson.nodes : [],
-              meta: fallbackJson.meta || {},
-            });
-            setGalaxyScope(String(fallbackAccount.id));
-            setSelected(String(fallbackAccount.id));
-            setError("");
-            return;
-          } catch {
-            // fall through to visible error state
-          }
-        }
         const hasVisibleRealData =
           Array.isArray(visibleGalaxyRef.current.nodes) && visibleGalaxyRef.current.nodes.length > 0
 
@@ -1121,8 +1019,8 @@ export function GalaxySurface({
   }, [embeddedMotionScale, localMotionScale, selected, spatialTick, timeWarp, timeTravel, viewMotionBoost, visibleGalaxy.nodes]);
 
   const renderedNodes = useMemo(() => {
-    if (!embedded) return workingNodes;
-    if (workingNodes.length <= 180) return workingNodes;
+    const maxStars = embedded ? MAX_EMBEDDED_STARS : MAX_STANDALONE_STARS;
+    if (workingNodes.length <= maxStars) return workingNodes;
 
     const priorityScore = (node: GalaxyNode) =>
       (node.id === selectedStarId ? 10000 : 0) +
@@ -1133,22 +1031,29 @@ export function GalaxySurface({
       safeNum(node.refresh_count, 0);
 
     const prioritized = [...workingNodes].sort((a, b) => priorityScore(b) - priorityScore(a));
-    const locked = prioritized.slice(0, Math.min(72, prioritized.length));
+    if (!embedded) {
+      return prioritized.slice(0, maxStars);
+    }
+
+    const locked = prioritized.slice(0, Math.min(72, prioritized.length, maxStars));
     const lockedIds = new Set(locked.map((node) => node.id));
     const remainder = workingNodes.filter((node) => !lockedIds.has(node.id));
     const sampled: GalaxyNode[] = [];
-    const stride = Math.max(1, Math.floor(remainder.length / 108));
+    const sampledTarget = Math.max(0, maxStars - locked.length);
+    const stride = Math.max(1, Math.floor(remainder.length / Math.max(1, sampledTarget)));
 
-    for (let index = 0; index < remainder.length && sampled.length < 108; index += stride) {
+    for (let index = 0; index < remainder.length && sampled.length < sampledTarget; index += stride) {
       sampled.push(remainder[index]);
     }
 
-    return [...locked, ...sampled].slice(0, 180);
+    return [...locked, ...sampled].slice(0, maxStars);
   }, [embedded, intelligenceView, selectedStarId, workingNodes]);
 
   const gravityWells = useMemo(
-    () =>
-      [...renderedNodes]
+    () => {
+      if (embedded) return [];
+
+      return [...renderedNodes]
         .sort((a, b) => rankGravity(b) - rankGravity(a))
         .slice(0, 4)
         .map((node, index) => {
@@ -1159,8 +1064,9 @@ export function GalaxySurface({
             opacity: Math.max(0.12, 0.28 - index * 0.04),
             index,
           };
-        }),
-    [renderedNodes, liveTick]
+        });
+    },
+    [embedded, renderedNodes, liveTick]
   );
 
   const heatNebulae = useMemo(() => {
@@ -1290,6 +1196,8 @@ export function GalaxySurface({
 
   const backgroundStars = useMemo(
     () => {
+      if (embedded) return [];
+
       const stars: Array<{
         x: number;
         y: number;
@@ -1332,10 +1240,10 @@ export function GalaxySurface({
 
       return stars;
     },
-    []
+    [embedded]
   );
 
-  const nodeCount = workingNodes.length;
+  const nodeCount = renderedNodes.length;
   const densityScale =
     nodeCount > 700 ? 0.84 : nodeCount > 450 ? 0.9 : nodeCount > 250 ? 0.96 : 1;
   const sceneScale =
@@ -2210,7 +2118,7 @@ export function GalaxySurface({
                     zIndex: 3,
                   }}
                 >
-                  {workingNodes.length} visible stars ·{" "}
+                  {renderedNodes.length} visible stars ·{" "}
                   {currentStatus?.running ? "Autopilot running" : "Autopilot idle"}
                 </div>
               </div>
