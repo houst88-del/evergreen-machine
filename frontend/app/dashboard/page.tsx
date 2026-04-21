@@ -960,6 +960,7 @@ function DashboardPageClient() {
   const sessionRef = useRef<any>(null)
   const missionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const pendingMissionRefreshRef = useRef(false)
+  const pendingGalaxyRefreshRef = useRef(false)
   const subscriptionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const followupRefreshTimeoutRef = useRef<number | null>(null)
 
@@ -1198,7 +1199,7 @@ function DashboardPageClient() {
 
   function scrollToStarden() {
     setStardenPrimed(true)
-    requestMissionControlRefresh({ followup: true })
+    requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -1242,7 +1243,11 @@ function DashboardPageClient() {
     }
   }, [session])
 
-  async function refreshMissionControlNow() {
+  async function refreshMissionControlNow(options?: { refreshGalaxy?: boolean }) {
+    if (options?.refreshGalaxy) {
+      pendingGalaxyRefreshRef.current = true
+    }
+
     if (missionRefreshPromiseRef.current) {
       pendingMissionRefreshRef.current = true
       return missionRefreshPromiseRef.current
@@ -1251,6 +1256,8 @@ function DashboardPageClient() {
     missionRefreshPromiseRef.current = (async () => {
       do {
         pendingMissionRefreshRef.current = false
+        const refreshGalaxyThisPass = pendingGalaxyRefreshRef.current
+        pendingGalaxyRefreshRef.current = false
 
         try {
           let activeUser = getActiveUserSnapshot()
@@ -1282,11 +1289,13 @@ function DashboardPageClient() {
             fetchJsonOrThrow('/api/system-status', {}, identityHints),
             fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
             fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
-            fetchJsonOrThrow(
-              `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-              {},
-              identityHints,
-            ),
+            refreshGalaxyThisPass
+              ? fetchJsonOrThrow(
+                  `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+                  {},
+                  identityHints,
+                )
+              : Promise.resolve(null),
           ])
 
           if (systemResult.status === 'fulfilled') {
@@ -1295,7 +1304,7 @@ function DashboardPageClient() {
 
           let discoveredAccounts: ConnectedAccount[] = []
           let galaxySnapshot: GalaxyResponse | null = null
-          if (galaxyResult.status === 'fulfilled') {
+          if (refreshGalaxyThisPass && galaxyResult.status === 'fulfilled' && galaxyResult.value) {
             galaxySnapshot = galaxyResult.value as GalaxyResponse
             discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
               ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
@@ -1355,8 +1364,8 @@ function DashboardPageClient() {
     return missionRefreshPromiseRef.current
   }
 
-  function requestMissionControlRefresh(options?: { followup?: boolean }) {
-    void refreshMissionControlNow()
+  function requestMissionControlRefresh(options?: { followup?: boolean; refreshGalaxy?: boolean }) {
+    void refreshMissionControlNow({ refreshGalaxy: options?.refreshGalaxy })
 
     if (!options?.followup) return
 
@@ -1366,7 +1375,7 @@ function DashboardPageClient() {
 
     followupRefreshTimeoutRef.current = window.setTimeout(() => {
       followupRefreshTimeoutRef.current = null
-      void refreshMissionControlNow()
+      void refreshMissionControlNow({ refreshGalaxy: options.refreshGalaxy })
     }, POST_ACTION_REFRESH_DELAY_MS)
   }
 
@@ -1420,7 +1429,7 @@ function DashboardPageClient() {
                 : current,
             )
           })
-          void refreshMissionControlNow()
+          void refreshMissionControlNow({ refreshGalaxy: true })
           return true
         }
       } catch {
@@ -1440,7 +1449,7 @@ function DashboardPageClient() {
 
     async function loadMissionControl() {
       try {
-        await refreshMissionControlNow()
+        await refreshMissionControlNow({ refreshGalaxy: !missionHydratedOnce })
       } finally {
         if (mounted) {
           setMissionHydratedOnce(true)
@@ -1474,7 +1483,7 @@ function DashboardPageClient() {
       window.removeEventListener('focus', handleFocusRefresh)
       document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
-  }, [session])
+  }, [missionHydratedOnce, session])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1482,12 +1491,12 @@ function DashboardPageClient() {
     if (params.get('provider') === 'x' && params.get('connected') === '1' && session?.user) {
       const connectedAccountId = Number(params.get('connected_account_id') || 0) || null
       setActionMessage('Finalizing X connection…')
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
       ;(async () => {
         const connected = await waitForConnectedProvider('x', { connectedAccountId })
         if (connected) {
           setActionMessage('X account connected.')
-          requestMissionControlRefresh({ followup: true })
+          requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
         } else {
           setError('X connected, but the dashboard is still syncing. Refresh once in a few seconds.')
         }
@@ -1539,7 +1548,7 @@ function DashboardPageClient() {
     if (emptyBootstrapRefreshRef.current) return
     emptyBootstrapRefreshRef.current = true
 
-    requestMissionControlRefresh({ followup: true })
+    requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
   }, [jobs.length, loading, missionGalaxy.nodes, missionHydratedOnce, resolvedAccounts.length, session, statusMap])
 
   const summary = useMemo(() => {
@@ -1807,7 +1816,7 @@ function DashboardPageClient() {
           ? `Refresh job queued for ${accountHandle || 'account'}.`
           : 'Refresh job queued.'
       )
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
     } finally {
@@ -1842,7 +1851,7 @@ function DashboardPageClient() {
           ? `Analytics job queued for ${accountHandle || 'account'}.`
           : 'Analytics job queued.'
       )
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
     } finally {
@@ -1906,7 +1915,7 @@ function DashboardPageClient() {
           ? `Connected Bluesky for ${json.account_handle || handle}.`
           : `Connected Bluesky for ${json.account_handle || handle}. Finalizing lane…`
       )
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
     } finally {
@@ -1937,7 +1946,7 @@ function DashboardPageClient() {
       }
 
       setActionMessage(`Disconnected ${options?.label || json.account_handle || 'account'}.`)
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not disconnect account')
     } finally {
