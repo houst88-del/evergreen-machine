@@ -152,12 +152,14 @@ export function getToken() {
 
 export function setToken(token: string) {
   if (typeof window === 'undefined') return
+  if (window.localStorage.getItem(TOKEN_KEY) === token) return
   window.localStorage.setItem(TOKEN_KEY, token)
   emitAuthChanged()
 }
 
 export function clearToken() {
   if (typeof window === 'undefined') return
+  if (!window.localStorage.getItem(TOKEN_KEY)) return
   window.localStorage.removeItem(TOKEN_KEY)
   emitAuthChanged()
 }
@@ -176,12 +178,15 @@ export function getStoredUser(): AuthUser | null {
 
 export function setStoredUser(user: AuthUser) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(USER_KEY, JSON.stringify(user))
+  const next = JSON.stringify(user)
+  if (window.localStorage.getItem(USER_KEY) === next) return
+  window.localStorage.setItem(USER_KEY, next)
   emitAuthChanged()
 }
 
 export function clearStoredUser() {
   if (typeof window === 'undefined') return
+  if (!window.localStorage.getItem(USER_KEY)) return
   window.localStorage.removeItem(USER_KEY)
   emitAuthChanged()
 }
