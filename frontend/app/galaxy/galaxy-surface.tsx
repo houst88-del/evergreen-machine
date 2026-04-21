@@ -272,6 +272,39 @@ const providerTheme = (provider?: string) => {
   };
 };
 
+const intelligenceModeDescription = (
+  mode: "balanced" | "forecast" | "revival" | "gravity"
+) => {
+  if (mode === "forecast") return "Predicts near-future performance";
+  if (mode === "revival") return "Prioritizes resurfacing potential";
+  if (mode === "gravity") return "Ranks by proven performance strength";
+  return "Blends momentum, gravity, and history";
+};
+
+const gravityRankLabel = (value: number) => {
+  if (value >= 400) return "Gravity Well";
+  if (value >= 250) return "Strong Orbit";
+  return "Standard Orbit";
+};
+
+const velocityLabel = (value: number) => {
+  if (value >= 0.7) return "High momentum";
+  if (value >= 0.4) return "Rising";
+  return "Stable";
+};
+
+const archetypeLabel = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Evergreen";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const titleCase = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
 const parseMeta = (meta?: GalaxyMeta) => {
   const m = (meta?.metadata || {}) as Record<string, unknown>;
   return {
@@ -1146,6 +1179,14 @@ export function GalaxySurface({
     () => workingNodes.find((n) => n.id === selectedStarId) || null,
     [workingNodes, selectedStarId]
   );
+  const selectedStarIntelligence = useMemo(
+    () => (selectedStar ? intelligenceScore(selectedStar, intelligenceView) : null),
+    [intelligenceView, selectedStar]
+  );
+  const selectedStarGravityRank = useMemo(
+    () => (selectedStar ? rankGravity(selectedStar) : null),
+    [selectedStar]
+  );
 
   const forecastNodes = useMemo(
     () =>
@@ -1596,10 +1637,12 @@ export function GalaxySurface({
                 }}
               >
                 <div>Canopy: {selectedLabel}</div>
-                <div>Mode: {intelligenceView}</div>
+                <div>
+                  Mode: {titleCase(intelligenceView)} · {intelligenceModeDescription(intelligenceView)}
+                </div>
                 <div>Motion: {timeLapseOn ? "Orbiting" : "Paused"}</div>
                 <div>Zoom: {zoom.toFixed(1)}x</div>
-                <div>Focus: {highlightMode === "off" ? "Balanced" : highlightMode}</div>
+                <div>Focus: {highlightMode === "off" ? "Balanced view" : titleCase(highlightMode)}</div>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 {[
@@ -1722,36 +1765,64 @@ export function GalaxySurface({
                   marginBottom: 6,
                 }}
               >
-                Follow the Star
+                Why This Star
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(236,253,245,0.94)" }}>
                 {selectedStar ? shortText(selectedStar.label || selectedStar.id, 36) : "No star selected"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(236,253,245,0.58)", marginTop: 6 }}>
                 {selectedStar
-                  ? `${providerLabel(selectedStar.provider)} · intelligence ${intelligenceScore(
-                      selectedStar,
-                      intelligenceView
-                    ).toFixed(0)}`
+                  ? `${providerLabel(selectedStar.provider)} · ${selectedStar.handle || "handle"}`
                   : "Click any star to lock focus."}
               </div>
               {selectedStar ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                  {[
-                    selectedStar.current_cycle ? "Current cycle" : "",
-                    isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
-                    likelyNext(selectedStar) ? "Likely next" : "",
-                  ]
-                    .filter(Boolean)
-                    .map((label) => (
-                      <span
-                        key={label}
-                        style={missionBadgeStyle("gold", true)}
-                      >
-                        {label}
-                      </span>
-                    ))}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    {[
+                      selectedStar.current_cycle ? "Current cycle" : "",
+                      likelyNext(selectedStar) ? "Likely next" : "",
+                      archetypeLabel(selectedStar.archetype),
+                    ]
+                      .filter(Boolean)
+                      .map((label, index) => (
+                        <span
+                          key={label}
+                          style={missionBadgeStyle(index === 2 ? "neutral" : "gold", true)}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "grid",
+                      gap: 8,
+                      fontSize: 12,
+                      color: "rgba(236,253,245,0.76)",
+                    }}
+                  >
+                    <div>
+                      Intelligence {Math.round(selectedStarIntelligence || 0)} ·{" "}
+                      {gravityRankLabel(selectedStarGravityRank || 0)}
+                    </div>
+                    <div>
+                      Momentum {velocityLabel(safeNum(selectedStar.predicted_velocity, 0))} · Revival{" "}
+                      {Math.round(safeNum(selectedStar.revival_score, 0))}
+                    </div>
+                    <div>
+                      Strategy: {humanizeStrategy(selectedStar.selection_strategy)}
+                    </div>
+                    <div
+                      style={{
+                        color: "rgba(236,253,245,0.62)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {selectedStar.selection_reason || "Watching this post for strong reuse potential."}
+                    </div>
+                  </div>
+                </>
               ) : null}
             </div>
 
@@ -2129,203 +2200,73 @@ export function GalaxySurface({
                     position: "absolute",
                     bottom: 20,
                     left: 20,
-                    maxWidth: 520,
-                    borderRadius: 28,
+                    maxWidth: 400,
+                    borderRadius: 24,
                     border: "1px solid rgba(110,231,183,0.22)",
                     background:
                       "linear-gradient(145deg, rgba(2,14,12,0.92), rgba(1,10,10,0.84))",
-                    padding: 20,
+                    padding: 16,
                     boxShadow: "0 25px 50px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.02)",
                     backdropFilter: "blur(14px)",
                     zIndex: 5,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-                    <div>
-                      <div
-                        style={missionEyebrowStyle}
-                      >
-                        Mission Brief · {providerLabel(deferredHovered.provider)} · {deferredHovered.handle || "handle"}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 22,
-                          fontWeight: 700,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        {shortText(deferredHovered.label || deferredHovered.url || deferredHovered.id, 90)}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 8,
-                          display: "flex",
-                          gap: 8,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span style={missionBadgeStyle("neutral", true)}>
-                          {humanizeStrategy(deferredHovered.selection_strategy)}
-                        </span>
-                        {likelyNext(deferredHovered) ? (
-                          <span style={missionBadgeStyle("gold", true)}>Likely next</span>
-                        ) : null}
-                        {deferredHovered.current_cycle ? (
-                          <span style={missionBadgeStyle("gold", true)}>Current live star</span>
-                        ) : null}
-                        {deferredHovered.cold_archive ? (
-                          <span style={missionBadgeStyle("neutral", true)}>Outer field</span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <div
-                        style={{
-                          ...missionBadgeStyle(
-                            deferredHovered.provider?.toLowerCase() === "bluesky" ? "sky" : "mint"
-                          ),
-                          background: providerColor(deferredHovered.provider).replace("0.95", "0.14"),
-                          border: `1px solid ${providerColor(deferredHovered.provider).replace("0.95", "0.28")}`,
-                        }}
-                      >
-                        {deferredHovered.gravity || "standard"}
-                      </div>
-                      <div
-                        style={missionBadgeStyle("gold")}
-                      >
-                        {rarityAccent(deferredHovered).tag}
-                      </div>
-                      <div
-                        style={{
-                          ...missionBadgeStyle(
-                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65 ? "gold" : "neutral"
-                          ),
-                          background:
-                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
-                              ? "rgba(250,228,120,0.1)"
-                              : "rgba(255,255,255,0.05)",
-                          border:
-                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
-                              ? "1px solid rgba(250,228,120,0.22)"
-                              : "1px solid rgba(255,255,255,0.1)",
-                          color:
-                            safeNum(deferredHovered.predicted_velocity, 0) >= 0.65
-                              ? "rgba(255,248,210,0.94)"
-                              : "rgba(236,253,245,0.8)",
-                        }}
-                      >
-                        {safeNum(deferredHovered.predicted_velocity, 0) >= 0.65 ? "Likely next" : "Monitoring"}
-                      </div>
-                    </div>
+                  <div style={missionEyebrowStyle}>
+                    Why This Star · {providerLabel(deferredHovered.provider)} · {deferredHovered.handle || "handle"}
                   </div>
-
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
-                    {[
-                      deferredHovered.current_cycle ? "Current cycle" : "",
-                      deferredHovered.candidate ? "Candidate" : "",
-                      deferredHovered.cold_archive ? "Peripheral field" : "",
-                      isFreshPulse(deferredHovered.last_resurfaced_at) ? "Fresh pulse" : "",
-                      `Account ${deferredHovered.connected_account_id ?? "—"}`,
-                    ]
-                      .filter(Boolean)
-                      .map((label) => (
-                        <span
-                          key={label}
-                          style={missionBadgeStyle("mint", true)}
-                        >
-                          {label}
-                        </span>
-                      ))}
-                  </div>
-
                   <div
                     style={{
-                      marginTop: 14,
+                      marginTop: 6,
+                      fontSize: 18,
+                      fontWeight: 700,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {shortText(deferredHovered.label || deferredHovered.id, 72)}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {deferredHovered.current_cycle ? (
+                      <span style={missionBadgeStyle("gold", true)}>Current cycle</span>
+                    ) : null}
+                    {likelyNext(deferredHovered) ? (
+                      <span style={missionBadgeStyle("gold", true)}>Likely next</span>
+                    ) : null}
+                    <span style={missionBadgeStyle("neutral", true)}>
+                      {archetypeLabel(deferredHovered.archetype)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 12,
                       display: "grid",
                       gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 10,
-                      fontSize: 13,
-                      color: "rgba(236,253,245,0.72)",
+                      gap: 8,
+                      fontSize: 12,
+                      color: "rgba(236,253,245,0.74)",
                     }}
                   >
-                    <div>Score: {safeNum(deferredHovered.normalized_score ?? deferredHovered.score, 0)}</div>
-                    <div>Gravity score: {safeNum(deferredHovered.gravity_score, 0)}</div>
-                    <div>Velocity: {safeNum(deferredHovered.predicted_velocity, 0).toFixed(2)}</div>
-                    <div>Revival: {safeNum(deferredHovered.revival_score, 0)}</div>
-                    <div>Refreshes: {safeNum(deferredHovered.refresh_count, 0)}</div>
-                    <div>Last pulse: {minutesAgo(deferredHovered.last_resurfaced_at)}</div>
-                    <div>State: {deferredHovered.state || "active"}</div>
-                    <div>Archetype: {deferredHovered.archetype || "unclassified"}</div>
+                    <div>Intelligence {Math.round(intelligenceScore(deferredHovered, intelligenceView))}</div>
+                    <div>{gravityRankLabel(rankGravity(deferredHovered))}</div>
+                    <div>{velocityLabel(safeNum(deferredHovered.predicted_velocity, 0))}</div>
+                    <div>Revival {Math.round(safeNum(deferredHovered.revival_score, 0))}</div>
                   </div>
-
                   <div
                     style={{
-                      marginTop: 14,
-                      display: "grid",
-                      gap: 10,
+                      marginTop: 12,
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      color: "rgba(236,253,245,0.82)",
                     }}
                   >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
-                          color: "rgba(236,253,245,0.54)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Strategy
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          lineHeight: 1.65,
-                          color: "rgba(236,253,245,0.9)",
-                        }}
-                      >
-                        {humanizeStrategy(deferredHovered.selection_strategy)}
-                      </div>
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          letterSpacing: "0.14em",
-                          textTransform: "uppercase",
-                          color: "rgba(236,253,245,0.54)",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Why It Stands Out
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          lineHeight: 1.7,
-                          color: "rgba(236,253,245,0.78)",
-                          padding: "12px 14px",
-                          borderRadius: 16,
-                          border: "1px solid rgba(255,255,255,0.06)",
-                          background: "rgba(255,255,255,0.03)",
-                        }}
-                      >
-                        {deferredHovered.selection_reason || "No selection reason recorded."}
-                      </div>
-                    </div>
-                    {deferredHovered.url ? (
-                      <div style={{ marginTop: 8 }}>
-                        <a
-                          href={deferredHovered.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: "rgba(186,230,253,1)", textDecoration: "underline" }}
-                        >
-                          Open post
-                        </a>
-                      </div>
-                    ) : null}
+                    {deferredHovered.selection_reason ||
+                      `Watching this ${archetypeLabel(deferredHovered.archetype).toLowerCase()} post for reliable evergreen reuse.`}
                   </div>
                 </div>
               ) : null}
@@ -2437,7 +2378,7 @@ export function GalaxySurface({
                         }}
                       >
                         <span>{providerLabel(n.provider)}</span>
-                        <span>v {safeNum(n.predicted_velocity, 0).toFixed(2)}</span>
+                        <span>{velocityLabel(safeNum(n.predicted_velocity, 0))}</span>
                         <span>{n.current_cycle ? "active now" : n.candidate ? "candidate" : "watch"}</span>
                       </div>
                       <div
