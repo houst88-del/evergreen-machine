@@ -3425,9 +3425,9 @@ export function GalaxySurface({
                     onClick={() => setSelectedStarId(n.id)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "20px 1fr auto",
+                      gridTemplateColumns: "20px minmax(0, 1fr)",
                       gap: 8,
-                      alignItems: "center",
+                      alignItems: "start",
                       fontSize: 12,
                       padding: "8px 10px",
                       borderRadius: 14,
@@ -3465,15 +3465,16 @@ export function GalaxySurface({
                       <div
                         style={{
                           marginTop: 4,
-                          display: "flex",
-                          gap: 8,
-                          flexWrap: "wrap",
+                          display: "grid",
+                          gap: 2,
                           color: "rgba(236,253,245,0.58)",
                         }}
                       >
                         <span>{providerLabel(n.provider)}</span>
-                        <span>{velocityLabel(safeNum(n.predicted_velocity, 0))}</span>
-                        <span>{n.current_cycle ? "live now" : n.candidate ? "likely next" : "holding steady"}</span>
+                        <span>
+                          {velocityLabel(safeNum(n.predicted_velocity, 0))} ·{" "}
+                          {n.current_cycle ? "live now" : n.candidate ? "likely next" : "holding steady"}
+                        </span>
                       </div>
                       <div
                         style={{
@@ -3497,9 +3498,15 @@ export function GalaxySurface({
                           }}
                         />
                       </div>
-                    </div>
-                    <div style={{ color: "rgba(236,253,245,0.58)" }}>
-                      {Math.round(intelligenceScore(n, intelligenceView))} signal
+                      <div
+                        style={{
+                          marginTop: 7,
+                          fontSize: 11,
+                          color: "rgba(236,253,245,0.5)",
+                        }}
+                      >
+                        {Math.round(intelligenceScore(n, intelligenceView))} signal
+                      </div>
                     </div>
                   </div>
                 ))}
