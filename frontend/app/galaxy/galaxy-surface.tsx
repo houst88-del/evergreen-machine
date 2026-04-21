@@ -1658,49 +1658,6 @@ export function GalaxySurface({
               </div>
             </div>
 
-            <div style={cardStyle()}>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.58)",
-                }}
-              >
-                Orbit Motion
-              </div>
-              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
-                <button
-                  onClick={() => setTimeLapseOn((v) => !v)}
-                  style={{
-                    borderRadius: 999,
-                    border: "1px solid rgba(110,231,183,0.2)",
-                    background: "rgba(16,185,129,0.08)",
-                    color: "white",
-                    padding: "8px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {timeLapseOn ? "Pause Orbit" : "Resume Orbit"}
-                </button>
-                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
-                  Default drift speed keeps the constellation calm and readable.
-                </div>
-                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>Zoom</div>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  value={zoom}
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                />
-                <div style={{ fontSize: 12, color: "rgba(236,253,245,0.7)" }}>
-                  View {zoom.toFixed(1)}x
-                </div>
-              </div>
-            </div>
-
             <div style={{ ...cardStyle(), padding: 12 }}>
               <div
                 style={{
@@ -2158,6 +2115,28 @@ export function GalaxySurface({
 
                 {!embedded ? (
                   <>
+                    <button
+                      onClick={() => setTimeLapseOn((v) => !v)}
+                      style={{
+                        position: "absolute",
+                        right: 14,
+                        top: 12,
+                        borderRadius: 999,
+                        border: "1px solid rgba(110,231,183,0.22)",
+                        background: "rgba(2,14,12,0.78)",
+                        color: "rgba(236,253,245,0.92)",
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        zIndex: 4,
+                        backdropFilter: "blur(10px)",
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.16)",
+                      }}
+                    >
+                      {timeLapseOn ? "Pause Orbit" : "Resume Orbit"}
+                    </button>
+
                     <div
                       style={{
                         position: "absolute",
@@ -2178,7 +2157,7 @@ export function GalaxySurface({
                       style={{
                         position: "absolute",
                         right: 14,
-                        top: 4,
+                        top: 50,
                         fontSize: 13,
                         color: "rgba(236,253,245,0.75)",
                         pointerEvents: "none",
