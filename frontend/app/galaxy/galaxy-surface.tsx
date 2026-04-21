@@ -50,6 +50,21 @@ type GalaxyMeta = {
 
 type GalaxyResponse = { nodes: GalaxyNode[]; meta: GalaxyMeta };
 
+type ReplayFrame = {
+  id: string;
+  capturedAt: string;
+  scope: string;
+  nextCycleAt?: string | null;
+  visibleNodeIds: string[];
+  currentCycleIds: string[];
+  candidateIds: string[];
+  topIntelligenceIds: string[];
+  selectedStarId?: string | null;
+  summary: string;
+  deltaChips: string[];
+  changedIds: string[];
+};
+
 type DashboardStatus = {
   connected_account_id?: number | null;
   running?: boolean;
@@ -82,6 +97,7 @@ type GalaxyPageProps = {
 
 const MAX_EMBEDDED_STARS = 360;
 const MAX_STANDALONE_STARS = 1200;
+const MAX_REPLAY_FRAMES = 10;
 const FUTURE_SCOPE_PLATFORMS = [
   "Instagram",
   "TikTok",
@@ -629,10 +645,14 @@ export function GalaxySurface({
   >("off");
   const [zoom, setZoom] = useState(1);
   const [identityHints, setIdentityHints] = useState<IdentityHints>(embeddedIdentityHints || {});
+  const [replayOpen, setReplayOpen] = useState(false);
+  const [replayFrames, setReplayFrames] = useState<ReplayFrame[]>([]);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const animationRef = useRef({ elapsed: 0, speed: 1, lastTs: 0 });
   const autoScopedRef = useRef(false);
   const accountsRef = useRef<ConnectedAccount[]>(embeddedAccounts || []);
   const visibleGalaxyRef = useRef<GalaxyResponse>({ nodes: [], meta: {} });
+  const replaySignatureRef = useRef("");
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [surfaceInView, setSurfaceInView] = useState(!embedded);
   const [documentVisible, setDocumentVisible] = useState(
@@ -1019,6 +1039,100 @@ export function GalaxySurface({
   const viewMotionBoost = (selected === "unified" ? 1 : 0.72) * embeddedMotionScale;
   const localMotionScale = (selected === "unified" ? 1 : 0.42) * embeddedMotionScale;
   const spatialTick = liveTick * (embedded ? 0.015 : 0.1);
+
+  useEffect(() => {
+    if (!Array.isArray(visibleGalaxy.nodes) || visibleGalaxy.nodes.length === 0) return;
+
+    const rankedNodes = [...visibleGalaxy.nodes].sort(
+      (a, b) => intelligenceScore(b, intelligenceView) - intelligenceScore(a, intelligenceView)
+    );
+    const currentCycleIds = rankedNodes
+      .filter((node) => !!node.current_cycle)
+      .map((node) => node.id)
+      .slice(0, 6);
+    const candidateIds = rankedNodes
+      .filter((node) => !!node.candidate || likelyNext(node))
+      .map((node) => node.id)
+      .slice(0, 8);
+    const topIntelligenceIds = rankedNodes.map((node) => node.id).slice(0, 6);
+    const visibleNodeIds = rankedNodes.map((node) => node.id).slice(0, 36);
+    const signature = JSON.stringify({
+      scope: selected,
+      nextCycleAt: engine.nextRefreshAt || "",
+      currentCycleIds,
+      candidateIds,
+      topIntelligenceIds,
+      visibleNodeIds: visibleNodeIds.slice(0, 12),
+    });
+
+    if (replaySignatureRef.current === signature) return;
+    replaySignatureRef.current = signature;
+
+    setReplayFrames((current) => {
+      const previous = current[current.length - 1];
+      const previousCandidates = new Set(previous?.candidateIds || []);
+      const previousCurrent = new Set(previous?.currentCycleIds || []);
+      const previousVisible = new Set(previous?.visibleNodeIds || []);
+      const currentCandidates = new Set(candidateIds);
+      const currentCurrent = new Set(currentCycleIds);
+      const candidateEntered = candidateIds.filter((id) => !previousCandidates.has(id)).slice(0, 3);
+      const currentCycleStarted = currentCycleIds.filter((id) => !previousCurrent.has(id)).slice(0, 2);
+      const revivalReturn = rankedNodes
+        .filter(
+          (node) =>
+            !previousVisible.has(node.id) &&
+            safeNum(node.revival_score, 0) >= revivalThreshold(rankedNodes.length) &&
+            safeNum(node.predicted_velocity, 0) > 0.3
+        )
+        .map((node) => node.id)
+        .slice(0, 2);
+      const candidateExited = (previous?.candidateIds || [])
+        .filter((id) => !currentCandidates.has(id))
+        .slice(0, 2);
+      const deltaChips = [
+        currentCycleStarted.length ? "Cycle began" : "",
+        candidateEntered.length ? "Candidate rise" : "",
+        candidateExited.length ? "Cooling off" : "",
+        revivalReturn.length ? "Revival return" : "",
+        previous && previous.scope !== selected ? "Scope shift" : "",
+      ].filter(Boolean);
+      const summary =
+        currentCycleStarted.length
+          ? `Current cycle began ${minutesAgo(rankedNodes.find((node) => currentCycleStarted[0] === node.id)?.last_resurfaced_at || new Date().toISOString())}`
+          : candidateEntered.length
+            ? `Candidate reshuffle ${nextCycleRelative(engine.nextRefreshAt)}`
+            : revivalReturn.length
+              ? "Dormant signal returned to the field"
+              : previous && previous.scope !== selected
+                ? `${titleCase(selected)} view snapshot`
+                : "Snapshot memory updated";
+      const changedIds = Array.from(
+        new Set([...currentCycleStarted, ...candidateEntered, ...candidateExited, ...revivalReturn])
+      ).slice(0, 5);
+
+      const nextFrame: ReplayFrame = {
+        id: `${selected}-${Date.now()}`,
+        capturedAt: new Date().toISOString(),
+        scope: selected,
+        nextCycleAt: engine.nextRefreshAt || visibleGalaxy.meta?.next_cycle_at || null,
+        visibleNodeIds,
+        currentCycleIds,
+        candidateIds,
+        topIntelligenceIds,
+        selectedStarId: currentCycleIds[0] || candidateIds[0] || topIntelligenceIds[0] || null,
+        summary,
+        deltaChips,
+        changedIds,
+      };
+
+      const nextFrames = [...current, nextFrame].slice(-MAX_REPLAY_FRAMES);
+      setReplayIndex((index) => {
+        if (index == null) return null;
+        return nextFrames.length - 1;
+      });
+      return nextFrames;
+    });
+  }, [engine.nextRefreshAt, intelligenceView, selected, visibleGalaxy]);
 
   const workingNodes = useMemo(() => {
     const nodes = [...visibleGalaxy.nodes].sort((a, b) => rankGravity(b) - rankGravity(a));
@@ -1438,6 +1552,19 @@ export function GalaxySurface({
       reviveThreshold,
     };
   }, [engine.nextRefreshAt, workingNodes]);
+
+  const activeReplayFrame = useMemo(() => {
+    if (!replayFrames.length) return null;
+    if (replayIndex == null) return replayFrames[replayFrames.length - 1] || null;
+    return replayFrames[Math.max(0, Math.min(replayFrames.length - 1, replayIndex))] || null;
+  }, [replayFrames, replayIndex]);
+
+  const replayHighlightIds = useMemo(
+    () => new Set((activeReplayFrame?.changedIds || activeReplayFrame?.currentCycleIds || []).slice(0, 6)),
+    [activeReplayFrame]
+  );
+
+  const replayPrimaryId = activeReplayFrame?.selectedStarId || null;
 
   const backgroundStars = useMemo(
     () => {
@@ -2310,6 +2437,8 @@ export function GalaxySurface({
                 {renderedNodes.map((node, index) => {
                   const accent = rarityAccent(node);
                   const selectedNow = selectedStarId === node.id;
+                  const replayPrimary = replayPrimaryId === node.id;
+                  const replayChanged = replayHighlightIds.has(node.id);
                   const hoveredNow = hovered?.id === node.id;
                   const relatedNow = relatedNodeIds.has(node.id);
                   const pulseMinutes = minutesSince(node.last_resurfaced_at);
@@ -2340,6 +2469,10 @@ export function GalaxySurface({
                   const starScale =
                     selectedNow
                       ? 1.26
+                      : replayPrimary
+                        ? 1.16
+                        : replayChanged
+                          ? 1.08
                       : hoveredNow
                         ? 1.16
                         : relatedNow
@@ -2368,6 +2501,10 @@ export function GalaxySurface({
                     size *
                       (selectedNow
                         ? 7.6
+                        : replayPrimary
+                          ? 6.7
+                          : replayChanged
+                            ? 6
                         : freshPulse
                           ? 6.4
                           : approachingCycle
@@ -2557,12 +2694,37 @@ export function GalaxySurface({
                           boxShadow: embedded
                             ? `0 0 ${Math.max(
                                 5,
-                                glow * (hoveredNow ? 0.78 : relatedNow ? 0.68 : lowSignal ? 0.36 : 0.55)
+                                glow * (
+                                  replayPrimary
+                                    ? 0.76
+                                    : replayChanged
+                                      ? 0.66
+                                      : hoveredNow
+                                        ? 0.78
+                                        : relatedNow
+                                          ? 0.68
+                                          : lowSignal
+                                            ? 0.36
+                                            : 0.55
+                                )
                               )}px ${accent.aura}`
-                            : `0 0 ${glow * (hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)}px ${
+                            : `0 0 ${
+                                glow * (replayPrimary ? 1.24 : replayChanged ? 1.12 : hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)
+                              }px ${
                                 reviving ? "rgba(250,228,120,0.16)" : accent.aura
                               }, 0 0 ${
-                                glow * (hoveredNow ? 2.2 : relatedNow ? 1.95 : lowSignal ? 1.15 : 1.8)
+                                glow *
+                                (replayPrimary
+                                  ? 2.2
+                                  : replayChanged
+                                    ? 2
+                                    : hoveredNow
+                                      ? 2.2
+                                      : relatedNow
+                                        ? 1.95
+                                        : lowSignal
+                                          ? 1.15
+                                          : 1.8)
                               }px ${reviving ? "rgba(250,228,120,0.12)" : accent.aura}, inset 0 0 ${Math.max(
                                 4,
                                 size * 0.9
@@ -2572,7 +2734,11 @@ export function GalaxySurface({
                             opacity *
                             coolingOpacity *
                             lowSignalOpacity *
-                            (hoveredNow
+                            (replayPrimary
+                              ? 1
+                              : replayChanged
+                                ? 0.98
+                              : hoveredNow
                               ? 1
                               : relatedNow
                                 ? 0.98
@@ -2581,7 +2747,7 @@ export function GalaxySurface({
                                   : circulationHot
                                     ? 1
                                     : 0.92),
-                          zIndex: selectedNow ? 6 : hoveredNow ? 5 : node.current_cycle ? 4 : 3,
+                          zIndex: selectedNow ? 6 : replayPrimary ? 5 : hoveredNow ? 5 : node.current_cycle ? 4 : 3,
                           padding: 0,
                           margin: 0,
                           appearance: "none",
@@ -2612,6 +2778,23 @@ export function GalaxySurface({
                               borderRadius: "9999px",
                               border: `1px solid ${hoveredNow ? "rgba(250,228,120,0.28)" : "rgba(236,253,245,0.16)"}`,
                               opacity: hoveredNow ? 0.8 : 0.52,
+                              pointerEvents: "none",
+                            }}
+                          />
+                        ) : null}
+                        {replayChanged ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: replayPrimary ? -8 : -6,
+                              borderRadius: "9999px",
+                              border: `1px solid ${
+                                replayPrimary ? "rgba(250,228,120,0.34)" : "rgba(125,211,252,0.22)"
+                              }`,
+                              boxShadow: replayPrimary
+                                ? "0 0 18px rgba(250,228,120,0.12)"
+                                : "0 0 12px rgba(125,211,252,0.08)",
+                              opacity: replayPrimary ? 0.9 : 0.62,
                               pointerEvents: "none",
                             }}
                           />
@@ -2895,6 +3078,26 @@ export function GalaxySurface({
                 <div>{temporalInsights.revivingCount} reviving</div>
                 <div>Next bloom {temporalInsights.nextCycleEta}</div>
               </div>
+              <div style={{ marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    setReplayOpen((open) => !open);
+                    setReplayIndex((index) => (index == null ? Math.max(0, replayFrames.length - 1) : index));
+                  }}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid rgba(125,211,252,0.24)",
+                    background: replayOpen ? "rgba(125,211,252,0.12)" : "rgba(255,255,255,0.03)",
+                    color: "rgba(236,253,245,0.92)",
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {replayOpen ? "Hide Replay Memory" : "Open Replay Memory"}
+                </button>
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 {[
                   temporalInsights.recentPulseCount ? "Fresh echoes" : "",
@@ -2912,6 +3115,144 @@ export function GalaxySurface({
                   ))}
               </div>
             </div>
+
+            {replayOpen ? (
+              <div style={cardStyle()}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      letterSpacing: "0.2em",
+                      textTransform: "uppercase",
+                      color: "rgba(236,253,245,0.58)",
+                    }}
+                  >
+                    Replay Memory
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(236,253,245,0.56)" }}>
+                    {replayFrames.length} frame{replayFrames.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+                {activeReplayFrame ? (
+                  <>
+                    <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.7, color: "rgba(236,253,245,0.86)" }}>
+                      <div>{activeReplayFrame.summary}</div>
+                      <div style={{ color: "rgba(236,253,245,0.58)", fontSize: 12 }}>
+                        {titleCase(activeReplayFrame.scope)} · {minutesAgo(activeReplayFrame.capturedAt)} · Next bloom{" "}
+                        {nextCycleRelative(activeReplayFrame.nextCycleAt)}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                      <button
+                        onClick={() =>
+                          setReplayIndex((index) => Math.max(0, (index ?? replayFrames.length - 1) - 1))
+                        }
+                        disabled={(replayIndex ?? replayFrames.length - 1) <= 0}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.03)",
+                          color: "rgba(236,253,245,0.9)",
+                          padding: "7px 10px",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        onClick={() =>
+                          setReplayIndex((index) =>
+                            Math.min(replayFrames.length - 1, (index ?? replayFrames.length - 1) + 1)
+                          )
+                        }
+                        disabled={(replayIndex ?? replayFrames.length - 1) >= replayFrames.length - 1}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.03)",
+                          color: "rgba(236,253,245,0.9)",
+                          padding: "7px 10px",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        onClick={() => setReplayIndex(replayFrames.length - 1)}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(110,231,183,0.18)",
+                          background: "rgba(16,185,129,0.08)",
+                          color: "rgba(236,253,245,0.92)",
+                          padding: "7px 10px",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Latest
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                      {(activeReplayFrame.deltaChips.length ? activeReplayFrame.deltaChips : ["Steady field"]).map(
+                        (label, index) => (
+                          <span
+                            key={label}
+                            style={missionBadgeStyle(index === 0 ? "gold" : index === 1 ? "sky" : "neutral", true)}
+                          >
+                            {label}
+                          </span>
+                        )
+                      )}
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+                      {[...replayFrames]
+                        .map((frame, index) => ({ frame, index }))
+                        .reverse()
+                        .map(({ frame, index }) => {
+                          const active = activeReplayFrame.id === frame.id;
+                          return (
+                            <button
+                              key={frame.id}
+                              onClick={() => setReplayIndex(index)}
+                              style={{
+                                display: "grid",
+                                gap: 4,
+                                textAlign: "left",
+                                borderRadius: 14,
+                                border: active
+                                  ? "1px solid rgba(125,211,252,0.28)"
+                                  : "1px solid rgba(255,255,255,0.06)",
+                                background: active ? "rgba(125,211,252,0.08)" : "rgba(255,255,255,0.02)",
+                                padding: "10px 12px",
+                                color: "rgba(236,253,245,0.88)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <div style={{ fontSize: 12, fontWeight: 600 }}>{frame.summary}</div>
+                              <div style={{ fontSize: 11, color: "rgba(236,253,245,0.56)" }}>
+                                {titleCase(frame.scope)} · {minutesAgo(frame.capturedAt)}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ marginTop: 10, fontSize: 13, color: "rgba(236,253,245,0.6)" }}>
+                    Replay frames will appear as new snapshot states arrive.
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <div style={cardStyle()}>
               <div
