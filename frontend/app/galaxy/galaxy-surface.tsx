@@ -1450,6 +1450,43 @@ export function GalaxySurface({
               justifyContent: "flex-end",
             }}
           >
+            <div
+              style={{
+                display: "grid",
+                gap: 6,
+                justifyItems: "end",
+                marginRight: 6,
+                padding: "10px 12px",
+                borderRadius: 18,
+                border: "1px solid rgba(110,231,183,0.12)",
+                background: "rgba(255,255,255,0.02)",
+                color: "rgba(236,253,245,0.72)",
+              }}
+            >
+              <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+                {currentStatus?.running ? "Running" : "Idle"}
+              </div>
+              <div style={{ fontSize: 12 }}>
+                {humanizeStrategy(engine.strategy)}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {(selectedStar
+                  ? [
+                      likelyNext(selectedStar) ? "High priority" : "",
+                      selectedStar.current_cycle ? "Live now" : "",
+                    ]
+                  : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
+                  .filter(Boolean)
+                  .map((label, index) => (
+                    <span
+                      key={label}
+                      style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                    >
+                      {label}
+                    </span>
+                  ))}
+              </div>
+            </div>
             {!embedded ? (
               <button
                 onClick={() => {
@@ -1617,47 +1654,6 @@ export function GalaxySurface({
           }}
         >
           <div style={{ display: "grid", gap: 12 }}>
-            <div style={cardStyle()}>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.58)",
-                }}
-              >
-                Pulse Signal
-              </div>
-              <div style={{ marginTop: 10, fontSize: 40, fontWeight: 700 }}>
-                {currentStatus?.running ? "Running" : "Idle"}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 14, color: "rgba(236,253,245,0.7)" }}>
-                {humanizeStrategy(engine.strategy)}
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                {(selectedStar
-                  ? [
-                      selectedStar.current_cycle ? "Live now" : "",
-                      isFreshPulse(selectedStar.last_resurfaced_at) ? "Fresh pulse" : "",
-                      likelyNext(selectedStar) ? "High priority" : "",
-                      selectedStar.cold_archive ? "Outer field" : "",
-                    ]
-                  : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
-                  .filter(Boolean)
-                  .map((label, index) => (
-                    <span
-                      key={label}
-                      style={missionBadgeStyle(
-                        label === "Outer field" ? "neutral" : index === 0 ? "gold" : "mint",
-                        true
-                      )}
-                    >
-                      {label}
-                    </span>
-                  ))}
-              </div>
-            </div>
-
             <div style={{ ...cardStyle(), padding: 12 }}>
               <div
                 style={{
