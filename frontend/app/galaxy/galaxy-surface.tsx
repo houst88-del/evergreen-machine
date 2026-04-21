@@ -171,12 +171,48 @@ async function fetchJsonOrThrow(
   return json;
 }
 
+async function fetchGalaxyJsonOrReuse(
+  path: string,
+  identityHints?: IdentityHints,
+  previousSnapshot?: GalaxyResponse | null,
+  previousEtag?: string | null,
+) {
+  const headers = new Headers();
+  if (previousEtag) {
+    headers.set("If-None-Match", previousEtag);
+  }
+  const res = await evergreenApiFetch(path, { headers }, identityHints);
+
+  if (res.status === 304 && previousSnapshot) {
+    return {
+      json: previousSnapshot,
+      etag: previousEtag || null,
+      reused: true,
+    };
+  }
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail =
+      typeof (json as { detail?: unknown }).detail === "string"
+        ? String((json as { detail?: unknown }).detail)
+        : `Evergreen request failed (${res.status})`;
+    throw new Error(detail);
+  }
+
+  return {
+    json: json as GalaxyResponse,
+    etag: res.headers.get("etag"),
+    reused: false,
+  };
+}
+
 async function fetchAccountsFromGalaxy(
   userId: number,
   identityHints?: IdentityHints
 ): Promise<ConnectedAccount[]> {
   const json = (await fetchJsonOrThrow(
-    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true&view=embedded`,
     {},
     identityHints
   )) as GalaxyResponse;
@@ -670,6 +706,8 @@ export function GalaxySurface({
   const accountsRef = useRef<ConnectedAccount[]>(embeddedAccounts || []);
   const visibleGalaxyRef = useRef<GalaxyResponse>({ nodes: [], meta: {} });
   const replaySignatureRef = useRef("");
+  const galaxyRequestKeyRef = useRef<string>("");
+  const galaxyEtagRef = useRef<string | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [surfaceInView, setSurfaceInView] = useState(!embedded);
   const [documentVisible, setDocumentVisible] = useState(
@@ -1052,11 +1090,20 @@ export function GalaxySurface({
           requestedSelection === "unified"
             ? `?user_id=${encodeURIComponent(String(userId))}&unified=true`
             : `?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${encodeURIComponent(requestedSelection)}`;
-        const json = (await fetchJsonOrThrow(`/api/galaxy${qs}`, {}, identityHints)) as GalaxyResponse;
+        const requestPath = `/api/galaxy${qs}`;
+        const sameRequestKey = galaxyRequestKeyRef.current === requestPath;
+        const response = await fetchGalaxyJsonOrReuse(
+          requestPath,
+          identityHints,
+          sameRequestKey ? galaxy : null,
+          sameRequestKey ? galaxyEtagRef.current : null,
+        );
         if (!cancelled) {
+          galaxyRequestKeyRef.current = requestPath;
+          galaxyEtagRef.current = response.etag;
           setGalaxy({
-            nodes: Array.isArray(json.nodes) ? json.nodes : [],
-            meta: json.meta || {},
+            nodes: Array.isArray(response.json.nodes) ? response.json.nodes : [],
+            meta: response.json.meta || {},
           });
           setGalaxyScope(requestedSelection);
           setError("");

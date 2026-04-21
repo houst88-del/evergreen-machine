@@ -716,12 +716,51 @@ async function fetchJsonOrThrow(path: string, init: RequestInit = {}, identityHi
   return json
 }
 
+async function fetchGalaxyJsonOrReuse(
+  path: string,
+  identityHints?: IdentityHints,
+  previousSnapshot?: GalaxyResponse | null,
+  previousEtag?: string | null,
+) {
+  recordFetchDiagnosticForPath(path)
+  const headers = new Headers()
+  if (previousEtag) {
+    headers.set('If-None-Match', previousEtag)
+  }
+  const res = await apiFetch(path, { headers }, identityHints)
+
+  if (res.status === 304 && previousSnapshot) {
+    return {
+      json: previousSnapshot,
+      etag: previousEtag || null,
+      reused: true,
+    }
+  }
+
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const message =
+      typeof json?.detail === 'string'
+        ? json.detail
+        : typeof json?.message === 'string'
+          ? json.message
+          : `Evergreen request failed (${res.status})`
+    throw new Error(message)
+  }
+
+  return {
+    json: json as GalaxyResponse,
+    etag: res.headers.get('etag'),
+    reused: false,
+  }
+}
+
 async function fetchAccountsFromGalaxy(
   userId: number,
   identityHints?: IdentityHints,
 ): Promise<ConnectedAccount[]> {
   const json = (await fetchJsonOrThrow(
-    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true&view=embedded`,
     {},
     identityHints,
   )) as GalaxyResponse
@@ -817,6 +856,7 @@ function deriveStatusFromGalaxy(account: ConnectedAccount, galaxy: GalaxyRespons
     last_post_text:
       String((currentNode as any)?.label || '').trim() ||
       String((currentNode as any)?.url || '').trim() ||
+      String((currentNode as any)?.id || '').trim() ||
       null,
     last_action_at:
       typeof galaxy.meta?.last_action_at === 'string' ? galaxy.meta.last_action_at : null,
@@ -951,7 +991,7 @@ async function fetchLaneStatusMap(
 
       try {
         const galaxyJson = (await fetchJsonOrThrow(
-          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${account.id}`,
+          `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&connected_account_id=${account.id}&view=embedded`,
           {},
           identityHints,
         )) as GalaxyResponse
@@ -1091,10 +1131,12 @@ function DashboardPageClient() {
     userId: number | null
     fetchedAt: number
     snapshot: GalaxyResponse | null
+    etag: string | null
   }>({
     userId: null,
     fetchedAt: 0,
     snapshot: null,
+    etag: null,
   })
   const previousDocumentVisibleRef = useRef(documentVisible)
   const previousStardenVisibleForRefreshRef = useRef(false)
@@ -1686,10 +1728,11 @@ function DashboardPageClient() {
             refreshGalaxyThisPass
               ? canReuseGalaxySnapshot
                 ? Promise.resolve(cachedGalaxy.snapshot)
-                : fetchJsonOrThrow(
-                    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-                    {},
+                : fetchGalaxyJsonOrReuse(
+                    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true&view=embedded`,
                     identityHints,
+                    cachedGalaxy.snapshot,
+                    invalidateGalaxyCacheThisPass ? null : cachedGalaxy.etag,
                   )
               : Promise.resolve(null),
           ])
@@ -1701,13 +1744,21 @@ function DashboardPageClient() {
           let discoveredAccounts: ConnectedAccount[] = []
           let galaxySnapshot: GalaxyResponse | null = null
           if (refreshGalaxyThisPass && galaxyResult.status === 'fulfilled' && galaxyResult.value) {
-            galaxySnapshot = galaxyResult.value as GalaxyResponse
-            if (!canReuseGalaxySnapshot) {
-              galaxySnapshotCacheRef.current = {
-                userId,
-                fetchedAt: Date.now(),
-                snapshot: galaxySnapshot,
+            const galaxyPayload = galaxyResult.value as
+              | GalaxyResponse
+              | { json: GalaxyResponse; etag: string | null; reused: boolean }
+            if ('json' in galaxyPayload) {
+              galaxySnapshot = galaxyPayload.json
+              if (!canReuseGalaxySnapshot) {
+                galaxySnapshotCacheRef.current = {
+                  userId,
+                  fetchedAt: Date.now(),
+                  snapshot: galaxyPayload.json,
+                  etag: galaxyPayload.etag,
+                }
               }
+            } else {
+              galaxySnapshot = galaxyPayload
             }
             discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
               ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))

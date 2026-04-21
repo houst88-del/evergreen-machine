@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
@@ -11,6 +14,8 @@ from app.core.security import verify_token
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 
 router = APIRouter(prefix="/api/galaxy", tags=["galaxy"])
+
+EMBEDDED_LIMIT = 360
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -459,10 +464,12 @@ def _aggregate_unified_metadata(
 
 @router.get("")
 def get_galaxy(
+    request: Request,
     user_id: int = Query(default=1, ge=1),
     connected_account_id: int | None = Query(default=None),
     unified: bool = Query(default=False),
     limit: int = Query(default=2000, ge=1, le=5000),
+    view: str = Query(default="full"),
     authorization: str | None = Header(default=None),
     x_evergreen_email: str | None = Header(default=None),
     x_evergreen_handle: str | None = Header(default=None),
@@ -473,8 +480,10 @@ def get_galaxy(
             db, authorization, user_id, x_evergreen_email, x_evergreen_handle
         )
         accounts = _fetch_accounts_for_mode(db, resolved_user_id, connected_account_id, unified)
+        embedded_view = str(view or "").strip().lower() == "embedded"
+        effective_limit = min(limit, EMBEDDED_LIMIT) if embedded_view else limit
         if not accounts:
-            return {
+            payload = {
                 "nodes": [],
                 "meta": {
                     "user_id": resolved_user_id,
@@ -488,6 +497,12 @@ def get_galaxy(
                     "metadata": {},
                 },
             }
+            etag = hashlib.sha1(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if request.headers.get("if-none-match", "").strip('"') == etag:
+                return Response(status_code=304, headers={"ETag": f'"{etag}"'})
+            return JSONResponse(content=payload, headers={"ETag": f'"{etag}"'})
 
         account_map = {account.id: account for account in accounts if account is not None}
         account_ids = list(account_map.keys())
@@ -496,7 +511,7 @@ def get_galaxy(
         if account_ids:
             query = query.filter(Post.connected_account_id.in_(account_ids))
 
-        posts = query.order_by(Post.score.desc(), Post.id.asc()).limit(limit).all()
+        posts = query.order_by(Post.score.desc(), Post.id.asc()).limit(effective_limit).all()
         percentile_map = _score_percentile_map(
             [_safe_float(getattr(post, "score", 0), 0.0) for post in posts]
         )
@@ -609,42 +624,73 @@ def get_galaxy(
             else:
                 tier = "outer_arm"
 
-            nodes.append(
-                {
+            node = {
                     "id": str(getattr(post, "provider_post_id", None) or post.id),
-                    "post_id": post.id,
-                    "url": _extract_url(post, account),
-                    "label": _extract_label(post, account),
                     "score": score,
-                    "normalized_score": round(normalized_score, 2),
-                    "score_percentile": round(percentile, 4),
-                    "gravity": gravity,
-                    "tier": tier,
-                    "cold_archive": cold_archive,
-                    "archetype": _infer_archetype(post),
-                    "revival_score": revival_score,
-                    "refresh_count": refresh_count,
-                    "gravity_score": gravity_score,
-                    "predicted_velocity": predicted_velocity,
-                    "archive_signal": archive_signal,
-                    "pair_partner_id": _pair_partner_id(post),
-                    "selection_strategy": _selection_strategy(post, autopilot),
-                    "selection_reason": _selection_reason(post, autopilot),
-                    "state": getattr(post, "state", "") or "unknown",
-                    "connected_account_id": getattr(post, "connected_account_id", None),
-                    "provider": getattr(account, "provider", None) or "x",
-                    "handle": getattr(account, "handle", None) or "",
                     "x": (idx % 36),
                     "y": (idx // 36),
+                    "provider": getattr(account, "provider", None) or "x",
+                    "archetype": _infer_archetype(post),
+                    "predicted_velocity": predicted_velocity,
                     "candidate": candidate,
-                    "current_cycle": current_cycle,
-                    "last_resurfaced_at": (
-                        post.last_resurfaced_at.isoformat()
-                        if getattr(post, "last_resurfaced_at", None)
-                        else None
-                    ),
                 }
-            )
+
+            if embedded_view:
+                node.update(
+                    {
+                        "url": _extract_url(post, account),
+                        "label": _extract_label(post, account),
+                        "normalized_score": round(normalized_score, 2),
+                        "gravity": gravity,
+                        "tier": tier,
+                        "cold_archive": cold_archive,
+                        "revival_score": revival_score,
+                        "refresh_count": refresh_count,
+                        "gravity_score": gravity_score,
+                        "archive_signal": archive_signal,
+                        "selection_strategy": _selection_strategy(post, autopilot),
+                        "selection_reason": _selection_reason(post, autopilot),
+                        "connected_account_id": getattr(post, "connected_account_id", None),
+                        "handle": getattr(account, "handle", None) or "",
+                        "current_cycle": current_cycle,
+                        "last_resurfaced_at": (
+                            post.last_resurfaced_at.isoformat()
+                            if getattr(post, "last_resurfaced_at", None)
+                            else None
+                        ),
+                    }
+                )
+            else:
+                node.update(
+                    {
+                        "post_id": post.id,
+                        "url": _extract_url(post, account),
+                        "label": _extract_label(post, account),
+                        "normalized_score": round(normalized_score, 2),
+                        "score_percentile": round(percentile, 4),
+                        "gravity": gravity,
+                        "tier": tier,
+                        "cold_archive": cold_archive,
+                        "revival_score": revival_score,
+                        "refresh_count": refresh_count,
+                        "gravity_score": gravity_score,
+                        "archive_signal": archive_signal,
+                        "pair_partner_id": _pair_partner_id(post),
+                        "selection_strategy": _selection_strategy(post, autopilot),
+                        "selection_reason": _selection_reason(post, autopilot),
+                        "state": getattr(post, "state", "") or "unknown",
+                        "connected_account_id": getattr(post, "connected_account_id", None),
+                        "handle": getattr(account, "handle", None) or "",
+                        "current_cycle": current_cycle,
+                        "last_resurfaced_at": (
+                            post.last_resurfaced_at.isoformat()
+                            if getattr(post, "last_resurfaced_at", None)
+                            else None
+                        ),
+                    }
+                )
+
+            nodes.append(node)
 
         if unified:
             metadata = _aggregate_unified_metadata(autopilots, next_cycle_at, last_action_at)
@@ -652,7 +698,7 @@ def get_galaxy(
             selected_autopilot = autopilot_map.get(account_ids[0]) if account_ids else None
             metadata = _serialize_autopilot_metadata(selected_autopilot)
 
-        return {
+        payload = {
             "nodes": nodes,
             "meta": {
                 "user_id": resolved_user_id,
@@ -667,5 +713,11 @@ def get_galaxy(
                 "metadata": metadata,
             },
         }
+        etag = hashlib.sha1(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if request.headers.get("if-none-match", "").strip('"') == etag:
+            return Response(status_code=304, headers={"ETag": f'"{etag}"'})
+        return JSONResponse(content=payload, headers={"ETag": f'"{etag}"'})
     finally:
         db.close()
