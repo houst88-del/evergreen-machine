@@ -98,6 +98,12 @@ type GalaxyPageProps = {
 const MAX_EMBEDDED_STARS = 360;
 const MAX_STANDALONE_STARS = 1200;
 const MAX_REPLAY_FRAMES = 10;
+const DEV_COST_SAVER_MODE = process.env.NODE_ENV !== "production";
+const PROD_REFRESH_INTERVAL_MS = 15000;
+const DEV_REFRESH_INTERVAL_MS = 30000;
+const SURFACE_REFRESH_INTERVAL_MS = DEV_COST_SAVER_MODE
+  ? DEV_REFRESH_INTERVAL_MS
+  : PROD_REFRESH_INTERVAL_MS;
 const FUTURE_SCOPE_PLATFORMS = [
   "Instagram",
   "TikTok",
@@ -669,6 +675,11 @@ export function GalaxySurface({
   const [documentVisible, setDocumentVisible] = useState(
     typeof document === "undefined" ? true : document.visibilityState === "visible"
   );
+  const lastStandaloneRefreshAtRef = useRef({
+    accounts: 0,
+    statuses: 0,
+    galaxy: 0,
+  });
 
   useEffect(() => {
     if (embedded || typeof window === "undefined") return;
@@ -765,6 +776,20 @@ export function GalaxySurface({
   }, [embedded]);
 
   const surfaceActive = documentVisible && surfaceInView;
+
+  function canRunStandaloneRefresh(kind: "accounts" | "statuses" | "galaxy", force = false) {
+    if (embeddedSnapshotMode) return false;
+    if (!surfaceActive && !force) return false;
+
+    const now = Date.now();
+    const lastAt = lastStandaloneRefreshAtRef.current[kind];
+    if (!force && now - lastAt < SURFACE_REFRESH_INTERVAL_MS) {
+      return false;
+    }
+
+    lastStandaloneRefreshAtRef.current[kind] = now;
+    return true;
+  }
 
   useEffect(() => {
     visibleGalaxyRef.current = galaxyScope === selected ? galaxy : { nodes: [], meta: {} };
@@ -884,9 +909,12 @@ export function GalaxySurface({
   useEffect(() => {
     if (!userId) return;
     if (embeddedSnapshotMode) return;
+    if (!surfaceActive) return;
 
     let cancelled = false;
-    async function loadAccounts() {
+    async function loadAccounts(force = false) {
+      if (!canRunStandaloneRefresh("accounts", force)) return;
+
       try {
         const json = await fetchJsonOrThrow(
           `/api/connected-accounts?user_id=${userId}`,
@@ -925,8 +953,10 @@ export function GalaxySurface({
         }
       }
     }
-    loadAccounts();
-    const id = window.setInterval(loadAccounts, 15000);
+    loadAccounts(true);
+    const id = window.setInterval(() => {
+      void loadAccounts();
+    }, SURFACE_REFRESH_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -936,9 +966,12 @@ export function GalaxySurface({
   useEffect(() => {
     if (!userId) return;
     if (embeddedSnapshotMode) return;
+    if (!surfaceActive) return;
 
     let cancelled = false;
-    async function loadStatuses() {
+    async function loadStatuses(force = false) {
+      if (!canRunStandaloneRefresh("statuses", force)) return;
+
       try {
         const out: Record<number, DashboardStatus> = {};
         const results = await Promise.allSettled(
@@ -965,8 +998,12 @@ export function GalaxySurface({
         // ignore
       }
     }
-    if (accounts.length) loadStatuses();
-    const id = window.setInterval(loadStatuses, 12000);
+    if (accounts.length) {
+      void loadStatuses(true);
+    }
+    const id = window.setInterval(() => {
+      void loadStatuses();
+    }, SURFACE_REFRESH_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -1002,10 +1039,13 @@ export function GalaxySurface({
       setError("");
       return;
     }
+    if (!surfaceActive) return;
 
     let cancelled = false;
     setGalaxyScope("__loading__");
-    async function loadGalaxy() {
+    async function loadGalaxy(force = false) {
+      if (!canRunStandaloneRefresh("galaxy", force)) return;
+
       try {
         const requestedSelection = selected;
         const qs =
@@ -1033,8 +1073,10 @@ export function GalaxySurface({
         }
       }
     }
-    loadGalaxy();
-    const id = window.setInterval(loadGalaxy, 10000);
+    void loadGalaxy(true);
+    const id = window.setInterval(() => {
+      void loadGalaxy();
+    }, SURFACE_REFRESH_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);

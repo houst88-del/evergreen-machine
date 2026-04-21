@@ -185,7 +185,14 @@ type IdentityHints = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
-const MISSION_REFRESH_INTERVAL_MS = 8000
+const DEV_COST_SAVER_MODE = process.env.NODE_ENV !== 'production'
+const PROD_REFRESH_INTERVAL_MS = 15000
+const DEV_REFRESH_INTERVAL_MS = 30000
+const MISSION_REFRESH_INTERVAL_MS = DEV_COST_SAVER_MODE
+  ? DEV_REFRESH_INTERVAL_MS
+  : PROD_REFRESH_INTERVAL_MS
+const MIN_REFRESH_INTERVAL_MS = MISSION_REFRESH_INTERVAL_MS
+const GALAXY_SNAPSHOT_TTL_MS = DEV_COST_SAVER_MODE ? 30000 : 20000
 const POST_ACTION_REFRESH_DELAY_MS = 1500
 
 function inferHealthyLane(status?: AccountStatus | null) {
@@ -954,6 +961,10 @@ function DashboardPageClient() {
   const [blueskyAppPasswordInput, setBlueskyAppPasswordInput] = useState('')
   const [blueskyHelperOpen, setBlueskyHelperOpen] = useState(false)
   const [blueskyFormError, setBlueskyFormError] = useState('')
+  const [documentVisible, setDocumentVisible] = useState(
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  )
+  const [stardenInView, setStardenInView] = useState(false)
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
   const [stardenPrimed, setStardenPrimed] = useState(false)
   const emptyBootstrapRefreshRef = useRef(false)
@@ -967,9 +978,31 @@ function DashboardPageClient() {
   const missionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const pendingMissionRefreshRef = useRef(false)
   const pendingGalaxyRefreshRef = useRef(false)
+  const pendingGalaxyInvalidateRef = useRef(false)
   const subscriptionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const followupRefreshTimeoutRef = useRef<number | null>(null)
   const trialStartPromiseRef = useRef<Promise<boolean> | null>(null)
+  const documentVisibleRef = useRef(documentVisible)
+  const stardenVisibleForRefreshRef = useRef(false)
+  const lastMissionRefreshStartedAtRef = useRef(0)
+  const scheduledMissionRefreshTimeoutRef = useRef<number | null>(null)
+  const scheduledMissionRefreshAtRef = useRef<number | null>(null)
+  const queuedMissionRefreshOptionsRef = useRef({
+    refreshGalaxy: false,
+    force: false,
+    invalidateGalaxyCache: false,
+  })
+  const galaxySnapshotCacheRef = useRef<{
+    userId: number | null
+    fetchedAt: number
+    snapshot: GalaxyResponse | null
+  }>({
+    userId: null,
+    fetchedAt: 0,
+    snapshot: null,
+  })
+  const previousDocumentVisibleRef = useRef(documentVisible)
+  const previousStardenVisibleForRefreshRef = useRef(false)
 
   useEffect(() => {
     missionDataRef.current = {
@@ -983,6 +1016,16 @@ function DashboardPageClient() {
   useEffect(() => {
     sessionRef.current = session
   }, [session])
+
+  const stardenVisibleForRefresh = documentVisible && stardenInView
+
+  useEffect(() => {
+    documentVisibleRef.current = documentVisible
+  }, [documentVisible])
+
+  useEffect(() => {
+    stardenVisibleForRefreshRef.current = stardenVisibleForRefresh
+  }, [stardenVisibleForRefresh])
 
   function getActiveUserSnapshot() {
     return sessionRef.current?.user || getStoredUser()
@@ -1315,9 +1358,50 @@ function DashboardPageClient() {
 
   function scrollToStarden() {
     setStardenPrimed(true)
-    requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+    requestMissionControlRefresh({
+      followup: true,
+      refreshGalaxy: true,
+      invalidateGalaxyCache: true,
+    })
     stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    const handleVisibilityChange = () => {
+      setDocumentVisible(document.visibilityState === 'visible')
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const node = stardenSectionRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setStardenInView(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        setStardenInView(Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.12))
+      },
+      {
+        threshold: [0, 0.12, 0.25, 0.5],
+        rootMargin: '180px 0px 220px 0px',
+      },
+    )
+
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+    }
+  }, [session?.user])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -1359,9 +1443,16 @@ function DashboardPageClient() {
     }
   }, [session])
 
-  async function refreshMissionControlNow(options?: { refreshGalaxy?: boolean }) {
+  async function refreshMissionControlNow(options?: {
+    refreshGalaxy?: boolean
+    force?: boolean
+    invalidateGalaxyCache?: boolean
+  }) {
     if (options?.refreshGalaxy) {
       pendingGalaxyRefreshRef.current = true
+    }
+    if (options?.invalidateGalaxyCache) {
+      pendingGalaxyInvalidateRef.current = true
     }
 
     if (missionRefreshPromiseRef.current) {
@@ -1369,11 +1460,14 @@ function DashboardPageClient() {
       return missionRefreshPromiseRef.current
     }
 
+    lastMissionRefreshStartedAtRef.current = Date.now()
     missionRefreshPromiseRef.current = (async () => {
       do {
         pendingMissionRefreshRef.current = false
         const refreshGalaxyThisPass = pendingGalaxyRefreshRef.current
         pendingGalaxyRefreshRef.current = false
+        const invalidateGalaxyCacheThisPass = pendingGalaxyInvalidateRef.current
+        pendingGalaxyInvalidateRef.current = false
 
         try {
           let activeUser = getActiveUserSnapshot()
@@ -1401,16 +1495,25 @@ function DashboardPageClient() {
           }
 
           const userId = activeUser.id || 1
+          const cachedGalaxy = galaxySnapshotCacheRef.current
+          const canReuseGalaxySnapshot =
+            refreshGalaxyThisPass &&
+            !invalidateGalaxyCacheThisPass &&
+            cachedGalaxy.userId === userId &&
+            cachedGalaxy.snapshot &&
+            Date.now() - cachedGalaxy.fetchedAt < GALAXY_SNAPSHOT_TTL_MS
           const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
             fetchJsonOrThrow('/api/system-status', {}, identityHints),
             fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
             fetchJsonOrThrow(`/api/jobs?user_id=${userId}`, {}, identityHints),
             refreshGalaxyThisPass
-              ? fetchJsonOrThrow(
-                  `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
-                  {},
-                  identityHints,
-                )
+              ? canReuseGalaxySnapshot
+                ? Promise.resolve(cachedGalaxy.snapshot)
+                : fetchJsonOrThrow(
+                    `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+                    {},
+                    identityHints,
+                  )
               : Promise.resolve(null),
           ])
 
@@ -1422,6 +1525,13 @@ function DashboardPageClient() {
           let galaxySnapshot: GalaxyResponse | null = null
           if (refreshGalaxyThisPass && galaxyResult.status === 'fulfilled' && galaxyResult.value) {
             galaxySnapshot = galaxyResult.value as GalaxyResponse
+            if (!canReuseGalaxySnapshot) {
+              galaxySnapshotCacheRef.current = {
+                userId,
+                fetchedAt: Date.now(),
+                snapshot: galaxySnapshot,
+              }
+            }
             discoveredAccounts = Array.isArray(galaxySnapshot.nodes)
               ? mergeConnectedAccounts([], inferAccountsFromMissionData([], {}, [], galaxySnapshot.nodes))
               : []
@@ -1480,19 +1590,75 @@ function DashboardPageClient() {
     return missionRefreshPromiseRef.current
   }
 
-  function requestMissionControlRefresh(options?: { followup?: boolean; refreshGalaxy?: boolean }) {
-    void refreshMissionControlNow({ refreshGalaxy: options?.refreshGalaxy })
+  function flushQueuedMissionControlRefresh() {
+    if (scheduledMissionRefreshTimeoutRef.current) {
+      window.clearTimeout(scheduledMissionRefreshTimeoutRef.current)
+      scheduledMissionRefreshTimeoutRef.current = null
+    }
+    scheduledMissionRefreshAtRef.current = null
 
-    if (!options?.followup) return
-
-    if (followupRefreshTimeoutRef.current) {
-      window.clearTimeout(followupRefreshTimeoutRef.current)
+    const nextOptions = queuedMissionRefreshOptionsRef.current
+    queuedMissionRefreshOptionsRef.current = {
+      refreshGalaxy: false,
+      force: false,
+      invalidateGalaxyCache: false,
     }
 
-    followupRefreshTimeoutRef.current = window.setTimeout(() => {
-      followupRefreshTimeoutRef.current = null
-      void refreshMissionControlNow({ refreshGalaxy: options.refreshGalaxy })
-    }, POST_ACTION_REFRESH_DELAY_MS)
+    if (!documentVisibleRef.current && !nextOptions.force) {
+      return
+    }
+
+    void refreshMissionControlNow(nextOptions)
+  }
+
+  function requestMissionControlRefresh(options?: {
+    followup?: boolean
+    refreshGalaxy?: boolean
+    force?: boolean
+    invalidateGalaxyCache?: boolean
+  }) {
+    queuedMissionRefreshOptionsRef.current = {
+      refreshGalaxy:
+        queuedMissionRefreshOptionsRef.current.refreshGalaxy || Boolean(options?.refreshGalaxy),
+      force: queuedMissionRefreshOptionsRef.current.force || Boolean(options?.force),
+      invalidateGalaxyCache:
+        queuedMissionRefreshOptionsRef.current.invalidateGalaxyCache ||
+        Boolean(options?.invalidateGalaxyCache || (options?.followup && options?.refreshGalaxy)),
+    }
+
+    if (!documentVisibleRef.current && !options?.force) {
+      return
+    }
+
+    const elapsedSinceLastRefresh = Date.now() - lastMissionRefreshStartedAtRef.current
+    const floorDelay = options?.force
+      ? 0
+      : Math.max(0, MIN_REFRESH_INTERVAL_MS - elapsedSinceLastRefresh)
+    const requestedDelay = options?.followup
+      ? Math.max(POST_ACTION_REFRESH_DELAY_MS, floorDelay)
+      : floorDelay
+
+    if (scheduledMissionRefreshAtRef.current != null) {
+      const nextRunDelay = Math.max(0, scheduledMissionRefreshAtRef.current - Date.now())
+      if (nextRunDelay <= requestedDelay) {
+        return
+      }
+    }
+
+    if (scheduledMissionRefreshTimeoutRef.current) {
+      window.clearTimeout(scheduledMissionRefreshTimeoutRef.current)
+      scheduledMissionRefreshTimeoutRef.current = null
+    }
+
+    if (requestedDelay <= 0) {
+      flushQueuedMissionControlRefresh()
+      return
+    }
+
+    scheduledMissionRefreshAtRef.current = Date.now() + requestedDelay
+    scheduledMissionRefreshTimeoutRef.current = window.setTimeout(() => {
+      flushQueuedMissionControlRefresh()
+    }, requestedDelay)
   }
 
   async function waitForConnectedProvider(
@@ -1565,7 +1731,9 @@ function DashboardPageClient() {
 
     async function loadMissionControl() {
       try {
-        await refreshMissionControlNow({ refreshGalaxy: !missionHydratedOnce })
+        requestMissionControlRefresh({
+          refreshGalaxy: !missionHydratedOnce && stardenVisibleForRefreshRef.current,
+        })
       } finally {
         if (mounted) {
           setMissionHydratedOnce(true)
@@ -1576,18 +1744,13 @@ function DashboardPageClient() {
     loadMissionControl()
     const id = window.setInterval(loadMissionControl, MISSION_REFRESH_INTERVAL_MS)
 
-    function handleVisibilityRefresh() {
-      if (document.visibilityState === 'visible') {
-        requestMissionControlRefresh()
-      }
-    }
-
     function handleFocusRefresh() {
-      requestMissionControlRefresh()
+      requestMissionControlRefresh({
+        refreshGalaxy: stardenVisibleForRefreshRef.current,
+      })
     }
 
     window.addEventListener('focus', handleFocusRefresh)
-    document.addEventListener('visibilitychange', handleVisibilityRefresh)
 
     return () => {
       mounted = false
@@ -1596,10 +1759,46 @@ function DashboardPageClient() {
         window.clearTimeout(followupRefreshTimeoutRef.current)
         followupRefreshTimeoutRef.current = null
       }
+      if (scheduledMissionRefreshTimeoutRef.current) {
+        window.clearTimeout(scheduledMissionRefreshTimeoutRef.current)
+        scheduledMissionRefreshTimeoutRef.current = null
+      }
       window.removeEventListener('focus', handleFocusRefresh)
-      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
   }, [missionHydratedOnce, session])
+
+  useEffect(() => {
+    const wasVisible = previousDocumentVisibleRef.current
+    previousDocumentVisibleRef.current = documentVisible
+
+    if (!documentVisible) {
+      if (scheduledMissionRefreshTimeoutRef.current) {
+        window.clearTimeout(scheduledMissionRefreshTimeoutRef.current)
+        scheduledMissionRefreshTimeoutRef.current = null
+      }
+      scheduledMissionRefreshAtRef.current = null
+      return
+    }
+
+    if (!wasVisible) {
+      requestMissionControlRefresh({
+        refreshGalaxy: stardenVisibleForRefreshRef.current,
+        invalidateGalaxyCache: stardenVisibleForRefreshRef.current,
+      })
+    }
+  }, [documentVisible])
+
+  useEffect(() => {
+    const wasVisibleForRefresh = previousStardenVisibleForRefreshRef.current
+    previousStardenVisibleForRefreshRef.current = stardenVisibleForRefresh
+
+    if (!stardenVisibleForRefresh || wasVisibleForRefresh) return
+
+    requestMissionControlRefresh({
+      refreshGalaxy: true,
+      invalidateGalaxyCache: true,
+    })
+  }, [stardenVisibleForRefresh])
 
   useEffect(() => {
     if (!stardenPrimed) return
@@ -1686,7 +1885,11 @@ function DashboardPageClient() {
     if (emptyBootstrapRefreshRef.current) return
     emptyBootstrapRefreshRef.current = true
 
-    requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+    requestMissionControlRefresh({
+      followup: true,
+      refreshGalaxy: stardenVisibleForRefreshRef.current,
+      invalidateGalaxyCache: stardenVisibleForRefreshRef.current,
+    })
   }, [jobs.length, loading, missionGalaxy.nodes, missionHydratedOnce, resolvedAccounts.length, session, statusMap])
 
   const summary = useMemo(() => {
