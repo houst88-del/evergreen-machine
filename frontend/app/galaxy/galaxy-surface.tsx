@@ -848,6 +848,7 @@ export function GalaxySurface({
     setGalaxyScope("__loading__");
     async function loadGalaxy() {
       let scopedUnifiedFallback: GalaxyResponse | null = null;
+      let liveUnifiedFallback: GalaxyResponse | null = null;
       if (embedded && embeddedUnifiedGalaxy) {
         const unifiedGalaxy = normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy);
         if (Array.isArray(unifiedGalaxy.nodes) && unifiedGalaxy.nodes.length > 0) {
@@ -865,6 +866,42 @@ export function GalaxySurface({
           if (selected === "unified") {
             return;
           }
+        }
+      }
+
+      if (embedded && !scopedUnifiedFallback) {
+        try {
+          const liveUnifiedJson = (await fetchJsonOrThrow(
+            `?user_id=${encodeURIComponent(String(userId))}&unified=true`.startsWith("?")
+              ? `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`
+              : `/api/galaxy?user_id=${encodeURIComponent(String(userId))}&unified=true`,
+            {},
+            identityHints
+          )) as GalaxyResponse;
+
+          const normalizedUnified = {
+            nodes: Array.isArray(liveUnifiedJson.nodes) ? liveUnifiedJson.nodes : [],
+            meta: liveUnifiedJson.meta || {},
+          };
+
+          if (normalizedUnified.nodes.length > 0) {
+            liveUnifiedFallback =
+              selected === "unified"
+                ? normalizedUnified
+                : scopedGalaxyFromUnified(normalizedUnified, selected, accounts, statusMap);
+
+            if (liveUnifiedFallback && Array.isArray(liveUnifiedFallback.nodes)) {
+              setGalaxy(liveUnifiedFallback);
+              setGalaxyScope(selected);
+              setError("");
+
+              if (selected === "unified" || liveUnifiedFallback.nodes.length > 0) {
+                return;
+              }
+            }
+          }
+        } catch {
+          // continue to the narrower scoped fetch below
         }
       }
 
@@ -887,6 +924,17 @@ export function GalaxySurface({
             nextGalaxy.nodes.length === 0
           ) {
             setGalaxy(scopedUnifiedFallback);
+            setGalaxyScope(selected);
+            setError("");
+            return;
+          }
+          if (
+            liveUnifiedFallback &&
+            Array.isArray(liveUnifiedFallback.nodes) &&
+            liveUnifiedFallback.nodes.length > 0 &&
+            nextGalaxy.nodes.length === 0
+          ) {
+            setGalaxy(liveUnifiedFallback);
             setGalaxyScope(selected);
             setError("");
             return;

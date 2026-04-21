@@ -1194,6 +1194,8 @@ function DashboardPageClient() {
 
   function scrollToStarden() {
     setStardenPrimed(true)
+    void refreshMissionControlNow()
+    scheduleFollowupRefreshes()
     stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
