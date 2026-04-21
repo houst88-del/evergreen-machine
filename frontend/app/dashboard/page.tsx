@@ -2298,7 +2298,7 @@ function DashboardPageClient() {
             eyebrow: 'Access Window Complete',
             title: 'Autopilot is paused until you subscribe.',
             body: 'You can still sign in, connect lanes, and explore the observatory, but Evergreen will stay quiet until you choose a plan.',
-            meta: 'Start Creator for a broader picture or Pro for full history and replay depth.',
+            meta: 'Start membership to keep Evergreen and Starden fully open.',
             tone: 'warn' as const,
           }
         : null
@@ -2535,11 +2535,8 @@ function DashboardPageClient() {
               {subscriptionBanner.meta}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
-              <a className="btn" href={STRIPE_LINKS.standard}>
-                Start Creator
-              </a>
-              <a className="btn primary" href={STRIPE_LINKS.pro}>
-                Start Pro
+              <a className="btn primary" href={STRIPE_LINKS.standard}>
+                Start membership
               </a>
             </div>
           </section>
@@ -2585,8 +2582,8 @@ function DashboardPageClient() {
               <div style={{ color: 'rgba(236,253,245,0.72)', maxWidth: 720 }}>
                 Move top to bottom: connect your channels, turn on the engine, then monitor the refresh flow.
                 {standardFriendly
-                  ? ' Creator keeps one lane simple while still giving you the full field.'
-                  : ' Pro lets both lanes run side by side when you want a broader observatory.'}
+                  ? ' Membership keeps one lane simple while still giving you the full field.'
+                  : ' Membership lets both lanes run side by side when you want a broader observatory.'}
               </div>
             </div>
 

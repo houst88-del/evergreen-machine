@@ -187,11 +187,9 @@ def subscription_plan_label(price_id: str | None) -> str | None:
     raw = str(price_id or "").strip().lower()
     if not raw:
         return None
-    if "pro" in raw:
-        return "Pro"
-    if "standard" in raw:
-        return "Standard"
-    return "Paid"
+    if "pro" in raw or "standard" in raw:
+        return "Membership"
+    return "Paid membership"
 
 
 def migrate_user_records(db, source: User, target: User) -> None:

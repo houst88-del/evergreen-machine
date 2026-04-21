@@ -8,39 +8,22 @@ import { getStoredUser, me } from './lib/auth'
 
 const pricingTiers = [
   {
-    name: 'Creator',
-    eyebrow: 'Most Popular',
+    name: 'Membership',
+    eyebrow: 'Full Access',
     price: PLANS.standard.price,
     cadence: PLANS.standard.cadence,
-    description: 'See the full picture.',
-    cta: 'Start Creator',
+    description: 'Everything in one calm system.',
+    cta: 'Start membership',
     href: PLANS.standard.href,
     features: [
-      'One full content system',
+      '3-day trial',
       'Evergreen refresh + Starden',
       'Full Pattern Summary',
-      'Temporal Echo',
+      'Temporal Echo + Replay Memory',
       'Why This Star',
-      '3-day trial',
+      'One full content system',
     ],
-    note: 'Keep the full system running for $19/month.',
-  },
-  {
-    name: 'Pro',
-    eyebrow: 'Premium',
-    price: PLANS.pro.price,
-    cadence: PLANS.pro.cadence,
-    description: 'For creators who rely on timing and patterns.',
-    cta: 'Start Pro',
-    href: PLANS.pro.href,
-    features: [
-      'Multiple accounts',
-      'Full replay memory',
-      'Extended history window',
-      'Advanced pattern insight',
-      'Priority access to new layers',
-    ],
-    note: 'Track patterns over time and anticipate what comes next.',
+    note: 'Keep the full system open for $19.99/month.',
   },
 ] as const
 
@@ -120,8 +103,8 @@ export default function HomePage() {
             <Link className="btn" href="/login">
               Log In
             </Link>
-            <Link className="btn primary" href={PLANS.pro.href}>
-              {PLANS.pro.cta}
+            <Link className="btn primary" href={PLANS.standard.href}>
+              {PLANS.standard.cta}
             </Link>
           </div>
         </header>
@@ -148,7 +131,7 @@ export default function HomePage() {
             </div>
 
             <div className="mission-note">
-              Creator includes the full refresh engine and Starden.
+              Membership includes the full refresh engine and Starden.
             </div>
           </div>
 
@@ -184,18 +167,18 @@ export default function HomePage() {
             <p>Follow momentum, next-bloom timing, and recent pulses in one calm surface.</p>
           </div>
           <div className="mini-card">
-            <div className="small caps">Upgrade when you need depth</div>
-            <p>Start with the full core system, then unlock broader replay and scope when you want more context.</p>
+            <div className="small caps">One clear membership</div>
+            <p>Start with a 3-day trial, then keep the full system running for one simple monthly price.</p>
           </div>
         </section>
 
         <section className="pricing-section" id="pricing">
           <div className="section-heading">
             <div className="tag">Pricing</div>
-            <h2>Start with the full system. Go deeper when you&apos;re ready.</h2>
+            <h2>Start with the full system.</h2>
             <p>
-              Creator gives you the full Evergreen + Starden experience with a 3-day trial.
-              Pro unlocks more time, more replay, and a wider observatory.
+              Start with a 3-day trial, then continue with one simple membership that keeps
+              Evergreen and Starden fully open.
             </p>
           </div>
 
@@ -250,9 +233,9 @@ export default function HomePage() {
           <article className="card">
             <h2>Go deeper when you&apos;re ready</h2>
             <div className="feed">
-              <div className="feedItem">Start with a 3-day trial of the full Creator experience.</div>
-              <div className="feedItem">Upgrade when you want more time, more context, and more replay depth.</div>
-              <div className="feedItem">Creator keeps the full engine and observatory running for $19/month.</div>
+              <div className="feedItem">Start with a 3-day trial of the full Evergreen + Starden experience.</div>
+              <div className="feedItem">When the trial ends, one membership keeps your view of the system open.</div>
+              <div className="feedItem">Membership keeps the full engine and observatory running for $19.99/month.</div>
             </div>
           </article>
         </section>
