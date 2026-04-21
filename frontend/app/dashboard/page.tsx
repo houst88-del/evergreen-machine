@@ -1200,24 +1200,6 @@ function DashboardPageClient() {
   }
 
   useEffect(() => {
-    const section = stardenSectionRef.current
-    if (!section || stardenPrimed) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        if (!entry?.isIntersecting) return
-        setStardenPrimed(true)
-        observer.disconnect()
-      },
-      { rootMargin: '360px 0px' }
-    )
-
-    observer.observe(section)
-    return () => observer.disconnect()
-  }, [stardenPrimed])
-
-  useEffect(() => {
     const id = window.setInterval(() => {
       setNowMs(Date.now())
     }, 1000)
@@ -2749,12 +2731,18 @@ function DashboardPageClient() {
             >
               <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
               <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
-                Constellation preview loads when you reach it
+                Load Starden when you want the live constellation
               </div>
               <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
-                Mission Control stays light on first paint, then the live galaxy wakes up as you scroll here or use
-                Jump to Starden.
+                Mission Control stays light on first paint. Use Jump to Starden or the button below to wake up the
+                live galaxy only when you want it.
               </div>
+              <button
+                className="btn primary"
+                onClick={scrollToStarden}
+              >
+                Load live Starden
+              </button>
             </div>
           )}
         </section>
