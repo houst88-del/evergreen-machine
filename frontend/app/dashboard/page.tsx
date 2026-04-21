@@ -185,6 +185,9 @@ type IdentityHints = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
+const MISSION_REFRESH_INTERVAL_MS = 8000
+const POST_ACTION_REFRESH_DELAY_MS = 1500
+
 function inferHealthyLane(status?: AccountStatus | null) {
   if (!status) return false
   if (Boolean(status.running)) return true
@@ -958,6 +961,7 @@ function DashboardPageClient() {
   const missionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const pendingMissionRefreshRef = useRef(false)
   const subscriptionRefreshPromiseRef = useRef<Promise<void> | null>(null)
+  const followupRefreshTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     missionDataRef.current = {
@@ -1194,8 +1198,7 @@ function DashboardPageClient() {
 
   function scrollToStarden() {
     setStardenPrimed(true)
-    void refreshMissionControlNow()
-    scheduleFollowupRefreshes()
+    requestMissionControlRefresh({ followup: true })
     stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -1219,15 +1222,13 @@ function DashboardPageClient() {
     function handleAuthChanged() {
       const activeUser = getActiveUserSnapshot()
       if (activeUser) {
-        void refreshMissionControlNow()
-        scheduleFollowupRefreshes()
+        requestMissionControlRefresh()
       }
 
       refreshSessionUser()
         .then((latest) => {
           if (latest?.user && !activeUser) {
-            void refreshMissionControlNow()
-            scheduleFollowupRefreshes()
+            requestMissionControlRefresh()
           }
         })
         .catch(() => {
@@ -1354,10 +1355,19 @@ function DashboardPageClient() {
     return missionRefreshPromiseRef.current
   }
 
-  function scheduleFollowupRefreshes() {
-    window.setTimeout(refreshMissionControlNow, 1200)
-    window.setTimeout(refreshMissionControlNow, 4000)
-    window.setTimeout(refreshMissionControlNow, 8000)
+  function requestMissionControlRefresh(options?: { followup?: boolean }) {
+    void refreshMissionControlNow()
+
+    if (!options?.followup) return
+
+    if (followupRefreshTimeoutRef.current) {
+      window.clearTimeout(followupRefreshTimeoutRef.current)
+    }
+
+    followupRefreshTimeoutRef.current = window.setTimeout(() => {
+      followupRefreshTimeoutRef.current = null
+      void refreshMissionControlNow()
+    }, POST_ACTION_REFRESH_DELAY_MS)
   }
 
   async function waitForConnectedProvider(
@@ -1439,23 +1449,29 @@ function DashboardPageClient() {
     }
 
     loadMissionControl()
-    window.setTimeout(loadMissionControl, 1200)
-    window.setTimeout(loadMissionControl, 3500)
-    const id = window.setInterval(loadMissionControl, 6000)
+    const id = window.setInterval(loadMissionControl, MISSION_REFRESH_INTERVAL_MS)
 
     function handleVisibilityRefresh() {
       if (document.visibilityState === 'visible') {
-        loadMissionControl()
+        requestMissionControlRefresh()
       }
     }
 
-    window.addEventListener('focus', loadMissionControl)
+    function handleFocusRefresh() {
+      requestMissionControlRefresh()
+    }
+
+    window.addEventListener('focus', handleFocusRefresh)
     document.addEventListener('visibilitychange', handleVisibilityRefresh)
 
     return () => {
       mounted = false
       window.clearInterval(id)
-      window.removeEventListener('focus', loadMissionControl)
+      if (followupRefreshTimeoutRef.current) {
+        window.clearTimeout(followupRefreshTimeoutRef.current)
+        followupRefreshTimeoutRef.current = null
+      }
+      window.removeEventListener('focus', handleFocusRefresh)
       document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
   }, [session])
@@ -1466,13 +1482,12 @@ function DashboardPageClient() {
     if (params.get('provider') === 'x' && params.get('connected') === '1' && session?.user) {
       const connectedAccountId = Number(params.get('connected_account_id') || 0) || null
       setActionMessage('Finalizing X connection…')
-      void refreshMissionControlNow()
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
       ;(async () => {
         const connected = await waitForConnectedProvider('x', { connectedAccountId })
         if (connected) {
           setActionMessage('X account connected.')
-          scheduleFollowupRefreshes()
+          requestMissionControlRefresh({ followup: true })
         } else {
           setError('X connected, but the dashboard is still syncing. Refresh once in a few seconds.')
         }
@@ -1524,13 +1539,7 @@ function DashboardPageClient() {
     if (emptyBootstrapRefreshRef.current) return
     emptyBootstrapRefreshRef.current = true
 
-    void refreshMissionControlNow()
-    window.setTimeout(() => {
-      void refreshMissionControlNow()
-    }, 1200)
-    window.setTimeout(() => {
-      void refreshMissionControlNow()
-    }, 3200)
+    requestMissionControlRefresh({ followup: true })
   }, [jobs.length, loading, missionGalaxy.nodes, missionHydratedOnce, resolvedAccounts.length, session, statusMap])
 
   const summary = useMemo(() => {
@@ -1798,7 +1807,7 @@ function DashboardPageClient() {
           ? `Refresh job queued for ${accountHandle || 'account'}.`
           : 'Refresh job queued.'
       )
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
     } finally {
@@ -1833,7 +1842,7 @@ function DashboardPageClient() {
           ? `Analytics job queued for ${accountHandle || 'account'}.`
           : 'Analytics job queued.'
       )
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
     } finally {
@@ -1897,7 +1906,7 @@ function DashboardPageClient() {
           ? `Connected Bluesky for ${json.account_handle || handle}.`
           : `Connected Bluesky for ${json.account_handle || handle}. Finalizing lane…`
       )
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
     } finally {
@@ -1928,9 +1937,7 @@ function DashboardPageClient() {
       }
 
       setActionMessage(`Disconnected ${options?.label || json.account_handle || 'account'}.`)
-      await refreshMissionControlNow()
-      window.setTimeout(refreshMissionControlNow, 1500)
-      window.setTimeout(refreshMissionControlNow, 4000)
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not disconnect account')
     } finally {
@@ -1989,7 +1996,7 @@ function DashboardPageClient() {
         },
       }))
       await refreshMissionControlNow()
-      window.setTimeout(refreshMissionControlNow, 2000)
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update autopilot')
     }
@@ -2043,7 +2050,7 @@ function DashboardPageClient() {
         )
       }
       await refreshMissionControlNow()
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update autopilot')
     } finally {
@@ -2099,7 +2106,7 @@ function DashboardPageClient() {
 
       setActionMessage(`Refresh window updated to ${json.pacing_label || mode}.`)
       await refreshMissionControlNow()
-      window.setTimeout(refreshMissionControlNow, 1500)
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update refresh window')
     } finally {
@@ -2132,7 +2139,7 @@ function DashboardPageClient() {
         `${enabled ? 'Enabled' : 'Disabled'} fresh-post protection for ${json.account_handle || 'account'}.`
       )
       await refreshMissionControlNow()
-      scheduleFollowupRefreshes()
+      requestMissionControlRefresh({ followup: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update fresh-post protection')
     } finally {

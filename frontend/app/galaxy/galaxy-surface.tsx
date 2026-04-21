@@ -487,6 +487,7 @@ export function GalaxySurface({
   embeddedUnifiedGalaxy,
 }: GalaxyPageProps = {}) {
   const router = useRouter();
+  const embeddedSnapshotMode = embedded;
   const [userId, setUserId] = useState<number | null>(embeddedUserId);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>(embeddedAccounts || []);
   const [selected, setSelected] = useState<string>("unified");
@@ -682,7 +683,7 @@ export function GalaxySurface({
   }, [embedded, surfaceActive, timeLapseOn]);
 
   useEffect(() => {
-    if (embedded && embeddedUserId) return;
+    if (embeddedSnapshotMode) return;
 
     let cancelled = false;
     async function loadSession() {
@@ -730,12 +731,11 @@ export function GalaxySurface({
       cancelled = true;
       window.removeEventListener("evergreen-auth-changed", loadSession);
     };
-  }, []);
+  }, [embeddedSnapshotMode]);
 
   useEffect(() => {
     if (!userId) return;
-    if (embedded && !surfaceActive) return;
-    if (embedded && embeddedAccounts?.length) return;
+    if (embeddedSnapshotMode) return;
 
     let cancelled = false;
     async function loadAccounts() {
@@ -783,12 +783,11 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [embedded, identityHints, selected, surfaceActive, userId]);
+  }, [embeddedSnapshotMode, identityHints, selected, surfaceActive, userId]);
 
   useEffect(() => {
     if (!userId) return;
-    if (embedded && !surfaceActive) return;
-    if (embedded && embeddedStatusMap && Object.keys(embeddedStatusMap).length) return;
+    if (embeddedSnapshotMode) return;
 
     let cancelled = false;
     async function loadStatuses() {
@@ -824,7 +823,7 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts, embedded, identityHints, surfaceActive, userId]);
+  }, [accounts, embeddedSnapshotMode, identityHints, surfaceActive, userId]);
 
   useEffect(() => {
     if (!embedded) return;
@@ -842,7 +841,21 @@ export function GalaxySurface({
 
   useEffect(() => {
     if (!userId) return;
-    if (embedded && !surfaceActive) return;
+    if (embeddedSnapshotMode) {
+      setGalaxyScope("__loading__");
+
+      const unifiedGalaxy = normalizeEmbeddedGalaxy(embeddedUnifiedGalaxy);
+      const scopedGalaxy = scopedGalaxyFromUnified(unifiedGalaxy, selected, accounts, statusMap);
+      const nextGalaxy =
+        selected === "unified"
+          ? unifiedGalaxy
+          : scopedGalaxy || { nodes: [], meta: {} };
+
+      setGalaxy(nextGalaxy);
+      setGalaxyScope(selected);
+      setError("");
+      return;
+    }
 
     let cancelled = false;
     setGalaxyScope("__loading__");
@@ -983,7 +996,7 @@ export function GalaxySurface({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [accounts, embedded, identityHints, selected, surfaceActive, userId]);
+  }, [accounts, embeddedSnapshotMode, embeddedUnifiedGalaxy, identityHints, selected, statusMap, surfaceActive, userId]);
 
   const visibleGalaxy = useMemo(
     () => (galaxyScope === selected ? galaxy : { nodes: [], meta: {} }),
