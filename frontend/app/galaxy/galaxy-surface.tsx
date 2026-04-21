@@ -1369,39 +1369,88 @@ export function GalaxySurface({
           className="starden-atlas"
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) auto",
+            gridTemplateColumns: "minmax(0, 1.3fr) auto",
             gap: 16,
             alignItems: "start",
             marginBottom: 14,
           }}
         >
-          <div
-            style={{
-              border: "1px solid rgba(110,231,183,0.14)",
-              borderRadius: 24,
-              padding: "12px 16px",
-              background:
-                "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(250,228,120,0.05) 45%, rgba(125,211,252,0.04))",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
-            }}
-          >
+          <div style={{ display: "grid", gap: 12 }}>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                flexWrap: "wrap",
-                marginBottom: 6,
+                border: "1px solid rgba(110,231,183,0.14)",
+                borderRadius: 24,
+                padding: "14px 18px",
+                background:
+                  "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(250,228,120,0.05) 45%, rgba(125,211,252,0.04))",
+                boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
               }}
             >
-              <h1 style={{ fontSize: 34, lineHeight: 1, margin: 0, fontWeight: 700 }}>
-                ✦🌿 Starden
-              </h1>
-              <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
-              <span style={missionBadgeStyle("mint", true)}>🌿 Garden memory</span>
-              <span style={missionBadgeStyle("sky", true)}>
-                {selected === "unified" ? "🌌 Unified canopy" : `🌌 ${selectedLabel}`}
-              </span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  marginBottom: 8,
+                }}
+              >
+                <h1 style={{ fontSize: 40, lineHeight: 1, margin: 0, fontWeight: 700 }}>
+                  ✦🌿 Starden
+                </h1>
+                <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <span style={missionBadgeStyle("mint", true)}>🌿 Garden memory</span>
+                <span style={missionBadgeStyle("sky", true)}>
+                  {selected === "unified" ? "🌌 Unified canopy" : `🌌 ${selectedLabel}`}
+                </span>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(180px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {[
+                ["Living stars", String(workingNodes.length)],
+                ["Active pulse", currentStatus?.running ? "Running" : "Idle"],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 16,
+                    padding: "8px 10px",
+                    background: "rgba(255,255,255,0.03)",
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "rgba(236,253,245,0.56)",
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {value}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1415,16 +1464,12 @@ export function GalaxySurface({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(120px, auto))",
+                gridTemplateColumns: "minmax(180px, auto)",
                 gap: 8,
                 justifyContent: "end",
               }}
             >
-              {[
-                ["Living stars", String(workingNodes.length)],
-                ["Active pulse", currentStatus?.running ? "Running" : "Idle"],
-                ["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"],
-              ].map(([label, value]) => (
+              {[["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"]].map(([label, value]) => (
                 <div
                   key={label}
                   style={{
