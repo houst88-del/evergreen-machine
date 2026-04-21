@@ -2240,15 +2240,15 @@ function DashboardPageClient() {
       ? null
       : connectedLaneCount === 0
       ? {
-          eyebrow: 'First Flight',
-          title: 'Connect your first lane to wake up Evergreen.',
-          body: 'Start with X or Bluesky. Once one lane is linked, Evergreen can import the pool, score the rotation, and get Starden moving.',
+          eyebrow: 'First View',
+          title: 'Start with one lane, then let the field take shape.',
+          body: 'Connect X or Bluesky and Evergreen will import the pool, score the rotation, and give Starden something real to show.',
         }
       : !anyAutopilotRunning
         ? {
             eyebrow: 'Next Move',
-            title: 'Your lanes are ready. Turn on Autopilot when you want Evergreen to begin cycling.',
-            body: 'The worker will keep importing new posts, refreshing scores, and selecting the next pulse from there.',
+            title: 'Your lanes are ready. Let Evergreen begin cycling when you want the field to go live.',
+            body: 'Once Autopilot starts, Mission Control keeps the pool moving and Starden starts naming what is rising, quiet, and likely next.',
           }
         : null
   const standardFriendly = resolvedAccounts.filter(
@@ -2257,48 +2257,48 @@ function DashboardPageClient() {
   const activationSteps = [
     {
       label: 'Connect X',
-      detail: connectedProviders.has('x') ? 'X is linked and ready.' : 'Best first step for Standard.',
+      detail: connectedProviders.has('x') ? 'X is linked and ready.' : 'Best first step for getting the field moving.',
       kind: connectedProviders.has('x') ? 'good' : 'neutral',
     },
     {
       label: 'Connect Bluesky',
       detail: connectedProviders.has('bluesky')
         ? 'Bluesky is linked too.'
-        : 'Optional second lane for Pro.',
+        : 'Add a second lane when you want cross-platform patterns.',
       kind: connectedProviders.has('bluesky') ? 'good' : 'neutral',
     },
     {
       label: 'Start Autopilot',
       detail: !canRunAutopilot
-        ? 'Subscribe after the free trial to keep Evergreen running.'
+        ? 'Upgrade when you want Evergreen to keep cycling on its own.'
         : anyAutopilotRunning
           ? 'At least one lane is live.'
-          : 'Turn on Evergreen after connecting.',
+          : 'Turn on Evergreen once the first lane is ready.',
       kind: !canRunAutopilot ? 'warn' : anyAutopilotRunning ? 'good' : 'warn',
     },
     {
       label: 'Monitor Starden',
       detail: resolvedAccounts.length > 0
-        ? 'Watch selections and refresh timing below.'
-        : 'Starden gets more useful once a lane is connected.',
+        ? 'Watch the field, the pattern summary, and the next likely signal below.'
+        : 'Starden becomes meaningful as soon as one lane is connected.',
       kind: resolvedAccounts.length > 0 ? 'good' : 'neutral',
     },
   ] as const
   const subscriptionBanner =
     subscriptionStatus === 'trialing'
       ? {
-          eyebrow: '1-Day Free Trial',
-          title: 'Autopilot is live while your trial runs.',
-          body: `Your trial gives you one full day to connect a lane, run Evergreen, and explore Starden. Autopilot will pause automatically when the timer ends unless you subscribe.`,
+          eyebrow: 'Free Access Window',
+          title: 'Autopilot is live while your current access window runs.',
+          body: `Use this time to connect a lane, watch the field come alive, and decide whether you want deeper history and broader scope.`,
           meta: trialCountdown ? `Trial ends in ${trialCountdown}.` : 'Trial active now.',
           tone: 'good' as const,
         }
       : subscriptionStatus === 'expired'
         ? {
-            eyebrow: 'Trial Complete',
+            eyebrow: 'Access Window Complete',
             title: 'Autopilot is paused until you subscribe.',
-            body: 'You can still sign in, connect lanes, and look around, but the refresh engine will stay off until you choose a plan.',
-            meta: 'Choose Standard for one lane or Pro for both X and Bluesky.',
+            body: 'You can still sign in, connect lanes, and explore the observatory, but Evergreen will stay quiet until you choose a plan.',
+            meta: 'Start Creator for a broader picture or Pro for full history and replay depth.',
             tone: 'warn' as const,
           }
         : null
@@ -3096,18 +3096,54 @@ function DashboardPageClient() {
             >
               <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
               <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
-                Load Starden when you want the live constellation
+                This is your content as a living system
               </div>
               <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
-                Mission Control stays light on first paint. Use Jump to Starden or the button below to wake up the
-                live galaxy only when you want it.
+                Mission Control stays light on first paint. When you open Starden, you&apos;ll see the field, one likely
+                next signal, and the patterns shaping your rotation.
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  width: '100%',
+                  maxWidth: 720,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  textAlign: 'left',
+                }}
+              >
+                {[
+                  ['Each star is a post in rotation', 'One star is highlighted first so the field feels readable immediately.'],
+                  ['Pattern Summary names what is working', 'You should be able to spot the strongest content behavior at a glance.'],
+                  ['Temporal Echo shows what is active', 'Recent pulses, quiet signals, and next-bloom timing sit on the right rail.'],
+                ].map(([title, body]) => (
+                  <div
+                    key={title}
+                    style={{
+                      borderRadius: 18,
+                      border: '1px solid rgba(52,211,153,0.12)',
+                      background: 'rgba(255,255,255,0.03)',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(236,253,245,0.9)' }}>{title}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: 'rgba(236,253,245,0.62)' }}>
+                      {body}
+                    </div>
+                  </div>
+                ))}
               </div>
               <button
                 className="btn primary"
                 onClick={scrollToStarden}
               >
-                Load live Starden
+                Open Starden
               </button>
+              {resolvedAccounts.length < 2 ? (
+                <div style={{ fontSize: 12, color: 'rgba(236,253,245,0.58)' }}>
+                  Connect another account when you want to see patterns across platforms.
+                </div>
+              ) : null}
             </div>
           )}
         </section>
