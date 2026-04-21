@@ -17,8 +17,32 @@ import {
   setStoredUser,
 } from '../lib/auth'
 import { STRIPE_LINKS } from '../lib/billing'
-import { GalaxySurface } from '../galaxy/galaxy-surface'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
+
+const EmbeddedGalaxySurface = dynamic(
+  () => import('../galaxy/galaxy-surface').then((mod) => mod.GalaxySurface),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        style={{
+          minHeight: 720,
+          borderRadius: 26,
+          border: '1px solid rgba(52,211,153,0.16)',
+          background:
+            'linear-gradient(180deg, rgba(3,18,15,0.96), rgba(2,12,11,0.92))',
+          display: 'grid',
+          placeItems: 'center',
+          color: 'rgba(236,253,245,0.72)',
+          fontSize: 14,
+          letterSpacing: '0.04em',
+        }}
+      >
+        Loading constellation…
+      </div>
+    ),
+  }
+)
 
 type SystemStatus = {
   backend?: { ok?: boolean }
@@ -922,6 +946,7 @@ function DashboardPageClient() {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
+  const [stardenPrimed, setStardenPrimed] = useState(false)
   const emptyBootstrapRefreshRef = useRef(false)
   const missionDataRef = useRef({
     accounts: 0,
@@ -1168,8 +1193,27 @@ function DashboardPageClient() {
   }, [error, loading, router])
 
   function scrollToStarden() {
+    setStardenPrimed(true)
     stardenSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  useEffect(() => {
+    const section = stardenSectionRef.current
+    if (!section || stardenPrimed) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (!entry?.isIntersecting) return
+        setStardenPrimed(true)
+        observer.disconnect()
+      },
+      { rootMargin: '360px 0px' }
+    )
+
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [stardenPrimed])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -2676,14 +2720,41 @@ function DashboardPageClient() {
             </div>
           </div>
 
-          <GalaxySurface
-            embedded
-            embeddedUserId={embeddedMissionUserId}
-            embeddedIdentityHints={embeddedMissionIdentityHints}
-            embeddedAccounts={resolvedAccounts}
-            embeddedStatusMap={statusMap}
-            embeddedUnifiedGalaxy={missionGalaxy}
-          />
+          {stardenPrimed ? (
+            <EmbeddedGalaxySurface
+              embedded
+              embeddedUserId={embeddedMissionUserId}
+              embeddedIdentityHints={embeddedMissionIdentityHints}
+              embeddedAccounts={resolvedAccounts}
+              embeddedStatusMap={statusMap}
+              embeddedUnifiedGalaxy={missionGalaxy}
+            />
+          ) : (
+            <div
+              style={{
+                minHeight: 720,
+                borderRadius: 26,
+                border: '1px solid rgba(52,211,153,0.16)',
+                background:
+                  'linear-gradient(180deg, rgba(3,18,15,0.96), rgba(2,12,11,0.92))',
+                display: 'grid',
+                gap: 16,
+                alignContent: 'center',
+                justifyItems: 'center',
+                padding: 28,
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
+              <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
+                Constellation preview loads when you reach it
+              </div>
+              <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
+                Mission Control stays light on first paint, then the live galaxy wakes up as you scroll here or use
+                Jump to Starden.
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="card">
