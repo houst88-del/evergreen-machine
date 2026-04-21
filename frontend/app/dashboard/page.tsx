@@ -182,6 +182,98 @@ type IdentityHints = {
   handle?: string | null
 }
 
+type SessionDiagnostics = {
+  sessionStartedAt: number
+  refreshTriggered: number
+  refreshSkippedByFloor: number
+  refreshSkippedHidden: number
+  refreshSkippedOffscreen: number
+  catchupRefreshes: number
+  galaxyFetches: number
+  statusFetches: number
+  jobsFetches: number
+  accountsFetches: number
+  galaxyCacheHits: number
+  galaxyCacheMisses: number
+  galaxyInvalidations: number
+  manualRefreshNow: number
+  analyticsRuns: number
+  autopilotStarts: number
+  autopilotStops: number
+  stardenVisibleMs: number
+  stardenHiddenMs: number
+  tabVisibleMs: number
+  tabHiddenMs: number
+  lastGalaxyInvalidationReason: string | null
+}
+
+declare global {
+  interface Window {
+    __evergreenSessionDiagnostics?: SessionDiagnostics
+  }
+}
+
+function createSessionDiagnostics(): SessionDiagnostics {
+  return {
+    sessionStartedAt: Date.now(),
+    refreshTriggered: 0,
+    refreshSkippedByFloor: 0,
+    refreshSkippedHidden: 0,
+    refreshSkippedOffscreen: 0,
+    catchupRefreshes: 0,
+    galaxyFetches: 0,
+    statusFetches: 0,
+    jobsFetches: 0,
+    accountsFetches: 0,
+    galaxyCacheHits: 0,
+    galaxyCacheMisses: 0,
+    galaxyInvalidations: 0,
+    manualRefreshNow: 0,
+    analyticsRuns: 0,
+    autopilotStarts: 0,
+    autopilotStops: 0,
+    stardenVisibleMs: 0,
+    stardenHiddenMs: 0,
+    tabVisibleMs: 0,
+    tabHiddenMs: 0,
+    lastGalaxyInvalidationReason: null,
+  }
+}
+
+function getSessionDiagnostics(): SessionDiagnostics | null {
+  if (typeof window === 'undefined') return null
+  if (!window.__evergreenSessionDiagnostics) {
+    window.__evergreenSessionDiagnostics = createSessionDiagnostics()
+  }
+  return window.__evergreenSessionDiagnostics
+}
+
+function patchSessionDiagnostics(mutator: (current: SessionDiagnostics) => void) {
+  const current = getSessionDiagnostics()
+  if (!current) return
+  mutator(current)
+}
+
+function incrementSessionDiagnostics(key: keyof SessionDiagnostics, amount = 1) {
+  patchSessionDiagnostics((current) => {
+    const value = current[key]
+    if (typeof value === 'number') {
+      ;(current[key] as number) = value + amount
+    }
+  })
+}
+
+function recordFetchDiagnosticForPath(path: string) {
+  const normalized = String(path || '').toLowerCase()
+  if (normalized.includes('/api/galaxy')) {
+    incrementSessionDiagnostics('galaxyFetches')
+  } else if (normalized.includes('/api/jobs')) {
+    incrementSessionDiagnostics('jobsFetches')
+  } else if (normalized.includes('/api/connected-accounts')) {
+    incrementSessionDiagnostics('accountsFetches')
+  }
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
   'https://backend-fixed-production.up.railway.app'
@@ -194,6 +286,7 @@ const MISSION_REFRESH_INTERVAL_MS = DEV_COST_SAVER_MODE
 const MIN_REFRESH_INTERVAL_MS = MISSION_REFRESH_INTERVAL_MS
 const GALAXY_SNAPSHOT_TTL_MS = DEV_COST_SAVER_MODE ? 30000 : 20000
 const POST_ACTION_REFRESH_DELAY_MS = 1500
+const SHOW_DIAGNOSTICS = DEV_COST_SAVER_MODE
 
 function inferHealthyLane(status?: AccountStatus | null) {
   if (!status) return false
@@ -606,6 +699,7 @@ function isConnectedAccount(account?: ConnectedAccount | null, status?: AccountS
 }
 
 async function fetchJsonOrThrow(path: string, init: RequestInit = {}, identityHints?: IdentityHints) {
+  recordFetchDiagnosticForPath(path)
   const res = await apiFetch(path, init, identityHints)
   const json = await res.json().catch(() => ({}))
 
@@ -842,6 +936,7 @@ async function fetchLaneStatusMap(
       let galaxyStatus: AccountStatus | null = null
 
       try {
+        incrementSessionDiagnostics('statusFetches')
         const res = await apiFetch(
           `/api/status?user_id=${userId}&connected_account_id=${account.id}`,
           {},
@@ -1003,6 +1098,12 @@ function DashboardPageClient() {
   })
   const previousDocumentVisibleRef = useRef(documentVisible)
   const previousStardenVisibleForRefreshRef = useRef(false)
+  const visibilityMetricsRef = useRef({
+    tabAt: Date.now(),
+    tabVisible: documentVisible,
+    stardenAt: Date.now(),
+    stardenVisible: false,
+  })
 
   useEffect(() => {
     missionDataRef.current = {
@@ -1026,6 +1127,10 @@ function DashboardPageClient() {
   useEffect(() => {
     stardenVisibleForRefreshRef.current = stardenVisibleForRefresh
   }, [stardenVisibleForRefresh])
+
+  useEffect(() => {
+    getSessionDiagnostics()
+  }, [])
 
   function getActiveUserSnapshot() {
     return sessionRef.current?.user || getStoredUser()
@@ -1380,6 +1485,21 @@ function DashboardPageClient() {
   }, [])
 
   useEffect(() => {
+    const metrics = visibilityMetricsRef.current
+    const now = Date.now()
+    const elapsed = Math.max(0, now - metrics.tabAt)
+    patchSessionDiagnostics((current) => {
+      if (metrics.tabVisible) {
+        current.tabVisibleMs += elapsed
+      } else {
+        current.tabHiddenMs += elapsed
+      }
+    })
+    metrics.tabAt = now
+    metrics.tabVisible = documentVisible
+  }, [documentVisible])
+
+  useEffect(() => {
     const node = stardenSectionRef.current
     if (!node || typeof IntersectionObserver === 'undefined') {
       setStardenInView(true)
@@ -1402,6 +1522,59 @@ function DashboardPageClient() {
       observer.disconnect()
     }
   }, [session?.user])
+
+  useEffect(() => {
+    const metrics = visibilityMetricsRef.current
+    const now = Date.now()
+    const elapsed = Math.max(0, now - metrics.stardenAt)
+    patchSessionDiagnostics((current) => {
+      if (metrics.stardenVisible) {
+        current.stardenVisibleMs += elapsed
+      } else {
+        current.stardenHiddenMs += elapsed
+      }
+    })
+    metrics.stardenAt = now
+    metrics.stardenVisible = stardenVisibleForRefresh
+  }, [stardenVisibleForRefresh])
+
+  useEffect(() => {
+    if (!SHOW_DIAGNOSTICS || typeof window === 'undefined') return
+
+    const flushDiagnosticsDurations = () => {
+      const metrics = visibilityMetricsRef.current
+      const now = Date.now()
+      const tabElapsed = Math.max(0, now - metrics.tabAt)
+      patchSessionDiagnostics((current) => {
+        if (metrics.tabVisible) {
+          current.tabVisibleMs += tabElapsed
+        } else {
+          current.tabHiddenMs += tabElapsed
+        }
+      })
+      metrics.tabAt = now
+
+      const stardenElapsed = Math.max(0, now - metrics.stardenAt)
+      patchSessionDiagnostics((current) => {
+        if (metrics.stardenVisible) {
+          current.stardenVisibleMs += stardenElapsed
+        } else {
+          current.stardenHiddenMs += stardenElapsed
+        }
+      })
+      metrics.stardenAt = now
+
+      const summary = getSessionDiagnostics()
+      if (summary) {
+        console.info('[evergreen][diagnostics]', summary)
+      }
+    }
+
+    window.addEventListener('pagehide', flushDiagnosticsDurations)
+    return () => {
+      window.removeEventListener('pagehide', flushDiagnosticsDurations)
+    }
+  }, [])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -1463,6 +1636,7 @@ function DashboardPageClient() {
     lastMissionRefreshStartedAtRef.current = Date.now()
     missionRefreshPromiseRef.current = (async () => {
       do {
+        incrementSessionDiagnostics('refreshTriggered')
         pendingMissionRefreshRef.current = false
         const refreshGalaxyThisPass = pendingGalaxyRefreshRef.current
         pendingGalaxyRefreshRef.current = false
@@ -1502,6 +1676,9 @@ function DashboardPageClient() {
             cachedGalaxy.userId === userId &&
             cachedGalaxy.snapshot &&
             Date.now() - cachedGalaxy.fetchedAt < GALAXY_SNAPSHOT_TTL_MS
+          if (refreshGalaxyThisPass) {
+            incrementSessionDiagnostics(canReuseGalaxySnapshot ? 'galaxyCacheHits' : 'galaxyCacheMisses')
+          }
           const [systemResult, accountsResult, jobsResult, galaxyResult] = await Promise.allSettled([
             fetchJsonOrThrow('/api/system-status', {}, identityHints),
             fetchJsonOrThrow(`/api/connected-accounts?user_id=${userId}`, {}, identityHints),
@@ -1616,17 +1793,31 @@ function DashboardPageClient() {
     refreshGalaxy?: boolean
     force?: boolean
     invalidateGalaxyCache?: boolean
+    invalidationReason?: string
   }) {
+    const wantsGalaxy = Boolean(options?.refreshGalaxy)
+    const allowGalaxyRefresh = wantsGalaxy && (Boolean(options?.force) || stardenVisibleForRefreshRef.current)
+    if (wantsGalaxy && !allowGalaxyRefresh) {
+      incrementSessionDiagnostics('refreshSkippedOffscreen')
+    }
+    if (options?.invalidateGalaxyCache) {
+      incrementSessionDiagnostics('galaxyInvalidations')
+      patchSessionDiagnostics((current) => {
+        current.lastGalaxyInvalidationReason = options.invalidationReason || 'event'
+      })
+    }
+
     queuedMissionRefreshOptionsRef.current = {
       refreshGalaxy:
-        queuedMissionRefreshOptionsRef.current.refreshGalaxy || Boolean(options?.refreshGalaxy),
+        queuedMissionRefreshOptionsRef.current.refreshGalaxy || allowGalaxyRefresh,
       force: queuedMissionRefreshOptionsRef.current.force || Boolean(options?.force),
       invalidateGalaxyCache:
         queuedMissionRefreshOptionsRef.current.invalidateGalaxyCache ||
-        Boolean(options?.invalidateGalaxyCache || (options?.followup && options?.refreshGalaxy)),
+        Boolean(options?.invalidateGalaxyCache || (options?.followup && allowGalaxyRefresh)),
     }
 
     if (!documentVisibleRef.current && !options?.force) {
+      incrementSessionDiagnostics('refreshSkippedHidden')
       return
     }
 
@@ -1637,6 +1828,9 @@ function DashboardPageClient() {
     const requestedDelay = options?.followup
       ? Math.max(POST_ACTION_REFRESH_DELAY_MS, floorDelay)
       : floorDelay
+    if (floorDelay > 0) {
+      incrementSessionDiagnostics('refreshSkippedByFloor')
+    }
 
     if (scheduledMissionRefreshAtRef.current != null) {
       const nextRunDelay = Math.max(0, scheduledMissionRefreshAtRef.current - Date.now())
@@ -1680,6 +1874,7 @@ function DashboardPageClient() {
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
+        incrementSessionDiagnostics('accountsFetches')
         const res = await apiFetch(
           `/api/connected-accounts?user_id=${activeUser.id}`,
           {},
@@ -1711,7 +1906,7 @@ function DashboardPageClient() {
                 : current,
             )
           })
-          void refreshMissionControlNow({ refreshGalaxy: true })
+          void refreshMissionControlNow({ refreshGalaxy: true, invalidateGalaxyCache: true })
           return true
         }
       } catch {
@@ -1781,9 +1976,11 @@ function DashboardPageClient() {
     }
 
     if (!wasVisible) {
+      incrementSessionDiagnostics('catchupRefreshes')
       requestMissionControlRefresh({
         refreshGalaxy: stardenVisibleForRefreshRef.current,
         invalidateGalaxyCache: stardenVisibleForRefreshRef.current,
+        invalidationReason: stardenVisibleForRefreshRef.current ? 'visibility_resume' : undefined,
       })
     }
   }, [documentVisible])
@@ -1797,6 +1994,7 @@ function DashboardPageClient() {
     requestMissionControlRefresh({
       refreshGalaxy: true,
       invalidateGalaxyCache: true,
+      invalidationReason: 'starden_visible',
     })
   }, [stardenVisibleForRefresh])
 
@@ -1828,12 +2026,22 @@ function DashboardPageClient() {
     if (params.get('provider') === 'x' && params.get('connected') === '1' && session?.user) {
       const connectedAccountId = Number(params.get('connected_account_id') || 0) || null
       setActionMessage('Finalizing X connection…')
-      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: 'account_connection_change',
+      })
       ;(async () => {
         const connected = await waitForConnectedProvider('x', { connectedAccountId })
         if (connected) {
           setActionMessage('X account connected.')
-          requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+          requestMissionControlRefresh({
+            followup: true,
+            refreshGalaxy: true,
+            invalidateGalaxyCache: true,
+            invalidationReason: 'account_connection_change',
+          })
         } else {
           setError('X connected, but the dashboard is still syncing. Refresh once in a few seconds.')
         }
@@ -1889,8 +2097,50 @@ function DashboardPageClient() {
       followup: true,
       refreshGalaxy: stardenVisibleForRefreshRef.current,
       invalidateGalaxyCache: stardenVisibleForRefreshRef.current,
+      invalidationReason: stardenVisibleForRefreshRef.current ? 'bootstrap_retry' : undefined,
     })
   }, [jobs.length, loading, missionGalaxy.nodes, missionHydratedOnce, resolvedAccounts.length, session, statusMap])
+
+  const diagnosticsSnapshot = SHOW_DIAGNOSTICS ? getSessionDiagnostics() : null
+
+  const diagnosticsSummary = useMemo(() => {
+    if (!SHOW_DIAGNOSTICS || !diagnosticsSnapshot) return null
+
+    const now = nowMs
+    const visibility = visibilityMetricsRef.current
+    const liveTabVisibleMs =
+      diagnosticsSnapshot.tabVisibleMs + (visibility.tabVisible ? Math.max(0, now - visibility.tabAt) : 0)
+    const liveTabHiddenMs =
+      diagnosticsSnapshot.tabHiddenMs + (!visibility.tabVisible ? Math.max(0, now - visibility.tabAt) : 0)
+    const liveStardenVisibleMs =
+      diagnosticsSnapshot.stardenVisibleMs +
+      (visibility.stardenVisible ? Math.max(0, now - visibility.stardenAt) : 0)
+    const liveStardenHiddenMs =
+      diagnosticsSnapshot.stardenHiddenMs +
+      (!visibility.stardenVisible ? Math.max(0, now - visibility.stardenAt) : 0)
+
+    const sessionMs = Math.max(1000, now - diagnosticsSnapshot.sessionStartedAt)
+    const sessionMinutes = sessionMs / 60000
+    const visibleMinutes = liveTabVisibleMs / 60000
+    const preventedRefreshesTotal =
+      diagnosticsSnapshot.refreshSkippedByFloor +
+      diagnosticsSnapshot.refreshSkippedHidden +
+      diagnosticsSnapshot.refreshSkippedOffscreen
+
+    return {
+      sessionMinutes,
+      visibleMinutes,
+      tabVisibleMs: liveTabVisibleMs,
+      tabHiddenMs: liveTabHiddenMs,
+      stardenVisibleMs: liveStardenVisibleMs,
+      stardenHiddenMs: liveStardenHiddenMs,
+      effectiveRefreshRatePerMinute: diagnosticsSnapshot.refreshTriggered / sessionMinutes,
+      preventedRefreshesTotal,
+      galaxyFetchesPerVisibleMinute:
+        visibleMinutes > 0 ? diagnosticsSnapshot.galaxyFetches / visibleMinutes : diagnosticsSnapshot.galaxyFetches,
+      approximateVisibilityRatio: liveTabVisibleMs / Math.max(1, liveTabVisibleMs + liveTabHiddenMs),
+    }
+  }, [diagnosticsSnapshot, nowMs])
 
   const summary = useMemo(() => {
     const heartbeat = system?.worker?.heartbeat || {}
@@ -2132,6 +2382,7 @@ function DashboardPageClient() {
 
   async function handleRefreshNow(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
+    incrementSessionDiagnostics('manualRefreshNow')
     const busyKey = connectedAccountId ? `refresh-${connectedAccountId}` : 'refresh-global'
     setBusyAction(busyKey)
     setActionMessage('')
@@ -2159,7 +2410,12 @@ function DashboardPageClient() {
           ? `Refresh job queued for ${accountHandle || 'account'}.`
           : 'Refresh job queued.'
       )
-      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: 'manual_refresh',
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue refresh')
     } finally {
@@ -2169,6 +2425,7 @@ function DashboardPageClient() {
 
   async function handleRunAnalytics(connectedAccountId?: number, accountHandle?: string) {
     if (!session?.user) return
+    incrementSessionDiagnostics('analyticsRuns')
     const busyKey = connectedAccountId ? `analytics-${connectedAccountId}` : 'analytics-global'
     setBusyAction(busyKey)
     setActionMessage('')
@@ -2196,7 +2453,12 @@ function DashboardPageClient() {
           ? `Analytics job queued for ${accountHandle || 'account'}.`
           : 'Analytics job queued.'
       )
-      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: 'analytics_run',
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not queue analytics')
     } finally {
@@ -2267,7 +2529,12 @@ function DashboardPageClient() {
       setBlueskyHelperOpen(false)
       setBlueskyHandleInput('')
       setBlueskyAppPasswordInput('')
-      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: 'account_connection_change',
+      })
     } catch (err) {
       const nextMessage =
         err instanceof Error ? err.message : 'Could not connect Bluesky'
@@ -2303,7 +2570,12 @@ function DashboardPageClient() {
       }
 
       setActionMessage(`Disconnected ${options?.label || json.account_handle || 'account'}.`)
-      requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: 'account_connection_change',
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not disconnect account')
     } finally {
@@ -2313,6 +2585,7 @@ function DashboardPageClient() {
 
   async function handleToggleAutopilot(accountId: number, enabled: boolean) {
     if (!session?.user) return
+    incrementSessionDiagnostics(enabled ? 'autopilotStarts' : 'autopilotStops')
     const { canRunAutopilot } = currentSubscriptionState()
     let accessGrantedForThisAction = canRunAutopilot
     const upgradeHref =
@@ -2377,7 +2650,12 @@ function DashboardPageClient() {
         },
       }))
       await refreshMissionControlNow()
-      requestMissionControlRefresh({ followup: true })
+      requestMissionControlRefresh({
+        followup: true,
+        refreshGalaxy: true,
+        invalidateGalaxyCache: true,
+        invalidationReason: enabled ? 'autopilot_start' : 'autopilot_stop',
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update autopilot')
     }
@@ -3941,6 +4219,115 @@ function DashboardPageClient() {
             </div>
           )}
         </section>
+
+        {SHOW_DIAGNOSTICS && diagnosticsSnapshot && diagnosticsSummary ? (
+          <section
+            className="card"
+            style={{
+              marginTop: 18,
+              border: '1px solid rgba(125,211,252,0.18)',
+              background: 'linear-gradient(180deg, rgba(8,20,25,0.94), rgba(3,14,18,0.9))',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ ...missionEyebrowStyle, color: 'rgba(186,230,253,0.78)' }}>
+                  Diagnostics
+                </div>
+                <h3 style={{ marginTop: 6, marginBottom: 6 }}>Refresh Cost Signals</h3>
+                <div style={{ color: 'rgba(236,253,245,0.66)', fontSize: 13 }}>
+                  Session-only counters for refresh behavior, prevented work, and snapshot reuse.
+                </div>
+              </div>
+              <div style={{ color: 'rgba(236,253,245,0.58)', fontSize: 12 }}>
+                Session {diagnosticsSummary.sessionMinutes.toFixed(1)}m
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))',
+                gap: 12,
+              }}
+            >
+              {[
+                ['Refreshes', String(diagnosticsSnapshot.refreshTriggered)],
+                ['Prevented', String(diagnosticsSummary.preventedRefreshesTotal)],
+                ['Galaxy fetches', String(diagnosticsSnapshot.galaxyFetches)],
+                ['Status fetches', String(diagnosticsSnapshot.statusFetches)],
+                ['Jobs fetches', String(diagnosticsSnapshot.jobsFetches)],
+                ['Accounts fetches', String(diagnosticsSnapshot.accountsFetches)],
+                ['Galaxy cache', `${diagnosticsSnapshot.galaxyCacheHits} hits / ${diagnosticsSnapshot.galaxyCacheMisses} misses`],
+                ['Invalidations', String(diagnosticsSnapshot.galaxyInvalidations)],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    borderRadius: 16,
+                    border: '1px solid rgba(125,211,252,0.12)',
+                    background: 'rgba(255,255,255,0.03)',
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={missionEyebrowStyle}>{label}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700 }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+                gap: 12,
+                color: 'rgba(236,253,245,0.74)',
+                fontSize: 13,
+                lineHeight: 1.7,
+              }}
+            >
+              <div style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={missionEyebrowStyle}>Refresh decisions</div>
+                <div style={{ marginTop: 8 }}>Floor skips: {diagnosticsSnapshot.refreshSkippedByFloor}</div>
+                <div>Hidden-tab skips: {diagnosticsSnapshot.refreshSkippedHidden}</div>
+                <div>Offscreen Starden skips: {diagnosticsSnapshot.refreshSkippedOffscreen}</div>
+                <div>Catch-up refreshes: {diagnosticsSnapshot.catchupRefreshes}</div>
+              </div>
+
+              <div style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={missionEyebrowStyle}>Meaningful actions</div>
+                <div style={{ marginTop: 8 }}>Manual refreshes: {diagnosticsSnapshot.manualRefreshNow}</div>
+                <div>Analytics runs: {diagnosticsSnapshot.analyticsRuns}</div>
+                <div>Autopilot starts: {diagnosticsSnapshot.autopilotStarts}</div>
+                <div>Autopilot stops: {diagnosticsSnapshot.autopilotStops}</div>
+              </div>
+
+              <div style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={missionEyebrowStyle}>Visibility</div>
+                <div style={{ marginTop: 8 }}>Tab visible: {(diagnosticsSummary.tabVisibleMs / 60000).toFixed(1)}m</div>
+                <div>Tab hidden: {(diagnosticsSummary.tabHiddenMs / 60000).toFixed(1)}m</div>
+                <div>Starden visible: {(diagnosticsSummary.stardenVisibleMs / 60000).toFixed(1)}m</div>
+                <div>Starden offscreen: {(diagnosticsSummary.stardenHiddenMs / 60000).toFixed(1)}m</div>
+              </div>
+
+              <div style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={missionEyebrowStyle}>Derived summary</div>
+                <div style={{ marginTop: 8 }}>
+                  Refreshes / min: {diagnosticsSummary.effectiveRefreshRatePerMinute.toFixed(2)}
+                </div>
+                <div>
+                  Galaxy fetches / visible min: {diagnosticsSummary.galaxyFetchesPerVisibleMinute.toFixed(2)}
+                </div>
+                <div>
+                  Visibility ratio: {(diagnosticsSummary.approximateVisibilityRatio * 100).toFixed(0)}%
+                </div>
+                <div>Last invalidation: {diagnosticsSnapshot.lastGalaxyInvalidationReason || '—'}</div>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
       </div>
     </main>
