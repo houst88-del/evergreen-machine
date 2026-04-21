@@ -573,6 +573,28 @@ const isFreshPulse = (value?: string | null) => {
   return Date.now() - d.getTime() <= 1000 * 60 * 45;
 };
 
+const minutesSince = (value?: string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return Number.POSITIVE_INFINITY;
+  return Math.max(0, (Date.now() - d.getTime()) / 60000);
+};
+
+const nextCycleRelative = (value?: string | null) => {
+  if (!value) return "Watching";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Watching";
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return "Due now";
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 60) return `in ${mins}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `in ${hrs}h`;
+  return `in ${Math.round(hrs / 24)}d`;
+};
+
+const revivalThreshold = (nodeCount: number) => (nodeCount > 700 ? 1800 : nodeCount > 350 ? 1500 : 1200);
+
 export function GalaxySurface({
   embedded = false,
   embeddedUserId = null,
@@ -1394,6 +1416,28 @@ export function GalaxySurface({
       { bluesky: 0, x: 0, other: 0 }
     );
   }, [workingNodes]);
+
+  const temporalInsights = useMemo(() => {
+    const reviveThreshold = revivalThreshold(workingNodes.length);
+    const recentPulseCount = workingNodes.filter((node) => minutesSince(node.last_resurfaced_at) <= 45).length;
+    const coolingCount = workingNodes.filter(
+      (node) => safeNum(node.predicted_velocity, 0) < 0.2 && !node.current_cycle
+    ).length;
+    const revivingCount = workingNodes.filter(
+      (node) =>
+        safeNum(node.revival_score, 0) >= reviveThreshold &&
+        !node.current_cycle &&
+        safeNum(node.predicted_velocity, 0) > 0.3
+    ).length;
+
+    return {
+      recentPulseCount,
+      coolingCount,
+      revivingCount,
+      nextCycleEta: nextCycleRelative(engine.nextRefreshAt),
+      reviveThreshold,
+    };
+  }, [engine.nextRefreshAt, workingNodes]);
 
   const backgroundStars = useMemo(
     () => {
@@ -2268,7 +2312,17 @@ export function GalaxySurface({
                   const selectedNow = selectedStarId === node.id;
                   const hoveredNow = hovered?.id === node.id;
                   const relatedNow = relatedNodeIds.has(node.id);
-                  const freshPulse = isFreshPulse(node.last_resurfaced_at);
+                  const pulseMinutes = minutesSince(node.last_resurfaced_at);
+                  const freshPulse = pulseMinutes <= 45;
+                  const faintPulse = pulseMinutes > 45 && pulseMinutes <= 120;
+                  const approachingCycle =
+                    !!node.candidate && !node.current_cycle && safeNum(node.predicted_velocity, 0) > 0.5;
+                  const cooling =
+                    safeNum(node.predicted_velocity, 0) < 0.2 && !node.current_cycle;
+                  const reviving =
+                    safeNum(node.revival_score, 0) >= temporalInsights.reviveThreshold &&
+                    !node.current_cycle &&
+                    safeNum(node.predicted_velocity, 0) > 0.3;
                   const opacity = highlightOpacity(node, highlightMode);
                   const outerField = !!node.cold_archive;
                   const circulationHot = !!node.current_cycle || !!node.candidate || rankGravity(node) >= 240;
@@ -2281,6 +2335,10 @@ export function GalaxySurface({
                           ? 1.08
                       : freshPulse
                         ? 1.14
+                        : reviving
+                          ? 1.1
+                          : approachingCycle
+                            ? 1.07
                         : node.current_cycle
                           ? 1.1
                           : node.candidate
@@ -2294,12 +2352,52 @@ export function GalaxySurface({
                     (outerField ? 0.88 : circulationHot ? 1.06 : 0.97);
                   const glow = Math.max(
                     outerField ? 5 : 10,
-                    size * (selectedNow ? 7.6 : freshPulse ? 6.4 : circulationHot ? 5.8 : outerField ? 3.2 : 4.8)
+                    size *
+                      (selectedNow
+                        ? 7.6
+                        : freshPulse
+                          ? 6.4
+                          : approachingCycle
+                            ? 6
+                            : reviving
+                              ? 6.2
+                              : cooling
+                                ? 4
+                                : circulationHot
+                                  ? 5.8
+                                  : outerField
+                                    ? 3.2
+                                    : 4.8)
                   );
                   const theme = providerTheme(node.provider);
+                  const coolingOpacity = cooling ? 0.68 : 1;
+                  const temporalHaloOpacity = freshPulse ? 0.28 : faintPulse ? 0.14 : 0;
+                  const pulseTrailWidth = size * (freshPulse ? 5.6 : 4.6);
+                  const pulseTrailHeight = Math.max(12, size * (freshPulse ? 1.7 : 1.4));
+                  const pulseTrailBlur = freshPulse ? 10 : 6;
+                  const approachPulse = 1 + Math.sin(liveTick * 0.018 + index * 0.45) * 0.06;
+                  const revivalPulse = 1 + Math.sin(liveTick * 0.014 + index * 0.72) * 0.08;
 
                   return (
                     <React.Fragment key={node.id}>
+                      {(freshPulse || faintPulse) && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: `calc(${(node as any)._px}% - ${size * 2.3}px)`,
+                            top: `${(node as any)._py}%`,
+                            width: `${pulseTrailWidth}px`,
+                            height: `${pulseTrailHeight}px`,
+                            transform: "translate3d(-100%, -50%, 0)",
+                            borderRadius: "9999px",
+                            background: `linear-gradient(90deg, transparent 0%, ${theme.glow} 70%, transparent 100%)`,
+                            filter: `blur(${pulseTrailBlur}px)`,
+                            opacity: temporalHaloOpacity,
+                            pointerEvents: "none",
+                            zIndex: 2,
+                          }}
+                        />
+                      )}
                       {!embedded && (selectedNow || freshPulse) && (
                         <>
                           <span
@@ -2375,6 +2473,42 @@ export function GalaxySurface({
                           />
                         </>
                       )}
+                      {approachingCycle ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: `${(node as any)._px}%`,
+                            top: `${(node as any)._py}%`,
+                            width: `${size * 5.6 * approachPulse}px`,
+                            height: `${size * 5.6 * approachPulse}px`,
+                            transform: "translate3d(-50%, -50%, 0)",
+                            borderRadius: "9999px",
+                            background:
+                              "radial-gradient(circle, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 30%, rgba(125,211,252,0.12) 60%, rgba(255,255,255,0) 100%)",
+                            opacity: embedded ? 0.22 : 0.28,
+                            pointerEvents: "none",
+                            zIndex: 2,
+                          }}
+                        />
+                      ) : null}
+                      {reviving ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: `${(node as any)._px}%`,
+                            top: `${(node as any)._py}%`,
+                            width: `${size * 6.2 * revivalPulse}px`,
+                            height: `${size * 6.2 * revivalPulse}px`,
+                            transform: "translate3d(-50%, -50%, 0)",
+                            borderRadius: "9999px",
+                            border: "1px solid rgba(250,228,120,0.22)",
+                            boxShadow: "0 0 20px rgba(250,228,120,0.08)",
+                            opacity: embedded ? 0.22 : 0.3,
+                            pointerEvents: "none",
+                            zIndex: 2,
+                          }}
+                        />
+                      ) : null}
                       <button
                         onClick={() => setSelectedStarId(node.id)}
                         onDoubleClick={() => {
@@ -2406,16 +2540,27 @@ export function GalaxySurface({
                             : `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
                           boxShadow: embedded
                             ? `0 0 ${Math.max(6, glow * (hoveredNow ? 0.78 : relatedNow ? 0.68 : 0.55))}px ${accent.aura}`
-                            : `0 0 ${glow * (hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)}px ${accent.aura}, 0 0 ${
+                            : `0 0 ${glow * (hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)}px ${
+                                reviving ? "rgba(250,228,120,0.16)" : accent.aura
+                              }, 0 0 ${
                                 glow * (hoveredNow ? 2.2 : relatedNow ? 1.95 : 1.8)
-                              }px ${accent.aura}, inset 0 0 ${Math.max(
+                              }px ${reviving ? "rgba(250,228,120,0.12)" : accent.aura}, inset 0 0 ${Math.max(
                                 4,
                                 size * 0.9
                               )}px rgba(255,255,255,0.18)`,
                           cursor: "pointer",
                           opacity:
                             opacity *
-                            (hoveredNow ? 1 : relatedNow ? 0.98 : outerField ? 0.72 : circulationHot ? 1 : 0.92),
+                            coolingOpacity *
+                            (hoveredNow
+                              ? 1
+                              : relatedNow
+                                ? 0.98
+                                : outerField
+                                  ? 0.72
+                                  : circulationHot
+                                    ? 1
+                                    : 0.92),
                           zIndex: selectedNow ? 6 : hoveredNow ? 5 : node.current_cycle ? 4 : 3,
                           padding: 0,
                           margin: 0,
@@ -2446,6 +2591,17 @@ export function GalaxySurface({
                               borderRadius: "9999px",
                               border: `1px solid ${hoveredNow ? "rgba(250,228,120,0.28)" : "rgba(236,253,245,0.16)"}`,
                               opacity: hoveredNow ? 0.8 : 0.52,
+                              pointerEvents: "none",
+                            }}
+                          />
+                        ) : null}
+                        {cooling ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: 1,
+                              borderRadius: "9999px",
+                              background: "rgba(2,6,23,0.12)",
                               pointerEvents: "none",
                             }}
                           />
@@ -2605,6 +2761,17 @@ export function GalaxySurface({
                     {likelyNext(deferredHovered) ? (
                       <span style={missionBadgeStyle("gold", true)}>Likely next</span>
                     ) : null}
+                    {minutesSince(deferredHovered.last_resurfaced_at) <= 45 ? (
+                      <span style={missionBadgeStyle("mint", true)}>Recent pulse</span>
+                    ) : null}
+                    {safeNum(deferredHovered.predicted_velocity, 0) < 0.2 && !deferredHovered.current_cycle ? (
+                      <span style={missionBadgeStyle("neutral", true)}>Cooling</span>
+                    ) : null}
+                    {safeNum(deferredHovered.revival_score, 0) >= temporalInsights.reviveThreshold &&
+                    !deferredHovered.current_cycle &&
+                    safeNum(deferredHovered.predicted_velocity, 0) > 0.3 ? (
+                      <span style={missionBadgeStyle("gold", true)}>Reviving</span>
+                    ) : null}
                     <span style={missionBadgeStyle("neutral", true)}>
                       {archetypeLabel(deferredHovered.archetype)}
                     </span>
@@ -2690,6 +2857,41 @@ export function GalaxySurface({
           </div>
 
           <div style={{ display: "grid", gap: 12 }}>
+            <div style={cardStyle()}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Temporal Echo
+              </div>
+              <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: "rgba(236,253,245,0.84)" }}>
+                <div>{temporalInsights.recentPulseCount} recent pulses</div>
+                <div>{temporalInsights.coolingCount} cooling</div>
+                <div>{temporalInsights.revivingCount} reviving</div>
+                <div>Next bloom {temporalInsights.nextCycleEta}</div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {[
+                  temporalInsights.recentPulseCount ? "Fresh echoes" : "",
+                  temporalInsights.revivingCount ? "Warm returns" : "",
+                  temporalInsights.coolingCount ? "Cooling field" : "",
+                ]
+                  .filter(Boolean)
+                  .map((label, index) => (
+                    <span
+                      key={label}
+                      style={missionBadgeStyle(index === 0 ? "mint" : index === 1 ? "gold" : "neutral", true)}
+                    >
+                      {label}
+                    </span>
+                  ))}
+              </div>
+            </div>
+
             <div style={cardStyle()}>
               <div
                 style={{
