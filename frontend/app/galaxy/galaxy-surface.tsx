@@ -1109,7 +1109,7 @@ export function GalaxySurface({
       ].filter(Boolean);
       const summary =
         currentCycleStarted.length
-          ? `Current cycle began ${minutesAgo(rankedNodes.find((node) => currentCycleStarted[0] === node.id)?.last_resurfaced_at || new Date().toISOString())}`
+          ? `Live cycle began ${minutesAgo(rankedNodes.find((node) => currentCycleStarted[0] === node.id)?.last_resurfaced_at || new Date().toISOString())}`
           : candidateEntered.length
             ? `Likely-next reshuffle ${nextCycleRelative(engine.nextRefreshAt)}`
             : revivalReturn.length
@@ -2292,16 +2292,14 @@ export function GalaxySurface({
                     }}
                   >
                     <div>
-                      Intelligence {Math.round(selectedStarIntelligence || 0)} ·{" "}
+                      Signal strength {Math.round(selectedStarIntelligence || 0)} ·{" "}
                       {gravityRankLabel(selectedStarGravityRank || 0)}
                     </div>
                     <div>
                       {velocityLabel(safeNum(selectedStar.predicted_velocity, 0))} momentum · Revival{" "}
                       {Math.round(safeNum(selectedStar.revival_score, 0))}
                     </div>
-                    <div>
-                      Pattern: {humanizeStrategy(selectedStar.selection_strategy)}
-                    </div>
+                    <div>Circulating: {humanizeStrategy(selectedStar.selection_strategy)}</div>
                     <div
                       style={{
                         color: "rgba(236,253,245,0.62)",
@@ -2346,7 +2344,7 @@ export function GalaxySurface({
                 {[
                   `X ${providerCounts.x}`,
                   `Bluesky ${providerCounts.bluesky}`,
-                  counts.currentCycle ? `${counts.currentCycle} active now` : "Standby sweep",
+                  counts.currentCycle ? `${counts.currentCycle} live now` : "Quiet field",
                   counts.outerField ? `${counts.outerField} outer field` : "",
                 ].map((label, index) => (
                   label ? (
@@ -3157,6 +3155,9 @@ export function GalaxySurface({
               >
                 Pattern Summary
               </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(236,253,245,0.58)", lineHeight: 1.55 }}>
+                Names the strongest content behavior in the field right now.
+              </div>
               {patternSummaries.length ? (
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   {patternSummaries.map((pattern, index) => (
@@ -3211,6 +3212,9 @@ export function GalaxySurface({
                 }}
               >
                 Temporal Echo
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(236,253,245,0.58)", lineHeight: 1.55 }}>
+                Tracks the field’s timing, momentum, and recent movement.
               </div>
               <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: "rgba(236,253,245,0.84)" }}>
                 <div>{temporalInsights.recentPulseCount} recent pulses</div>
@@ -3405,6 +3409,9 @@ export function GalaxySurface({
                 }}
               >
                 Signal Window
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(236,253,245,0.58)", lineHeight: 1.55 }}>
+                Surfaces the stars closest to action in this cycle.
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 {forecastNodes.map((n, i) => (
