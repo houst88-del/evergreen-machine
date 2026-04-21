@@ -1582,6 +1582,7 @@ export function GalaxySurface({
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
                   color: "rgba(236,253,245,0.56)",
+                  justifySelf: "end",
                   paddingRight: 2,
                 }}
               >
@@ -1605,10 +1606,11 @@ export function GalaxySurface({
             {embedded ? (
               <div
                 style={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                   gap: 8,
-                  flexWrap: "wrap",
-                  justifyContent: "flex-end",
+                  width: "min(540px, 100%)",
+                  justifySelf: "end",
                 }}
               >
                 {scopeOptions.map((option) => {
@@ -1622,7 +1624,7 @@ export function GalaxySurface({
                       }}
                       disabled={!option.available}
                       style={{
-                        borderRadius: 999,
+                        borderRadius: 18,
                         border: active
                           ? "1px solid rgba(125,211,252,0.48)"
                           : option.available
@@ -1634,12 +1636,14 @@ export function GalaxySurface({
                             ? "rgba(0,0,0,0.28)"
                             : "rgba(255,255,255,0.02)",
                         color: option.available ? "white" : "rgba(236,253,245,0.44)",
-                        padding: "8px 12px",
+                        padding: "10px 12px",
                         cursor: option.available ? "pointer" : "default",
                         fontSize: 13,
                         fontWeight: active ? 700 : 500,
                         boxShadow: active ? "0 0 0 1px rgba(147,197,253,0.18)" : "none",
                         opacity: option.available ? 1 : 0.72,
+                        minHeight: 44,
+                        textAlign: "center",
                       }}
                       title={option.available ? option.label : `${option.label} signal view coming soon`}
                     >
