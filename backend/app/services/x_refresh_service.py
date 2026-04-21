@@ -166,6 +166,29 @@ def _retire_dead_tweet(tweet_id: str, handle: str | None = None, raw_error: str 
         print(f"[evergreen][x-debug] dead tweet reason tweet_id={tweet_id}: {raw_error}")
 
 
+def _retire_ineligible_tweet(
+    tweet_id: str,
+    handle: str | None = None,
+    *,
+    reason: str,
+    raw_error: str = "",
+) -> None:
+    handle_slug = normalize_handle(handle)
+    retired = retire_dead_tweet(tweet_id=tweet_id, handle=handle, reason=reason)
+    if retired:
+        print(
+            f"[evergreen][x-debug] retired ineligible tweet from pool "
+            f"tweet_id={tweet_id} handle=@{handle_slug} reason={reason}"
+        )
+    else:
+        print(
+            f"[evergreen][x-debug] ineligible tweet not found in pool, cached anyway "
+            f"tweet_id={tweet_id} handle=@{handle_slug} reason={reason}"
+        )
+    if raw_error:
+        print(f"[evergreen][x-debug] ineligible tweet reason tweet_id={tweet_id}: {raw_error}")
+
+
 def _extract_response_data(response: Any) -> list[Any]:
     data = getattr(response, "data", None)
     if data is None:
@@ -213,6 +236,72 @@ def _verify_final_retweeted_state(client: tweepy.Client, tweet_id: str, user_id:
     return False
 
 
+def _tweet_reference_type(reference: Any) -> str:
+    if isinstance(reference, dict):
+        return str(reference.get("type", "") or "").strip().lower()
+    return str(getattr(reference, "type", "") or "").strip().lower()
+
+
+def _is_reply_tweet(tweet: Any) -> bool:
+    if tweet is None:
+        return False
+
+    in_reply_to_user_id = str(getattr(tweet, "in_reply_to_user_id", "") or "").strip()
+    if in_reply_to_user_id:
+        return True
+
+    referenced_tweets = list(getattr(tweet, "referenced_tweets", None) or [])
+    return any(_tweet_reference_type(reference) == "replied_to" for reference in referenced_tweets)
+
+
+def _preflight_reply_guard(
+    client: tweepy.Client,
+    tweet_id: str,
+    handle: str | None = None,
+) -> RefreshResult | None:
+    try:
+        response = client.get_tweet(
+            tweet_id,
+            tweet_fields=["referenced_tweets", "in_reply_to_user_id", "conversation_id"],
+            user_auth=True,
+        )
+        tweet = getattr(response, "data", None)
+    except Exception as exc:
+        message = str(exc)
+        if is_dead_tweet_error(message):
+            _retire_dead_tweet(tweet_id=tweet_id, handle=handle, raw_error=message)
+            return RefreshResult(
+                ok=False,
+                message=f"Dead tweet retired for @{normalize_handle(handle)}: {tweet_id}",
+                tweet_id=tweet_id,
+            )
+        print(f"[evergreen][x-debug] preflight_lookup_failed tweet_id={tweet_id} error={message}")
+        return None
+
+    if tweet is None:
+        _retire_dead_tweet(tweet_id=tweet_id, handle=handle, raw_error="preflight lookup returned no tweet data")
+        return RefreshResult(
+            ok=False,
+            message=f"Dead tweet retired for @{normalize_handle(handle)}: {tweet_id}",
+            tweet_id=tweet_id,
+        )
+
+    if _is_reply_tweet(tweet):
+        _retire_ineligible_tweet(
+            tweet_id=tweet_id,
+            handle=handle,
+            reason="reply_tweet",
+            raw_error="preflight lookup identified reply tweet",
+        )
+        return RefreshResult(
+            ok=False,
+            message=f"Reply tweet retired for @{normalize_handle(handle)}: {tweet_id}",
+            tweet_id=tweet_id,
+        )
+
+    return None
+
+
 def _wait_for_retweet_state_to_clear(tweet_id: str, attempt: int = 1) -> int:
     settle_seconds = random.randint(
         RETWEET_STATE_SETTLE_MIN_SECONDS,
@@ -257,6 +346,10 @@ def refresh_repost(tweet_id: str, handle: str | None = None) -> RefreshResult:
 
     try:
         try:
+            preflight_failure = _preflight_reply_guard(client, tweet_id, handle)
+            if preflight_failure is not None:
+                return preflight_failure
+
             print(f"[evergreen][x-debug] attempting unretweet source_tweet_id={tweet_id}")
             client.unretweet(source_tweet_id=tweet_id, user_auth=True)
             did_unretweet = True

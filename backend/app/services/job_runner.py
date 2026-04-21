@@ -617,6 +617,7 @@ def _is_retryable_refresh_skip(message: str, provider: str) -> bool:
         "state sync delay" in lowered
         or "still thinks it is retweeted" in lowered
         or "retweet verification never cleared" in lowered
+        or "reply tweet retired" in lowered
     )
 
 
