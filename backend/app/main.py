@@ -280,12 +280,12 @@ def require_autopilot_access(user: User) -> dict:
     if state.get("subscription_status") == "expired":
         raise HTTPException(
             status_code=402,
-            detail="Your 1-day free trial has ended. Subscribe to restart Autopilot.",
+            detail="Your 3-day trial has ended. Subscribe to restart Autopilot.",
         )
 
     raise HTTPException(
         status_code=402,
-        detail="Start your 1-day free trial or subscribe to use Autopilot.",
+        detail="Start your 3-day trial or subscribe to use Autopilot.",
     )
 
 

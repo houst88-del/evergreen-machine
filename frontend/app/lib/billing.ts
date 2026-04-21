@@ -9,32 +9,33 @@ export const STRIPE_LINKS = {
 
 export const PLANS = {
   standard: {
-    name: 'Standard',
+    name: 'Creator',
     price: '$19',
     cadence: '/month',
-    description: 'A simple evergreen refresh engine for one platform.',
-    cta: 'Start Standard',
+    description: 'The full Evergreen Machine system with refresh and Starden.',
+    cta: 'Start Creator',
     href: STRIPE_LINKS.standard,
     features: [
       'Choose X or Bluesky',
-      'Fixed refresh settings',
       'Evergreen resurfacing engine',
-      'Simple, opinionated setup',
+      'Starden access',
+      'Pattern Summary and Temporal Echo',
+      '3-day trial',
     ],
   },
   pro: {
     name: 'Pro',
     price: '$39',
     cadence: '/month',
-    description: 'The full Evergreen Machine system with Starden and flexible controls.',
+    description: 'The deepest Starden view with broader scope, replay, and history.',
     cta: 'Start Pro',
     href: STRIPE_LINKS.pro,
     features: [
       'X and Bluesky together',
-      'Flexible refresh settings',
       'Evergreen resurfacing engine',
-      'Starden access',
-      'Broader publishing control',
+      'Full Starden access',
+      'Broader replay and history',
+      'Priority access to new layers',
     ],
   },
 } as const

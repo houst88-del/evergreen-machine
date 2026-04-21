@@ -2032,7 +2032,7 @@ function DashboardPageClient() {
     }
 
     if (!canRunAutopilot) {
-      setActionMessage('Your 1-day free trial has ended. Subscribe to restart Autopilot.')
+      setActionMessage('Your 3-day trial has ended. Subscribe to restart Autopilot.')
       setError('')
       window.location.assign(upgradeHref)
       return
@@ -2287,7 +2287,7 @@ function DashboardPageClient() {
   const subscriptionBanner =
     subscriptionStatus === 'trialing'
       ? {
-          eyebrow: 'Free Access Window',
+          eyebrow: '3-Day Trial',
           title: 'Autopilot is live while your current access window runs.',
           body: `Use this time to connect a lane, watch the field come alive, and decide whether you want deeper history and broader scope.`,
           meta: trialCountdown ? `Trial ends in ${trialCountdown}.` : 'Trial active now.',
@@ -2536,7 +2536,7 @@ function DashboardPageClient() {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
               <a className="btn" href={STRIPE_LINKS.standard}>
-                Start Standard
+                Start Creator
               </a>
               <a className="btn primary" href={STRIPE_LINKS.pro}>
                 Start Pro
@@ -2585,8 +2585,8 @@ function DashboardPageClient() {
               <div style={{ color: 'rgba(236,253,245,0.72)', maxWidth: 720 }}>
                 Move top to bottom: connect your channels, turn on the engine, then monitor the refresh flow.
                 {standardFriendly
-                  ? ' Standard can stay lean with one lane. Pro can stack both X and Bluesky.'
-                  : ' Both lanes can run side by side when you want a fuller Pro setup.'}
+                  ? ' Creator keeps one lane simple while still giving you the full field.'
+                  : ' Pro lets both lanes run side by side when you want a broader observatory.'}
               </div>
             </div>
 

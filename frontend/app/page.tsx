@@ -8,23 +8,6 @@ import { getStoredUser, me } from './lib/auth'
 
 const pricingTiers = [
   {
-    name: 'Explorer',
-    eyebrow: 'Free',
-    price: '$0',
-    cadence: '/month',
-    description: 'Get a feel for your system.',
-    cta: 'Start Free',
-    href: '/signup',
-    features: [
-      '1 account',
-      'Full Starden view',
-      'Pattern Summary',
-      'Temporal Echo',
-      'Recent activity window',
-    ],
-    note: 'Start understanding your content immediately.',
-  },
-  {
     name: 'Creator',
     eyebrow: 'Most Popular',
     price: PLANS.standard.price,
@@ -33,13 +16,14 @@ const pricingTiers = [
     cta: 'Start Creator',
     href: PLANS.standard.href,
     features: [
-      'Multiple accounts',
+      'One full content system',
+      'Evergreen refresh + Starden',
       'Full Pattern Summary',
-      'Deeper Temporal Echo',
-      'Extended history window',
-      'Early replay memory',
+      'Temporal Echo',
+      'Why This Star',
+      '3-day trial',
     ],
-    note: 'Understand what works across your content system.',
+    note: 'Keep the full system running for $19/month.',
   },
   {
     name: 'Pro',
@@ -50,11 +34,11 @@ const pricingTiers = [
     cta: 'Start Pro',
     href: PLANS.pro.href,
     features: [
-      'Full history window',
+      'Multiple accounts',
       'Full replay memory',
+      'Extended history window',
       'Advanced pattern insight',
       'Priority access to new layers',
-      'Cross-platform observatory',
     ],
     note: 'Track patterns over time and anticipate what comes next.',
   },
@@ -156,7 +140,7 @@ export default function HomePage() {
 
             <div className="actions" style={{ marginTop: 10 }}>
               <Link className="btn primary" href="/signup">
-                Open Starden
+                Start 3-Day Trial
               </Link>
               <Link className="btn" href="#pricing">
                 See Pricing
@@ -164,7 +148,7 @@ export default function HomePage() {
             </div>
 
             <div className="mission-note">
-              No credit card required.
+              Creator includes the full refresh engine and Starden.
             </div>
           </div>
 
@@ -200,18 +184,18 @@ export default function HomePage() {
             <p>Follow momentum, next-bloom timing, and recent pulses in one calm surface.</p>
           </div>
           <div className="mini-card">
-            <div className="small caps">Cross-platform ready</div>
-            <p>Start with one lane, then go deeper as you want more time, scope, and clarity.</p>
+            <div className="small caps">Upgrade when you need depth</div>
+            <p>Start with the full core system, then unlock broader replay and scope when you want more context.</p>
           </div>
         </section>
 
         <section className="pricing-section" id="pricing">
           <div className="section-heading">
             <div className="tag">Pricing</div>
-            <h2>Start free. Go deeper when you&apos;re ready.</h2>
+            <h2>Start with the full system. Go deeper when you&apos;re ready.</h2>
             <p>
-              Starden stays valuable at the core. Paid plans unlock more time, more context, and
-              a wider view across your content system.
+              Creator gives you the full Evergreen + Starden experience with a 3-day trial.
+              Pro unlocks more time, more replay, and a wider observatory.
             </p>
           </div>
 
@@ -223,10 +207,7 @@ export default function HomePage() {
             }}
           >
             {pricingTiers.map((tier, index) => (
-              <article
-                key={tier.name}
-                className={`card plan-card${index === 1 ? ' recommended' : ''}`}
-              >
+              <article key={tier.name} className={`card plan-card${index === 0 ? ' recommended' : ''}`}>
                 <div className="plan-topline">{tier.name}</div>
                 <div className="small caps" style={{ marginTop: 4 }}>{tier.eyebrow}</div>
                 <div className="plan-price">
@@ -242,7 +223,7 @@ export default function HomePage() {
                   ))}
                 </ul>
 
-                <Link className={`btn${index > 0 ? ' primary' : ''}`} href={tier.href}>
+                <Link className={`btn${index === 0 ? ' primary' : ''}`} href={tier.href}>
                   {tier.cta}
                 </Link>
               </article>
@@ -269,20 +250,11 @@ export default function HomePage() {
           <article className="card">
             <h2>Go deeper when you&apos;re ready</h2>
             <div className="feed">
-              <div className="feedItem">Start free with the core galaxy experience.</div>
-              <div className="feedItem">Upgrade when you want more time, more context, and more clarity.</div>
-              <div className="feedItem">No locked core experience. Just deeper insight.</div>
+              <div className="feedItem">Start with a 3-day trial of the full Creator experience.</div>
+              <div className="feedItem">Upgrade when you want more time, more context, and more replay depth.</div>
+              <div className="feedItem">Creator keeps the full engine and observatory running for $19/month.</div>
             </div>
           </article>
-        </section>
-
-        <section className="card mission-card">
-          <div className="tag">Onboarding</div>
-          <h2>Being shown the sky, not reading a manual.</h2>
-          <p>
-            First load should surface the field, a live signal, and one obvious why-this-star
-            moment in under a minute. The product should create one aha, then get out of the way.
-          </p>
         </section>
       </div>
     </main>

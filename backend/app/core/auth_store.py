@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
-TRIAL_HOURS = max(1, int(os.getenv("EVERGREEN_TRIAL_HOURS", "24")))
+TRIAL_HOURS = max(1, int(os.getenv("EVERGREEN_TRIAL_HOURS", "72")))
 PAID_SUBSCRIPTION_STATUSES = {"active", "subscribed", "paid"}
 
 
