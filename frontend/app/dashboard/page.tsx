@@ -2333,9 +2333,30 @@ function DashboardPageClient() {
           [accountId]: {
             ...existing,
             fresh_post_protection_enabled: enabled,
-            breathing_room_active: enabled ? existing.breathing_room_active : false,
-            breathing_room_until: enabled ? existing.breathing_room_until : null,
-            breathing_room_reason: enabled ? existing.breathing_room_reason : null,
+            breathing_room_active:
+              typeof json.breathing_room_active === 'boolean'
+                ? json.breathing_room_active
+                : enabled
+                  ? existing.breathing_room_active
+                  : false,
+            breathing_room_until:
+              typeof json.breathing_room_until === 'string'
+                ? json.breathing_room_until
+                : enabled
+                  ? existing.breathing_room_until
+                  : null,
+            breathing_room_reason:
+              typeof json.breathing_room_reason === 'string'
+                ? json.breathing_room_reason
+                : enabled
+                  ? existing.breathing_room_reason
+                  : null,
+            latest_original_post_at:
+              typeof json.latest_original_post_at === 'string'
+                ? json.latest_original_post_at
+                : enabled
+                  ? existing.latest_original_post_at
+                  : null,
           },
         }
       })

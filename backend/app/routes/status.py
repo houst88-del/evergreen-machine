@@ -217,6 +217,12 @@ def set_breathing_room(
         enabled = payload.get("enabled")
         metadata = dict(account.metadata_json or {}) if isinstance(account.metadata_json, dict) else {}
         metadata["fresh_post_protection_enabled"] = bool(enabled)
+        if not enabled:
+            metadata["breathing_room_active"] = False
+            metadata["breathing_room_until"] = ""
+            metadata["breathing_room_reason"] = ""
+            metadata["latest_original_post_at"] = ""
+            metadata["latest_original_post_id"] = ""
         account.metadata_json = metadata
         account.updated_at = datetime.utcnow()
 
@@ -228,6 +234,8 @@ def set_breathing_room(
             status_metadata["breathing_room_active"] = False
             status_metadata["breathing_room_until"] = ""
             status_metadata["breathing_room_reason"] = ""
+            status_metadata["latest_original_post_at"] = ""
+            status_metadata["latest_original_post_id"] = ""
             status.next_cycle_at = datetime.utcnow()
         status.metadata_json = status_metadata
         status.updated_at = datetime.utcnow()
@@ -237,6 +245,10 @@ def set_breathing_room(
             "ok": True,
             "enabled": bool(enabled),
             "account_handle": account.handle,
+            "breathing_room_active": False if not enabled else _safe_bool(status_metadata.get("breathing_room_active", False)),
+            "breathing_room_until": None if not enabled else (status_metadata.get("breathing_room_until") or None),
+            "breathing_room_reason": None if not enabled else (status_metadata.get("breathing_room_reason") or None),
+            "latest_original_post_at": None if not enabled else (status_metadata.get("latest_original_post_at") or None),
         }
     finally:
         db.close()
