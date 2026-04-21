@@ -949,6 +949,11 @@ function DashboardPageClient() {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
   const [trialStartNotice, setTrialStartNotice] = useState('')
+  const [blueskyConnectOpen, setBlueskyConnectOpen] = useState(false)
+  const [blueskyHandleInput, setBlueskyHandleInput] = useState('')
+  const [blueskyAppPasswordInput, setBlueskyAppPasswordInput] = useState('')
+  const [blueskyHelperOpen, setBlueskyHelperOpen] = useState(false)
+  const [blueskyFormError, setBlueskyFormError] = useState('')
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
   const [stardenPrimed, setStardenPrimed] = useState(false)
   const emptyBootstrapRefreshRef = useRef(false)
@@ -2019,13 +2024,16 @@ function DashboardPageClient() {
 
   async function handleConnectBluesky() {
     if (!session?.user) return
-    const handle = window.prompt('Enter your Bluesky handle', '')
-    if (!handle) return
-    const appPassword = window.prompt('Enter your Bluesky app password', '')
-    if (!appPassword) return
+    const handle = blueskyHandleInput.trim()
+    const appPassword = blueskyAppPasswordInput.trim()
+    if (!handle || !appPassword) {
+      setBlueskyFormError('Enter your Bluesky handle and app password to connect.')
+      return
+    }
 
     setActionMessage('')
     setError('')
+    setBlueskyFormError('')
     setBusyAction('connect-bluesky')
 
     try {
@@ -2052,9 +2060,18 @@ function DashboardPageClient() {
           ? `Connected Bluesky for ${json.account_handle || handle}.`
           : `Connected Bluesky for ${json.account_handle || handle}. Finalizing lane…`
       )
+      setBlueskyConnectOpen(false)
+      setBlueskyHelperOpen(false)
+      setBlueskyHandleInput('')
+      setBlueskyAppPasswordInput('')
       requestMissionControlRefresh({ followup: true, refreshGalaxy: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect Bluesky')
+      const nextMessage =
+        err instanceof Error ? err.message : 'Could not connect Bluesky'
+      setError(nextMessage)
+      setBlueskyFormError(
+        'We couldn’t connect with that app password. Double-check that you pasted a Bluesky app password from Bluesky settings, not your normal login password.'
+      )
     } finally {
       setBusyAction(null)
     }
@@ -2786,7 +2803,8 @@ function DashboardPageClient() {
                     })
                     return
                   }
-                  handleConnectBluesky()
+                  setBlueskyConnectOpen((current) => !current)
+                  setBlueskyFormError('')
                 }}
                 disabled={busyAction === 'connect-bluesky' || busyAction === 'disconnect-bluesky'}
               >
@@ -2820,8 +2838,155 @@ function DashboardPageClient() {
             </div>
           </div>
 
-          <div
-            style={{
+          {blueskyConnectOpen && !blueskyAccount ? (
+            <div
+              style={{
+                border: '1px solid rgba(125,211,252,0.16)',
+                borderRadius: 18,
+                background: 'rgba(14, 24, 29, 0.74)',
+                padding: 16,
+                display: 'grid',
+                gap: 12,
+              }}
+            >
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ ...missionEyebrowStyle, color: 'rgba(186,230,253,0.82)' }}>
+                  Connect Bluesky
+                </div>
+                <div style={{ color: 'rgba(236,253,245,0.74)', maxWidth: 720, lineHeight: 1.6 }}>
+                  Add your Bluesky handle and app password to connect your account securely.
+                </div>
+              </div>
+
+	              <div
+	                style={{
+	                  display: 'grid',
+	                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+	                  gap: 12,
+	                }}
+	              >
+	                <label style={{ display: 'grid', gap: 8 }}>
+	                  <span style={{ color: 'rgba(236,253,245,0.82)', fontSize: 13 }}>Bluesky handle</span>
+	                  <input
+	                    value={blueskyHandleInput}
+	                    onChange={(event) => setBlueskyHandleInput(event.target.value)}
+	                    placeholder="Enter your Bluesky handle"
+	                    style={{
+	                      background: 'rgba(12,26,19,0.95)',
+	                      color: '#ecfdf5',
+	                      border: '1px solid rgba(110,231,183,0.18)',
+	                      borderRadius: 14,
+	                      padding: '12px 14px',
+	                    }}
+	                  />
+	                </label>
+
+	                <label style={{ display: 'grid', gap: 8 }}>
+	                  <span
+	                    style={{
+	                      display: 'flex',
+	                      alignItems: 'center',
+	                      gap: 10,
+	                      flexWrap: 'wrap',
+	                      color: 'rgba(236,253,245,0.82)',
+	                      fontSize: 13,
+	                    }}
+	                  >
+	                    <span>Bluesky app password</span>
+	                    <button
+	                      type="button"
+	                      onClick={() => setBlueskyHelperOpen((current) => !current)}
+	                      style={{
+	                        border: 'none',
+	                        background: 'transparent',
+	                        color: 'rgba(186,230,253,0.82)',
+	                        cursor: 'pointer',
+	                        padding: 0,
+	                        fontSize: 12,
+	                        letterSpacing: '0.04em',
+	                        textTransform: 'uppercase',
+	                      }}
+	                    >
+	                      What&apos;s this?
+	                    </button>
+	                  </span>
+	                  <input
+	                    type="password"
+	                    value={blueskyAppPasswordInput}
+	                    onChange={(event) => setBlueskyAppPasswordInput(event.target.value)}
+	                    placeholder="Paste your Bluesky app password"
+	                    style={{
+	                      background: 'rgba(12,26,19,0.95)',
+	                      color: '#ecfdf5',
+	                      border: '1px solid rgba(110,231,183,0.18)',
+	                      borderRadius: 14,
+	                      padding: '12px 14px',
+	                    }}
+	                  />
+	                  <div style={{ color: 'rgba(236,253,245,0.62)', fontSize: 12, lineHeight: 1.6 }}>
+	                    Use a Bluesky app password, not your regular password. Create one in
+	                    Bluesky settings, then paste it here to connect your account securely.
+	                  </div>
+	                </label>
+	              </div>
+
+	              {blueskyHelperOpen ? (
+	                <div
+	                  style={{
+	                    borderRadius: 14,
+	                    border: '1px solid rgba(125,211,252,0.12)',
+	                    background: 'rgba(125,211,252,0.06)',
+	                    padding: '12px 14px',
+	                    color: 'rgba(236,253,245,0.74)',
+	                    lineHeight: 1.6,
+	                    fontSize: 13,
+	                  }}
+	                >
+	                  <div style={{ fontWeight: 600, color: '#e0f2fe', marginBottom: 4 }}>
+	                    Why do I need this?
+	                  </div>
+	                  <div>
+	                    Bluesky uses app passwords for third-party tools. That means you don&apos;t
+	                    need to enter your usual account password here.
+	                  </div>
+	                  <div style={{ marginTop: 6 }}>
+	                    Create an app password in your Bluesky settings, copy it, and paste it into
+	                    this field. You can revoke this app password in Bluesky at any time.
+	                  </div>
+	                </div>
+	              ) : null}
+
+	              {blueskyFormError ? (
+	                <div style={{ color: '#fecaca', fontSize: 13, lineHeight: 1.6 }}>
+	                  {blueskyFormError}
+	                </div>
+	              ) : null}
+
+	              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+	                <button
+	                  className="btn primary"
+	                  onClick={handleConnectBluesky}
+	                  disabled={busyAction === 'connect-bluesky'}
+	                >
+	                  {busyAction === 'connect-bluesky' ? 'Connecting Bluesky...' : 'Connect Bluesky'}
+	                </button>
+	                <button
+	                  className="btn"
+	                  type="button"
+	                  onClick={() => {
+	                    setBlueskyConnectOpen(false)
+	                    setBlueskyFormError('')
+	                  }}
+	                  disabled={busyAction === 'connect-bluesky'}
+	                >
+	                  Cancel
+	                </button>
+	              </div>
+	            </div>
+	          ) : null}
+
+	          <div
+	            style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
               gap: 12,
