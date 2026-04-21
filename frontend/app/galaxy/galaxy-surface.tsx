@@ -1479,86 +1479,252 @@ export function GalaxySurface({
               justifyItems: "end",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(180px, auto)",
-                gap: 8,
-                justifyContent: "end",
-              }}
-            >
-              {[["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"]].map(([label, value]) => (
+            {embedded ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(180px, auto)",
+                  gap: 12,
+                  alignItems: "start",
+                  width: "min(860px, 100%)",
+                }}
+              >
                 <div
-                  key={label}
                   style={{
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 16,
-                    padding: "8px 10px",
-                    background: "rgba(255,255,255,0.03)",
-                    minWidth: 0,
+                    display: "grid",
+                    gap: 8,
+                    justifyItems: "end",
+                    alignContent: "start",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: 10,
-                      letterSpacing: "0.14em",
+                      fontSize: 11,
+                      letterSpacing: "0.18em",
                       textTransform: "uppercase",
                       color: "rgba(236,253,245,0.56)",
+                      paddingRight: 2,
                     }}
                   >
-                    {label}
+                    Scope
                   </div>
                   <div
                     style={{
-                      marginTop: 4,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 8,
+                      width: "min(540px, 100%)",
+                      justifySelf: "end",
                     }}
                   >
-                    {value}
+                    {scopeOptions.map((option) => {
+                      const active = selected === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          onClick={() => {
+                            if (!option.available) return;
+                            setSelected(option.value);
+                          }}
+                          disabled={!option.available}
+                          style={{
+                            borderRadius: 18,
+                            border: active
+                              ? "1px solid rgba(125,211,252,0.48)"
+                              : option.available
+                                ? "1px solid rgba(52,211,153,0.18)"
+                                : "1px solid rgba(255,255,255,0.08)",
+                            background: active
+                              ? "rgba(59,130,246,0.18)"
+                              : option.available
+                                ? "rgba(0,0,0,0.28)"
+                                : "rgba(255,255,255,0.02)",
+                            color: option.available ? "white" : "rgba(236,253,245,0.44)",
+                            padding: "10px 12px",
+                            cursor: option.available ? "pointer" : "default",
+                            fontSize: 13,
+                            fontWeight: active ? 700 : 500,
+                            boxShadow: active ? "0 0 0 1px rgba(147,197,253,0.18)" : "none",
+                            opacity: option.available ? 1 : 0.72,
+                            minHeight: 44,
+                            textAlign: "center",
+                          }}
+                          title={option.available ? option.label : `${option.label} signal view coming soon`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div
-              style={{
-                display: "grid",
-                gap: 6,
-                justifyItems: "end",
-                marginRight: 6,
-                padding: "10px 12px",
-                borderRadius: 18,
-                border: "1px solid rgba(110,231,183,0.12)",
-                background: "rgba(255,255,255,0.02)",
-                color: "rgba(236,253,245,0.72)",
-              }}
-            >
-              <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
-                {currentStatus?.running ? "Running" : "Idle"}
+                <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(180px, auto)",
+                      gap: 8,
+                      justifyContent: "end",
+                    }}
+                  >
+                    {[["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"]].map(([label, value]) => (
+                      <div
+                        key={label}
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          borderRadius: 16,
+                          padding: "8px 10px",
+                          background: "rgba(255,255,255,0.03)",
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 10,
+                            letterSpacing: "0.14em",
+                            textTransform: "uppercase",
+                            color: "rgba(236,253,245,0.56)",
+                          }}
+                        >
+                          {label}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      justifyItems: "end",
+                      marginRight: 6,
+                      padding: "10px 12px",
+                      borderRadius: 18,
+                      border: "1px solid rgba(110,231,183,0.12)",
+                      background: "rgba(255,255,255,0.02)",
+                      color: "rgba(236,253,245,0.72)",
+                    }}
+                  >
+                    <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+                      {currentStatus?.running ? "Running" : "Idle"}
+                    </div>
+                    <div style={{ fontSize: 12 }}>
+                      {humanizeStrategy(engine.strategy)}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {(selectedStar
+                        ? [
+                            likelyNext(selectedStar) ? "High priority" : "",
+                            selectedStar.current_cycle ? "Live now" : "",
+                          ]
+                        : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
+                        .filter(Boolean)
+                        .map((label, index) => (
+                          <span
+                            key={label}
+                            style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                          >
+                            {label}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: 12 }}>
-                {humanizeStrategy(engine.strategy)}
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {(selectedStar
-                  ? [
-                      likelyNext(selectedStar) ? "High priority" : "",
-                      selectedStar.current_cycle ? "Live now" : "",
-                    ]
-                  : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
-                  .filter(Boolean)
-                  .map((label, index) => (
-                    <span
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(180px, auto)",
+                    gap: 8,
+                    justifyContent: "end",
+                  }}
+                >
+                  {[["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"]].map(([label, value]) => (
+                    <div
                       key={label}
-                      style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 16,
+                        padding: "8px 10px",
+                        background: "rgba(255,255,255,0.03)",
+                        minWidth: 0,
+                      }}
                     >
-                      {label}
-                    </span>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          letterSpacing: "0.14em",
+                          textTransform: "uppercase",
+                          color: "rgba(236,253,245,0.56)",
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {value}
+                      </div>
+                    </div>
                   ))}
-              </div>
-            </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    justifyItems: "end",
+                    marginRight: 6,
+                    padding: "10px 12px",
+                    borderRadius: 18,
+                    border: "1px solid rgba(110,231,183,0.12)",
+                    background: "rgba(255,255,255,0.02)",
+                    color: "rgba(236,253,245,0.72)",
+                  }}
+                >
+                  <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+                    {currentStatus?.running ? "Running" : "Idle"}
+                  </div>
+                  <div style={{ fontSize: 12 }}>
+                    {humanizeStrategy(engine.strategy)}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {(selectedStar
+                      ? [
+                          likelyNext(selectedStar) ? "High priority" : "",
+                          selectedStar.current_cycle ? "Live now" : "",
+                        ]
+                      : [counts.currentCycle ? "Active cycle" : "", counts.recent ? "Recent pulse" : ""])
+                      .filter(Boolean)
+                      .map((label, index) => (
+                        <span
+                          key={label}
+                          style={missionBadgeStyle(index === 0 ? "gold" : "mint", true)}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              </>
+            )}
             {!embedded ? (
               <button
                 onClick={() => {
@@ -1575,20 +1741,7 @@ export function GalaxySurface({
               >
                 ← Dashboard
               </button>
-            ) : (
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.56)",
-                  justifySelf: "end",
-                  paddingRight: 2,
-                }}
-              >
-                Scope
-              </div>
-            )}
+            ) : null}
             {!embedded ? (
               <div
                 style={{
@@ -1603,56 +1756,7 @@ export function GalaxySurface({
                 Starden View
               </div>
             ) : null}
-            {embedded ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: 8,
-                  width: "min(540px, 100%)",
-                  justifySelf: "end",
-                }}
-              >
-                {scopeOptions.map((option) => {
-                  const active = selected === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      onClick={() => {
-                        if (!option.available) return;
-                        setSelected(option.value);
-                      }}
-                      disabled={!option.available}
-                      style={{
-                        borderRadius: 18,
-                        border: active
-                          ? "1px solid rgba(125,211,252,0.48)"
-                          : option.available
-                            ? "1px solid rgba(52,211,153,0.18)"
-                            : "1px solid rgba(255,255,255,0.08)",
-                        background: active
-                          ? "rgba(59,130,246,0.18)"
-                          : option.available
-                            ? "rgba(0,0,0,0.28)"
-                            : "rgba(255,255,255,0.02)",
-                        color: option.available ? "white" : "rgba(236,253,245,0.44)",
-                        padding: "10px 12px",
-                        cursor: option.available ? "pointer" : "default",
-                        fontSize: 13,
-                        fontWeight: active ? 700 : 500,
-                        boxShadow: active ? "0 0 0 1px rgba(147,197,253,0.18)" : "none",
-                        opacity: option.available ? 1 : 0.72,
-                        minHeight: 44,
-                        textAlign: "center",
-                      }}
-                      title={option.available ? option.label : `${option.label} signal view coming soon`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
+            {embedded ? null : (
               <select
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
