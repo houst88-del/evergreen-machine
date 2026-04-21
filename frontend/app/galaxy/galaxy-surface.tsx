@@ -1626,60 +1626,6 @@ export function GalaxySurface({
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Garden Notes
-              </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  fontSize: 13,
-                  lineHeight: 1.8,
-                  color: "rgba(236,253,245,0.74)",
-                }}
-              >
-                <div>Canopy: {selectedLabel}</div>
-                <div>
-                  Mode: {titleCase(intelligenceView)} · {intelligenceModeDescription(intelligenceView)}
-                </div>
-                <div>Motion: {timeLapseOn ? "Orbiting" : "Paused"}</div>
-                <div>Zoom: {zoom.toFixed(1)}x</div>
-                <div>Focus: {highlightMode === "off" ? "Balanced view" : titleCase(highlightMode)}</div>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {[
-                  `X ${providerCounts.x}`,
-                  `Bluesky ${providerCounts.bluesky}`,
-                  counts.currentCycle ? `${counts.currentCycle} active now` : "Standby sweep",
-                  counts.outerField ? `${counts.outerField} outer field` : "",
-                ].map((label, index) => (
-                  label ? (
-                      <span
-                        key={label}
-                        style={
-                          index === 0
-                            ? missionBadgeStyle("mint", true)
-                            : index === 1
-                              ? missionBadgeStyle("sky", true)
-                              : index === 2
-                                ? missionBadgeStyle("gold", true)
-                                : missionBadgeStyle("neutral", true)
-                        }
-                      >
-                        {label}
-                      </span>
-                  ) : null
-                ))}
-              </div>
-            </div>
-
-            <div style={cardStyle()}>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "rgba(236,253,245,0.58)",
-                }}
-              >
                 Pulse Signal
               </div>
               <div style={{ marginTop: 10, fontSize: 40, fontWeight: 700 }}>
@@ -1824,6 +1770,60 @@ export function GalaxySurface({
                   </div>
                 </>
               ) : null}
+            </div>
+
+            <div style={cardStyle()}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
+                Garden Notes
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 13,
+                  lineHeight: 1.8,
+                  color: "rgba(236,253,245,0.74)",
+                }}
+              >
+                <div>Canopy: {selectedLabel}</div>
+                <div>
+                  Mode: {titleCase(intelligenceView)} · {intelligenceModeDescription(intelligenceView)}
+                </div>
+                <div>Motion: {timeLapseOn ? "Orbiting" : "Paused"}</div>
+                <div>Zoom: {zoom.toFixed(1)}x</div>
+                <div>Focus: {highlightMode === "off" ? "Balanced view" : titleCase(highlightMode)}</div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {[
+                  `X ${providerCounts.x}`,
+                  `Bluesky ${providerCounts.bluesky}`,
+                  counts.currentCycle ? `${counts.currentCycle} active now` : "Standby sweep",
+                  counts.outerField ? `${counts.outerField} outer field` : "",
+                ].map((label, index) => (
+                  label ? (
+                      <span
+                        key={label}
+                        style={
+                          index === 0
+                            ? missionBadgeStyle("mint", true)
+                            : index === 1
+                              ? missionBadgeStyle("sky", true)
+                              : index === 2
+                                ? missionBadgeStyle("gold", true)
+                                : missionBadgeStyle("neutral", true)
+                        }
+                      >
+                        {label}
+                      </span>
+                  ) : null
+                ))}
+              </div>
             </div>
 
           </div>
