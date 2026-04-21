@@ -1060,6 +1060,32 @@ function DashboardPageClient() {
     return trialStartPromiseRef.current
   }
 
+  async function ensureMeaningfulAccessWindow() {
+    const activeUser = getActiveUserSnapshot()
+    if (!activeUser?.email) {
+      return { started: false, canProceed: false }
+    }
+
+    const existingTrialStartedAt =
+      subscriptionInfo?.trial_started_at ?? activeUser.trial_started_at ?? null
+    const existingStatus = String(
+      subscriptionInfo?.status ?? activeUser.subscription_status ?? 'inactive',
+    )
+      .trim()
+      .toLowerCase()
+
+    if (existingStatus === 'active' || existingStatus === 'trialing') {
+      return { started: false, canProceed: true }
+    }
+
+    if (existingTrialStartedAt) {
+      return { started: false, canProceed: false }
+    }
+
+    const started = await startTrialFromMeaningfulInteraction()
+    return { started, canProceed: started }
+  }
+
   async function refreshSessionUser() {
     const storedUser = getStoredUser()
     const existingToken = getToken()
@@ -1904,6 +1930,8 @@ function DashboardPageClient() {
     setError('')
 
     try {
+      await ensureMeaningfulAccessWindow()
+
       const query = connectedAccountId
         ? `/api/jobs/refresh-now?user_id=${session.user.id || 1}&connected_account_id=${connectedAccountId}`
         : `/api/jobs/refresh-now?user_id=${session.user.id || 1}`
@@ -1939,6 +1967,8 @@ function DashboardPageClient() {
     setError('')
 
     try {
+      await ensureMeaningfulAccessWindow()
+
       const query = connectedAccountId
         ? `/api/jobs/run-analytics?user_id=${session.user.id || 1}&connected_account_id=${connectedAccountId}`
         : `/api/jobs/run-analytics?user_id=${session.user.id || 1}`
@@ -2064,6 +2094,7 @@ function DashboardPageClient() {
   async function handleToggleAutopilot(accountId: number, enabled: boolean) {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
+    let accessGrantedForThisAction = canRunAutopilot
     const upgradeHref =
       resolvedAccounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
       resolvedAccounts.length > 1
@@ -2071,11 +2102,25 @@ function DashboardPageClient() {
         : STRIPE_LINKS.standard
 
     if (enabled && !canRunAutopilot) {
-      setActionMessage('Autopilot is part of your active trial or subscription. Upgrade to turn it back on.')
-      setError('')
-      window.location.assign(upgradeHref)
-      return
+      const accessWindow = await ensureMeaningfulAccessWindow()
+      if (accessWindow.canProceed) {
+        accessGrantedForThisAction = true
+        setActionMessage(
+          accessWindow.started
+            ? '3-day trial started. Evergreen is ready to run.'
+            : ''
+        )
+      } else {
+        setActionMessage('Autopilot is part of your active trial or subscription. Upgrade to turn it back on.')
+        setError('')
+        window.location.assign(upgradeHref)
+        return
+      }
+    } else if (enabled) {
+      await ensureMeaningfulAccessWindow()
     }
+
+    if (enabled && !accessGrantedForThisAction) return
 
     setActionMessage('')
     setError('')
@@ -2121,6 +2166,7 @@ function DashboardPageClient() {
   async function handleGlobalAutopilotAction() {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
+    let accessGrantedForThisAction = canRunAutopilot
     const readyAccounts = resolvedAccounts.filter((account) =>
       isConnectedAccount(account, statusMap[account.id])
     )
@@ -2139,11 +2185,23 @@ function DashboardPageClient() {
     }
 
     if (!canRunAutopilot) {
-      setActionMessage('Your 3-day trial has ended. Subscribe to restart Autopilot.')
-      setError('')
-      window.location.assign(upgradeHref)
-      return
+      const accessWindow = await ensureMeaningfulAccessWindow()
+      if (accessWindow.canProceed) {
+        accessGrantedForThisAction = true
+        setActionMessage(
+          accessWindow.started
+            ? '3-day trial started. Evergreen is ready to run.'
+            : ''
+        )
+      } else {
+        setActionMessage('Your 3-day trial has ended. Subscribe to restart Autopilot.')
+        setError('')
+        window.location.assign(upgradeHref)
+        return
+      }
     }
+
+    if (!accessGrantedForThisAction) return
 
     setBusyAction('start-autopilot')
     setActionMessage('')
