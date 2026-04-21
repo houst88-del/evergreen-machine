@@ -312,6 +312,58 @@ const titleCase = (value?: string | null) =>
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const normalizeStrategy = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+const proximity = (a: unknown, b: unknown, range: number) => {
+  const distance = Math.abs(safeNum(a, 0) - safeNum(b, 0));
+  if (!Number.isFinite(distance) || range <= 0) return 0;
+  return Math.max(0, 1 - distance / range);
+};
+
+const relationReason = (anchor: GalaxyNode, other: GalaxyNode) => {
+  if (anchor.archetype && anchor.archetype === other.archetype) return "Same archetype";
+  if (
+    normalizeStrategy(anchor.selection_strategy) &&
+    normalizeStrategy(anchor.selection_strategy) === normalizeStrategy(other.selection_strategy)
+  ) {
+    return "Shared strategy";
+  }
+  if (
+    String(anchor.provider || "").trim().toLowerCase() &&
+    String(anchor.provider || "").trim().toLowerCase() ===
+      String(other.provider || "").trim().toLowerCase()
+  ) {
+    return "Same lane";
+  }
+  if (
+    proximity(rankGravity(anchor), rankGravity(other), 250) >= 0.66 ||
+    proximity(intelligenceScore(anchor, "balanced"), intelligenceScore(other, "balanced"), 80000) >= 0.66
+  ) {
+    return "Similar gravity";
+  }
+  if (
+    proximity(anchor.revival_score, other.revival_score, 12000) >= 0.66 ||
+    proximity(anchor.refresh_count, other.refresh_count, 24) >= 0.66
+  ) {
+    return "Revival sibling";
+  }
+  return "Shared signal";
+};
+
+const relationStroke = (reason: string, provider?: string) => {
+  if (reason === "Same archetype") return "rgba(250,228,120,0.18)";
+  if (reason === "Shared strategy") return "rgba(125,211,252,0.17)";
+  const lower = String(provider || "").toLowerCase();
+  if (lower === "bluesky" || lower === "bsky") return "rgba(125,211,252,0.16)";
+  if (lower === "x" || lower === "twitter") return "rgba(187,247,208,0.16)";
+  return "rgba(167,243,208,0.14)";
+};
+
 const parseMeta = (meta?: GalaxyMeta) => {
   const m = (meta?.metadata || {}) as Record<string, unknown>;
   return {
@@ -1237,6 +1289,96 @@ export function GalaxySurface({
     return new Set(picked);
   }, [embedded, workingNodes, intelligenceView]);
 
+  const constellationLinks = useMemo(() => {
+    if (!hovered) return [];
+
+    const hoveredNode = renderedNodes.find((node) => node.id === hovered.id);
+    if (!hoveredNode) return [];
+
+    const maxLinks = embedded ? 4 : 6;
+    const threshold = embedded ? 3.4 : 3.1;
+
+    return renderedNodes
+      .map((node) => {
+        if (node.id === hoveredNode.id) return null;
+
+        let score = 0;
+        if (hoveredNode.archetype && hoveredNode.archetype === node.archetype) score += 4;
+        if (
+          normalizeStrategy(hoveredNode.selection_strategy) &&
+          normalizeStrategy(hoveredNode.selection_strategy) === normalizeStrategy(node.selection_strategy)
+        ) {
+          score += 2;
+        }
+        if (
+          String(hoveredNode.provider || "").trim().toLowerCase() &&
+          String(hoveredNode.provider || "").trim().toLowerCase() ===
+            String(node.provider || "").trim().toLowerCase()
+        ) {
+          score += 1.5;
+        }
+
+        score += proximity(rankGravity(hoveredNode), rankGravity(node), 250) * 2;
+        score +=
+          proximity(
+            intelligenceScore(hoveredNode, intelligenceView),
+            intelligenceScore(node, intelligenceView),
+            80000
+          ) * 2;
+        score += proximity(hoveredNode.revival_score, node.revival_score, 12000) * 1;
+        score += proximity(hoveredNode.refresh_count, node.refresh_count, 24) * 0.8;
+
+        if (likelyNext(hoveredNode) && likelyNext(node)) score += 1;
+        if (!!hoveredNode.current_cycle && !!node.current_cycle) score += 0.75;
+
+        if (score < threshold) return null;
+
+        return {
+          from: hoveredNode,
+          to: node,
+          score,
+          reason: relationReason(hoveredNode, node),
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          from: GalaxyNode;
+          to: GalaxyNode;
+          score: number;
+          reason: string;
+        } => Boolean(item)
+      )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxLinks);
+  }, [embedded, hovered, intelligenceView, renderedNodes]);
+
+  const relatedNodeIds = useMemo(
+    () => new Set(constellationLinks.map((item) => item.to.id)),
+    [constellationLinks]
+  );
+
+  const constellationSummary = useMemo(() => {
+    if (!deferredHovered) return null;
+    const currentLinks =
+      deferredHovered.id === hovered?.id
+        ? constellationLinks
+        : [];
+    if (!currentLinks.length) return null;
+
+    const dominantReason =
+      [...currentLinks.reduce((acc, item) => {
+        acc.set(item.reason, (acc.get(item.reason) || 0) + 1);
+        return acc;
+      }, new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "Shared signal";
+
+    return {
+      count: currentLinks.length,
+      dominantReason,
+    };
+  }, [constellationLinks, deferredHovered, hovered?.id]);
+
   const providerCounts = useMemo(() => {
     return workingNodes.reduce(
       (acc, node) => {
@@ -2084,9 +2226,48 @@ export function GalaxySurface({
                   />
                 ))}
 
+                {constellationLinks.length ? (
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      overflow: "visible",
+                      pointerEvents: "none",
+                      zIndex: 2,
+                    }}
+                  >
+                    {constellationLinks.map((link) => (
+                      <line
+                        key={`${link.from.id}-${link.to.id}`}
+                        x1={(link.from as any)._px}
+                        y1={(link.from as any)._py}
+                        x2={(link.to as any)._px}
+                        y2={(link.to as any)._py}
+                        stroke={relationStroke(link.reason, link.to.provider)}
+                        strokeWidth={embedded ? 0.16 : 0.18}
+                        strokeLinecap="round"
+                        strokeDasharray={link.reason === "Shared strategy" ? "1.1 0.8" : undefined}
+                        vectorEffect="non-scaling-stroke"
+                        opacity={Math.min(0.18, 0.08 + (link.score - 3) * 0.02)}
+                        style={{
+                          filter: embedded
+                            ? "drop-shadow(0 0 2px rgba(255,255,255,0.06))"
+                            : "drop-shadow(0 0 5px rgba(255,255,255,0.08))",
+                        }}
+                      />
+                    ))}
+                  </svg>
+                ) : null}
+
                 {renderedNodes.map((node, index) => {
                   const accent = rarityAccent(node);
                   const selectedNow = selectedStarId === node.id;
+                  const hoveredNow = hovered?.id === node.id;
+                  const relatedNow = relatedNodeIds.has(node.id);
                   const freshPulse = isFreshPulse(node.last_resurfaced_at);
                   const opacity = highlightOpacity(node, highlightMode);
                   const outerField = !!node.cold_archive;
@@ -2094,6 +2275,10 @@ export function GalaxySurface({
                   const starScale =
                     selectedNow
                       ? 1.26
+                      : hoveredNow
+                        ? 1.16
+                        : relatedNow
+                          ? 1.08
                       : freshPulse
                         ? 1.14
                         : node.current_cycle
@@ -2220,14 +2405,18 @@ export function GalaxySurface({
                             ? `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9) 0%, ${accent.fill} 48%, ${accent.aura} 78%, rgba(255,255,255,0) 100%)`
                             : `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, ${accent.fill} 42%, ${accent.aura} 72%, rgba(255,255,255,0) 100%)`,
                           boxShadow: embedded
-                            ? `0 0 ${Math.max(6, glow * 0.55)}px ${accent.aura}`
-                            : `0 0 ${glow}px ${accent.aura}, 0 0 ${glow * 1.8}px ${accent.aura}, inset 0 0 ${Math.max(
+                            ? `0 0 ${Math.max(6, glow * (hoveredNow ? 0.78 : relatedNow ? 0.68 : 0.55))}px ${accent.aura}`
+                            : `0 0 ${glow * (hoveredNow ? 1.22 : relatedNow ? 1.08 : 1)}px ${accent.aura}, 0 0 ${
+                                glow * (hoveredNow ? 2.2 : relatedNow ? 1.95 : 1.8)
+                              }px ${accent.aura}, inset 0 0 ${Math.max(
                                 4,
                                 size * 0.9
                               )}px rgba(255,255,255,0.18)`,
                           cursor: "pointer",
-                          opacity: opacity * (outerField ? 0.72 : circulationHot ? 1 : 0.92),
-                          zIndex: selectedNow ? 6 : node.current_cycle ? 4 : 3,
+                          opacity:
+                            opacity *
+                            (hoveredNow ? 1 : relatedNow ? 0.98 : outerField ? 0.72 : circulationHot ? 1 : 0.92),
+                          zIndex: selectedNow ? 6 : hoveredNow ? 5 : node.current_cycle ? 4 : 3,
                           padding: 0,
                           margin: 0,
                           appearance: "none",
@@ -2246,6 +2435,18 @@ export function GalaxySurface({
                               inset: -8,
                               borderRadius: "9999px",
                               border: "1px solid rgba(255,240,170,0.38)",
+                            }}
+                          />
+                        ) : null}
+                        {relatedNow ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              inset: embedded ? -5 : -7,
+                              borderRadius: "9999px",
+                              border: `1px solid ${hoveredNow ? "rgba(250,228,120,0.28)" : "rgba(236,253,245,0.16)"}`,
+                              opacity: hoveredNow ? 0.8 : 0.52,
+                              pointerEvents: "none",
                             }}
                           />
                         ) : null}
@@ -2423,6 +2624,22 @@ export function GalaxySurface({
                     <div>{velocityLabel(safeNum(deferredHovered.predicted_velocity, 0))}</div>
                     <div>Revival {Math.round(safeNum(deferredHovered.revival_score, 0))}</div>
                   </div>
+                  {constellationSummary ? (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 10,
+                        borderTop: "1px solid rgba(255,255,255,0.08)",
+                        fontSize: embedded ? 11 : 12,
+                        lineHeight: 1.6,
+                        color: "rgba(236,253,245,0.7)",
+                      }}
+                    >
+                      Constellation: {constellationSummary.dominantReason} ·{" "}
+                      {constellationSummary.count} related{" "}
+                      {constellationSummary.count === 1 ? "star" : "stars"}
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       marginTop: 12,
