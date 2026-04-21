@@ -12,18 +12,18 @@ const pricingTiers = [
     eyebrow: 'Full Access',
     price: PLANS.standard.price,
     cadence: PLANS.standard.cadence,
-    description: 'Everything in one calm system.',
+    description: 'Everything working, all the time.',
     cta: 'Start membership',
     href: PLANS.standard.href,
     features: [
       '3-day trial',
-      'Evergreen refresh + Starden',
-      'Full Pattern Summary',
-      'Temporal Echo + Replay Memory',
-      'Why This Star',
-      'One full content system',
+      'Automatic content resurfacing',
+      'Pattern Summary',
+      'Temporal Echo + Replay',
+      'Why this star',
+      'One continuous system',
     ],
-    note: 'Keep the full system open for $19.99/month.',
+    note: 'Keep your system running for $19.99/month.',
   },
 ] as const
 
@@ -78,7 +78,7 @@ export default function HomePage() {
           <header className="header">
             <div>
               <div className="wordmark">Evergreen Machine</div>
-              <div className="subtle">Refresh forever. Reach further.</div>
+              <div className="subtle">Your best posts resurface themselves automatically</div>
             </div>
           </header>
 
@@ -96,7 +96,7 @@ export default function HomePage() {
         <header className="header">
           <div>
             <div className="wordmark">Evergreen Machine</div>
-            <div className="subtle">Refresh forever. Reach further.</div>
+            <div className="subtle">Your best posts resurface themselves automatically</div>
           </div>
 
           <div className="actions">
@@ -118,12 +118,15 @@ export default function HomePage() {
               when it moves, and why it gets selected.
             </p>
             <div className="subtle" style={{ maxWidth: 520 }}>
+              Your best posts are automatically resurfaced at the right time.
+            </div>
+            <div className="subtle" style={{ maxWidth: 520 }}>
               No dashboards. No guesswork. Just clear signals over time.
             </div>
 
             <div className="actions" style={{ marginTop: 10 }}>
               <Link className="btn primary" href="/signup">
-                Start 3-Day Trial
+                Start your 3-day trial
               </Link>
               <Link className="btn" href="#pricing">
                 See Pricing
@@ -137,7 +140,7 @@ export default function HomePage() {
 
           <section className="card spotlight">
             <div className="small caps">Observatory View</div>
-            <div className="metric">Evergreen Machine executes. Starden explains.</div>
+            <div className="metric">Evergreen keeps your content active. Starden explains why.</div>
             <div className="feed">
               <div className="feedItem">
                 <strong>See patterns, not just posts</strong>
