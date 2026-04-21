@@ -2687,66 +2687,6 @@ function DashboardPageClient() {
           </div>
         </section>
 
-        <section
-          id="starden-panel"
-          ref={stardenSectionRef}
-          className="card"
-          style={{
-            marginTop: 18,
-            padding: 18,
-            background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
-          }}
-        >
-          <div style={{ marginBottom: 14 }}>
-            <div style={missionEyebrowStyle}>Starden</div>
-            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
-              Constellation View
-            </div>
-          </div>
-
-          {stardenPrimed ? (
-            <EmbeddedGalaxySurface
-              embedded
-              embeddedUserId={embeddedMissionUserId}
-              embeddedIdentityHints={embeddedMissionIdentityHints}
-              embeddedAccounts={resolvedAccounts}
-              embeddedStatusMap={statusMap}
-              embeddedUnifiedGalaxy={missionGalaxy}
-            />
-          ) : (
-            <div
-              style={{
-                minHeight: 720,
-                borderRadius: 26,
-                border: '1px solid rgba(52,211,153,0.16)',
-                background:
-                  'linear-gradient(180deg, rgba(3,18,15,0.96), rgba(2,12,11,0.92))',
-                display: 'grid',
-                gap: 16,
-                alignContent: 'center',
-                justifyItems: 'center',
-                padding: 28,
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
-              <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
-                Load Starden when you want the live constellation
-              </div>
-              <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
-                Mission Control stays light on first paint. Use Jump to Starden or the button below to wake up the
-                live galaxy only when you want it.
-              </div>
-              <button
-                className="btn primary"
-                onClick={scrollToStarden}
-              >
-                Load live Starden
-              </button>
-            </div>
-          )}
-        </section>
-
         <section className="card">
           <div
             style={{
@@ -3092,6 +3032,66 @@ function DashboardPageClient() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </section>
+
+        <section
+          id="starden-panel"
+          ref={stardenSectionRef}
+          className="card"
+          style={{
+            marginTop: 18,
+            padding: 18,
+            background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
+          }}
+        >
+          <div style={{ marginBottom: 14 }}>
+            <div style={missionEyebrowStyle}>Starden</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              Constellation View
+            </div>
+          </div>
+
+          {stardenPrimed ? (
+            <EmbeddedGalaxySurface
+              embedded
+              embeddedUserId={embeddedMissionUserId}
+              embeddedIdentityHints={embeddedMissionIdentityHints}
+              embeddedAccounts={resolvedAccounts}
+              embeddedStatusMap={statusMap}
+              embeddedUnifiedGalaxy={missionGalaxy}
+            />
+          ) : (
+            <div
+              style={{
+                minHeight: 720,
+                borderRadius: 26,
+                border: '1px solid rgba(52,211,153,0.16)',
+                background:
+                  'linear-gradient(180deg, rgba(3,18,15,0.96), rgba(2,12,11,0.92))',
+                display: 'grid',
+                gap: 16,
+                alignContent: 'center',
+                justifyItems: 'center',
+                padding: 28,
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
+              <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
+                Load Starden when you want the live constellation
+              </div>
+              <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
+                Mission Control stays light on first paint. Use Jump to Starden or the button below to wake up the
+                live galaxy only when you want it.
+              </div>
+              <button
+                className="btn primary"
+                onClick={scrollToStarden}
+              >
+                Load live Starden
+              </button>
             </div>
           )}
         </section>
