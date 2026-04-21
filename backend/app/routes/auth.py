@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from app.core.auth_store import create_auth_user, get_auth_user_by_email, update_last_login
 from app.core.db import SessionLocal
 from app.core.security import create_token, get_current_auth_user, hash_password, verify_password
-from app.core.subscription_state import ensure_user_subscription_state
+from app.core.subscription_state import ensure_user_subscription_state, start_user_trial
 from app.core.subscription_state import lookup_stripe_subscription_by_email, update_user_subscription
 from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 from app.services.pool_service import active_rotation_count
@@ -487,6 +487,42 @@ def claim_subscription(payload: dict, auth_user: dict = Depends(get_current_auth
         state = ensure_user_subscription_state(db, user, stripe_reconcile=False)
         return {
             "ok": True,
+            "subscription": {
+                "status": state.get("subscription_status"),
+                "trial_started_at": state.get("trial_started_at"),
+                "trial_ends_at": state.get("trial_ends_at"),
+                "can_run_autopilot": state.get("can_run_autopilot"),
+                "plan": subscription_plan_label(user.stripe_price_id),
+                "price_id": str(user.stripe_price_id or "").strip() or None,
+                "billing_email": str(user.stripe_billing_email or "").strip() or None,
+                "stripe_customer_id": str(user.stripe_customer_id or "").strip() or None,
+                "stripe_subscription_id": str(user.stripe_subscription_id or "").strip() or None,
+                "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
+            },
+        }
+    finally:
+        db.close()
+
+
+@router.post("/subscription/start-trial")
+def start_trial_for_user(auth_user: dict = Depends(get_current_auth_user)):
+    email = str(auth_user.get("email", "")).strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        started = start_user_trial(user)
+        if started:
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        state = ensure_user_subscription_state(db, user, stripe_reconcile=not started)
+        return {
+            "ok": True,
+            "trial_started": started,
             "subscription": {
                 "status": state.get("subscription_status"),
                 "trial_started_at": state.get("trial_started_at"),

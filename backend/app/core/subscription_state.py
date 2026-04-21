@@ -6,7 +6,7 @@ from typing import Any
 
 import stripe
 
-from app.core.auth_store import PAID_SUBSCRIPTION_STATUSES, TRIAL_HOURS, get_auth_user_by_email
+from app.core.auth_store import PAID_SUBSCRIPTION_STATUSES, TRIAL_HOURS, get_auth_user_by_email, start_trial
 from app.models.models import User
 
 
@@ -86,26 +86,6 @@ def subscription_snapshot_from_values(
     }
 
 
-def _apply_trial_defaults(user: User) -> bool:
-    raw_status = str(user.subscription_status or "").strip().lower()
-    if raw_status in PAID_SUBSCRIPTION_STATUSES:
-        return False
-    if user.trial_ends_at:
-        if not raw_status:
-            user.subscription_status = "trialing"
-            user.subscription_updated_at = utc_now_naive()
-            return True
-        return False
-
-    started_at = parse_datetime(user.trial_started_at) or utc_now_naive()
-    user.trial_started_at = started_at
-    user.trial_ends_at = started_at + timedelta(hours=TRIAL_HOURS)
-    if raw_status in {"", "inactive", "trial", "trialing"}:
-        user.subscription_status = "trialing"
-    user.subscription_updated_at = utc_now_naive()
-    return True
-
-
 def _backfill_from_auth_store(user: User) -> bool:
     auth_user = get_auth_user_by_email(str(user.email or "").strip().lower())
     if not auth_user:
@@ -174,6 +154,26 @@ def update_user_subscription(
     if current_period_end is not None:
         user.current_period_end = parse_datetime(current_period_end)
     user.subscription_updated_at = utc_now_naive()
+
+
+def start_user_trial(user: User) -> bool:
+    raw_status = str(user.subscription_status or "").strip().lower()
+    if raw_status in PAID_SUBSCRIPTION_STATUSES:
+        return False
+    if user.trial_started_at or user.trial_ends_at:
+        if raw_status in {"", "inactive", "trial"}:
+            user.subscription_status = "trialing"
+            user.subscription_updated_at = utc_now_naive()
+            return True
+        return False
+
+    started_at = utc_now_naive()
+    user.trial_started_at = started_at
+    user.trial_ends_at = started_at + timedelta(hours=TRIAL_HOURS)
+    user.subscription_status = "trialing"
+    user.subscription_updated_at = started_at
+    start_trial(str(user.email or "").strip().lower())
+    return True
 
 
 def _maybe_reconcile_from_stripe(user: User) -> bool:
@@ -330,7 +330,6 @@ def ensure_user_subscription_state(db, user: User, *, stripe_reconcile: bool = T
     changed = False
 
     changed = _backfill_from_auth_store(user) or changed
-    changed = _apply_trial_defaults(user) or changed
 
     snapshot = subscription_snapshot_from_values(
         status=user.subscription_status,

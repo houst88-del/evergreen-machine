@@ -100,34 +100,9 @@ def subscription_snapshot(user: dict | None) -> dict:
     }
 
 
-def _with_trial_defaults(user: dict) -> tuple[dict, bool]:
-    updated = dict(user)
-    changed = False
-
-    raw_status = str(updated.get("subscription_status", "")).strip().lower()
-    if raw_status not in PAID_SUBSCRIPTION_STATUSES and not str(updated.get("trial_ends_at", "")).strip():
-        trial_started_at = str(updated.get("trial_started_at", "")).strip()
-        started_dt = _parse_naive_iso(trial_started_at)
-        if not started_dt:
-            started_dt = _utc_now_naive()
-            updated["trial_started_at"] = started_dt.isoformat(timespec="seconds")
-            changed = True
-
-        updated["trial_ends_at"] = (started_dt + timedelta(hours=TRIAL_HOURS)).isoformat(
-            timespec="seconds"
-        )
-        changed = True
-
-        if raw_status in {"", "inactive", "trial", "trialing"}:
-            updated["subscription_status"] = "trialing"
-            changed = True
-
-    return updated, changed
-
-
 def _decorate_auth_user(user: dict) -> tuple[dict, bool]:
-    updated, changed = _with_trial_defaults(user)
-    return {**updated, **subscription_snapshot(updated)}, changed
+    updated = dict(user)
+    return {**updated, **subscription_snapshot(updated)}, False
 
 
 def get_auth_user_by_email(email: str) -> dict | None:
@@ -169,16 +144,15 @@ def create_auth_user(email: str, handle: str, password_hash: str) -> dict:
                     break
         return decorated
 
-    now_dt = _utc_now_naive()
-    now = now_dt.isoformat(timespec="seconds")
+    now = _utc_now_naive().isoformat(timespec="seconds")
     user = {
         "email": email,
         "handle": handle,
         "password_hash": password_hash,
         "created_at": now,
-        "subscription_status": "trialing",
-        "trial_started_at": now,
-        "trial_ends_at": (now_dt + timedelta(hours=TRIAL_HOURS)).isoformat(timespec="seconds"),
+        "subscription_status": "inactive",
+        "trial_started_at": None,
+        "trial_ends_at": None,
     }
     users.append(user)
     save_auth_users(users)
@@ -237,4 +211,42 @@ def update_subscription_status(
 
     save_auth_users(users)
     decorated, _ = _decorate_auth_user(updated_user or {})
+    return decorated
+
+
+def start_trial(email: str) -> dict | None:
+    email = str(email).strip().lower()
+    users = load_auth_users()
+    started_user: dict | None = None
+    changed = False
+
+    for user in users:
+        if str(user.get("email", "")).strip().lower() != email:
+            continue
+
+        raw_status = str(user.get("subscription_status", "")).strip().lower()
+        if raw_status in PAID_SUBSCRIPTION_STATUSES:
+            started_user = user
+            break
+        if str(user.get("trial_started_at", "")).strip() or str(user.get("trial_ends_at", "")).strip():
+            started_user = user
+            break
+
+        now_dt = _utc_now_naive()
+        now = now_dt.isoformat(timespec="seconds")
+        user["subscription_status"] = "trialing"
+        user["trial_started_at"] = now
+        user["trial_ends_at"] = (now_dt + timedelta(hours=TRIAL_HOURS)).isoformat(timespec="seconds")
+        user["subscription_updated_at"] = now
+        started_user = user
+        changed = True
+        break
+
+    if changed:
+        save_auth_users(users)
+
+    if not started_user:
+        return None
+
+    decorated, _ = _decorate_auth_user(started_user)
     return decorated

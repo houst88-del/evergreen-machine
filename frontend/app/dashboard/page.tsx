@@ -948,6 +948,7 @@ function DashboardPageClient() {
   const [error, setError] = useState('')
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [billingEmailInput, setBillingEmailInput] = useState('')
+  const [trialStartNotice, setTrialStartNotice] = useState('')
   const stardenSectionRef = useRef<HTMLDivElement | null>(null)
   const [stardenPrimed, setStardenPrimed] = useState(false)
   const emptyBootstrapRefreshRef = useRef(false)
@@ -963,6 +964,7 @@ function DashboardPageClient() {
   const pendingGalaxyRefreshRef = useRef(false)
   const subscriptionRefreshPromiseRef = useRef<Promise<void> | null>(null)
   const followupRefreshTimeoutRef = useRef<number | null>(null)
+  const trialStartPromiseRef = useRef<Promise<boolean> | null>(null)
 
   useEffect(() => {
     missionDataRef.current = {
@@ -979,6 +981,83 @@ function DashboardPageClient() {
 
   function getActiveUserSnapshot() {
     return sessionRef.current?.user || getStoredUser()
+  }
+
+  async function startTrialFromMeaningfulInteraction() {
+    if (trialStartPromiseRef.current) {
+      return trialStartPromiseRef.current
+    }
+
+    const activeUser = getActiveUserSnapshot()
+    if (!activeUser?.email) return false
+
+    const existingTrialStartedAt =
+      subscriptionInfo?.trial_started_at ?? activeUser.trial_started_at ?? null
+    const existingStatus = String(
+      subscriptionInfo?.status ?? activeUser.subscription_status ?? 'inactive',
+    )
+      .trim()
+      .toLowerCase()
+
+    if (existingTrialStartedAt || existingStatus === 'active' || existingStatus === 'trialing') {
+      return false
+    }
+
+    trialStartPromiseRef.current = (async () => {
+      try {
+        const res = await authApiFetch('/api/auth/subscription/start-trial', {
+          method: 'POST',
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || !json?.subscription) {
+          return false
+        }
+
+        setSubscriptionInfo(json.subscription)
+        let nextStoredUser: any = null
+        setSession((current: any) => {
+          if (!current?.user) return current
+          const next = {
+            ...current,
+            user: {
+              ...current.user,
+              subscription_status: json.subscription.status ?? current.user.subscription_status,
+              trial_started_at: json.subscription.trial_started_at ?? current.user.trial_started_at,
+              trial_ends_at: json.subscription.trial_ends_at ?? current.user.trial_ends_at,
+              can_run_autopilot:
+                json.subscription.can_run_autopilot ?? current.user.can_run_autopilot,
+              stripe_price_id: json.subscription.price_id ?? current.user.stripe_price_id,
+              stripe_billing_email:
+                json.subscription.billing_email ?? current.user.stripe_billing_email,
+              current_period_end:
+                json.subscription.current_period_end ?? current.user.current_period_end,
+            },
+          }
+          nextStoredUser = next.user
+          return next
+        })
+        if (nextStoredUser) {
+          setStoredUser(nextStoredUser)
+        }
+
+        if (json.trial_started) {
+          setTrialStartNotice('3-day trial started · Explore your system')
+          window.setTimeout(() => {
+            setTrialStartNotice((current) =>
+              current === '3-day trial started · Explore your system' ? '' : current,
+            )
+          }, 6000)
+        }
+
+        return Boolean(json.trial_started)
+      } catch {
+        return false
+      }
+    })().finally(() => {
+      trialStartPromiseRef.current = null
+    })
+
+    return trialStartPromiseRef.current
   }
 
   async function refreshSessionUser() {
@@ -1032,9 +1111,10 @@ function DashboardPageClient() {
       const json = await res.json()
       if (res.ok && json?.subscription) {
         setSubscriptionInfo(json.subscription)
+        let nextStoredUser: any = null
         setSession((current: any) => {
           if (!current?.user) return current
-          return {
+          const next = {
             ...current,
             user: {
               ...current.user,
@@ -1050,7 +1130,12 @@ function DashboardPageClient() {
                 json.subscription.current_period_end ?? current.user.current_period_end,
             },
           }
+          nextStoredUser = next.user
+          return next
         })
+        if (nextStoredUser) {
+          setStoredUser(nextStoredUser)
+        }
         if (!billingEmailInput && json.subscription.billing_email) {
           setBillingEmailInput(String(json.subscription.billing_email))
         }
@@ -1484,6 +1569,28 @@ function DashboardPageClient() {
       document.removeEventListener('visibilitychange', handleVisibilityRefresh)
     }
   }, [missionHydratedOnce, session])
+
+  useEffect(() => {
+    if (!stardenPrimed) return
+    if (!session?.user) return
+
+    const hasGalaxyData = Array.isArray(missionGalaxy.nodes) && missionGalaxy.nodes.length > 0
+    if (!hasGalaxyData) return
+
+    const existingTrialStartedAt =
+      subscriptionInfo?.trial_started_at ?? session.user.trial_started_at ?? null
+    const subscriptionStatus = String(
+      subscriptionInfo?.status ?? session.user.subscription_status ?? 'inactive',
+    )
+      .trim()
+      .toLowerCase()
+
+    if (existingTrialStartedAt || subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+      return
+    }
+
+    void startTrialFromMeaningfulInteraction()
+  }, [missionGalaxy.nodes, session, stardenPrimed, subscriptionInfo])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -3064,6 +3171,26 @@ function DashboardPageClient() {
             <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em' }}>
               Constellation View
             </div>
+            {trialStartNotice ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(110,231,183,0.18)',
+                  background: 'rgba(16,185,129,0.08)',
+                  color: 'rgba(187,247,208,0.92)',
+                  fontSize: 12,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {trialStartNotice}
+              </div>
+            ) : null}
           </div>
 
           {stardenPrimed ? (
