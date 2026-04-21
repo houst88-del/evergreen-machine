@@ -322,6 +322,17 @@ const archetypeLabel = (value?: string | null) => {
   return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const patternLabel = (value?: string | null) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "Mixed signals";
+  if (normalized === "conversion") return "Conversion hooks";
+  if (normalized === "story") return "Narrative threads";
+  if (normalized === "authority") return "Authority posts";
+  if (normalized === "showcase") return "Visual clips";
+  if (normalized === "hook") return "Short-form hooks";
+  return archetypeLabel(normalized);
+};
+
 const titleCase = (value?: string | null) =>
   String(value || "")
     .trim()
@@ -1091,8 +1102,8 @@ export function GalaxySurface({
         .slice(0, 2);
       const deltaChips = [
         currentCycleStarted.length ? "Cycle began" : "",
-        candidateEntered.length ? "Candidate rise" : "",
-        candidateExited.length ? "Cooling off" : "",
+        candidateEntered.length ? "Signal rising" : "",
+        candidateExited.length ? "Signal fading" : "",
         revivalReturn.length ? "Revival return" : "",
         previous && previous.scope !== selected ? "Scope shift" : "",
       ].filter(Boolean);
@@ -1100,7 +1111,7 @@ export function GalaxySurface({
         currentCycleStarted.length
           ? `Current cycle began ${minutesAgo(rankedNodes.find((node) => currentCycleStarted[0] === node.id)?.last_resurfaced_at || new Date().toISOString())}`
           : candidateEntered.length
-            ? `Candidate reshuffle ${nextCycleRelative(engine.nextRefreshAt)}`
+            ? `Likely-next reshuffle ${nextCycleRelative(engine.nextRefreshAt)}`
             : revivalReturn.length
               ? "Dormant signal returned to the field"
               : previous && previous.scope !== selected
@@ -1553,6 +1564,80 @@ export function GalaxySurface({
     };
   }, [engine.nextRefreshAt, workingNodes]);
 
+  const patternSummaries = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        nodes: GalaxyNode[];
+        velocityTotal: number;
+        revivalTotal: number;
+        recentPulses: number;
+        candidateCount: number;
+        score: number;
+        status: "rising" | "stable" | "cooling";
+        confidence: "low" | "medium" | "high";
+      }
+    >();
+
+    for (const node of workingNodes) {
+      const key = String(node.archetype || "unknown").trim().toLowerCase() || "unknown";
+      const current =
+        groups.get(key) || {
+          key,
+          label: patternLabel(key),
+          nodes: [],
+          velocityTotal: 0,
+          revivalTotal: 0,
+          recentPulses: 0,
+          candidateCount: 0,
+          score: 0,
+          status: "stable" as const,
+          confidence: "low" as const,
+        };
+
+      current.nodes.push(node);
+      current.velocityTotal += safeNum(node.predicted_velocity, 0);
+      current.revivalTotal += safeNum(node.revival_score, 0);
+      current.recentPulses += minutesSince(node.last_resurfaced_at) <= 45 ? 1 : 0;
+      current.candidateCount += node.candidate ? 1 : 0;
+      groups.set(key, current);
+    }
+
+    const ranked = Array.from(groups.values())
+      .map((group) => {
+        const supportingNodes = group.nodes.length;
+        const avgVelocity = group.velocityTotal / Math.max(1, supportingNodes);
+        const avgRevival = group.revivalTotal / Math.max(1, supportingNodes);
+        const status: "rising" | "stable" | "cooling" =
+          avgVelocity > 0.6 ? "rising" : avgVelocity < 0.25 ? "cooling" : "stable";
+        const confidence: "low" | "medium" | "high" =
+          supportingNodes >= 6 ? "high" : supportingNodes >= 3 ? "medium" : "low";
+        const score =
+          avgVelocity * 100 + avgRevival * 0.5 + group.recentPulses * 10 + group.candidateCount * 15;
+        return {
+          key: group.key,
+          label: group.label,
+          status,
+          confidence,
+          supportingNodes,
+          recentPulses: group.recentPulses,
+          score,
+        };
+      })
+      .filter((group) => !(group.label === "Mixed signals" && group.confidence === "low"))
+      .sort((a, b) => b.score - a.score);
+
+    if (!ranked.length) return [];
+    if (ranked.length === 1) return ranked.slice(0, 1);
+    const [first, second] = ranked;
+    if (!second || first.score - second.score < 18 || second.confidence === "low") {
+      return [first];
+    }
+    return [first, second];
+  }, [workingNodes]);
+
   const activeReplayFrame = useMemo(() => {
     if (!replayFrames.length) return null;
     if (replayIndex == null) return replayFrames[replayFrames.length - 1] || null;
@@ -1748,7 +1833,7 @@ export function GalaxySurface({
             >
               {[
                 ["Living stars", String(workingNodes.length)],
-                ["Active pulse", currentStatus?.running ? "Running" : "Idle"],
+                ["Live pulse", currentStatus?.running ? "Live" : "Quiet"],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -2120,7 +2205,7 @@ export function GalaxySurface({
             ["Gravity Stars", String(counts.gravityStars)],
             ["Strong Stars", String(counts.strongStars)],
             ["Standard Stars", String(Math.max(0, workingNodes.length - counts.strongStars))],
-            ["Candidates", String(counts.candidates)],
+            ["Likely next", String(counts.candidates)],
             ["Current Cycle", String(counts.currentCycle)],
             ["Recent Pulses", String(counts.recent)],
           ].map(([label, value]) => (
@@ -2183,7 +2268,7 @@ export function GalaxySurface({
                 <>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                     {[
-                      selectedStar.current_cycle ? "Current cycle" : "",
+                      selectedStar.current_cycle ? "Live now" : "",
                       likelyNext(selectedStar) ? "Likely next" : "",
                       archetypeLabel(selectedStar.archetype),
                     ]
@@ -2211,11 +2296,11 @@ export function GalaxySurface({
                       {gravityRankLabel(selectedStarGravityRank || 0)}
                     </div>
                     <div>
-                      Momentum {velocityLabel(safeNum(selectedStar.predicted_velocity, 0))} · Revival{" "}
+                      {velocityLabel(safeNum(selectedStar.predicted_velocity, 0))} momentum · Revival{" "}
                       {Math.round(safeNum(selectedStar.revival_score, 0))}
                     </div>
                     <div>
-                      Strategy: {humanizeStrategy(selectedStar.selection_strategy)}
+                      Pattern: {humanizeStrategy(selectedStar.selection_strategy)}
                     </div>
                     <div
                       style={{
@@ -2223,7 +2308,7 @@ export function GalaxySurface({
                         lineHeight: 1.6,
                       }}
                     >
-                      {selectedStar.selection_reason || "Watching this post for strong reuse potential."}
+                      {selectedStar.selection_reason || "Strong candidate for reuse."}
                     </div>
                   </div>
                 </>
@@ -2960,7 +3045,7 @@ export function GalaxySurface({
                     }}
                   >
                     {deferredHovered.current_cycle ? (
-                      <span style={missionBadgeStyle("gold", true)}>Current cycle</span>
+                      <span style={missionBadgeStyle("gold", true)}>Live now</span>
                     ) : null}
                     {likelyNext(deferredHovered) ? (
                       <span style={missionBadgeStyle("gold", true)}>Likely next</span>
@@ -2969,7 +3054,7 @@ export function GalaxySurface({
                       <span style={missionBadgeStyle("mint", true)}>Recent pulse</span>
                     ) : null}
                     {safeNum(deferredHovered.predicted_velocity, 0) < 0.2 && !deferredHovered.current_cycle ? (
-                      <span style={missionBadgeStyle("neutral", true)}>Cooling</span>
+                      <span style={missionBadgeStyle("neutral", true)}>Low momentum</span>
                     ) : null}
                     {safeNum(deferredHovered.revival_score, 0) >= temporalInsights.reviveThreshold &&
                     !deferredHovered.current_cycle &&
@@ -2990,9 +3075,9 @@ export function GalaxySurface({
                       color: "rgba(236,253,245,0.74)",
                     }}
                   >
-                    <div>Intelligence {Math.round(intelligenceScore(deferredHovered, intelligenceView))}</div>
+                    <div>Signal strength {Math.round(intelligenceScore(deferredHovered, intelligenceView))}</div>
                     <div>{gravityRankLabel(rankGravity(deferredHovered))}</div>
-                    <div>{velocityLabel(safeNum(deferredHovered.predicted_velocity, 0))}</div>
+                    <div>{velocityLabel(safeNum(deferredHovered.predicted_velocity, 0))} momentum</div>
                     <div>Revival {Math.round(safeNum(deferredHovered.revival_score, 0))}</div>
                   </div>
                   {constellationSummary ? (
@@ -3020,7 +3105,7 @@ export function GalaxySurface({
                     }}
                   >
                     {deferredHovered.selection_reason ||
-                      `Watching this ${archetypeLabel(deferredHovered.archetype).toLowerCase()} post for reliable evergreen reuse.`}
+                      `Strong ${archetypeLabel(deferredHovered.archetype).toLowerCase()} signal for reuse.`}
                   </div>
                 </div>
               ) : null}
@@ -3070,11 +3155,66 @@ export function GalaxySurface({
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
+                Pattern Summary
+              </div>
+              {patternSummaries.length ? (
+                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  {patternSummaries.map((pattern, index) => (
+                    <div
+                      key={pattern.key}
+                      style={{
+                        borderRadius: 16,
+                        border:
+                          index === 0
+                            ? "1px solid rgba(250,228,120,0.18)"
+                            : "1px solid rgba(255,255,255,0.06)",
+                        background:
+                          index === 0 ? "rgba(250,228,120,0.05)" : "rgba(255,255,255,0.02)",
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <div style={{ fontSize: 14, color: "rgba(236,253,245,0.9)", lineHeight: 1.6 }}>
+                        {pattern.label}{" "}
+                        {pattern.status === "rising"
+                          ? "is rising"
+                          : pattern.status === "cooling"
+                            ? "is fading"
+                            : "is holding steady"}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "rgba(236,253,245,0.62)",
+                        }}
+                      >
+                        {titleCase(pattern.confidence)} confidence · {pattern.supportingNodes} signals ·{" "}
+                        {pattern.recentPulses} recent pulses
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, fontSize: 13, color: "rgba(236,253,245,0.62)" }}>
+                  The field is still settling into a clear pattern.
+                </div>
+              )}
+            </div>
+
+            <div style={cardStyle()}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(236,253,245,0.58)",
+                }}
+              >
                 Temporal Echo
               </div>
               <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: "rgba(236,253,245,0.84)" }}>
                 <div>{temporalInsights.recentPulseCount} recent pulses</div>
-                <div>{temporalInsights.coolingCount} cooling</div>
+                <div>{temporalInsights.coolingCount} low momentum</div>
                 <div>{temporalInsights.revivingCount} reviving</div>
                 <div>Next bloom {temporalInsights.nextCycleEta}</div>
               </div>
@@ -3100,9 +3240,9 @@ export function GalaxySurface({
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 {[
-                  temporalInsights.recentPulseCount ? "Fresh echoes" : "",
+                  temporalInsights.recentPulseCount ? "Recent pulses" : "",
                   temporalInsights.revivingCount ? "Warm returns" : "",
-                  temporalInsights.coolingCount ? "Cooling field" : "",
+                  temporalInsights.coolingCount ? "Dormant field" : "",
                 ]
                   .filter(Boolean)
                   .map((label, index) => (
@@ -3264,7 +3404,7 @@ export function GalaxySurface({
                   marginBottom: 10,
                 }}
               >
-                Intelligence Window
+                Signal Window
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 {forecastNodes.map((n, i) => (
@@ -3326,7 +3466,7 @@ export function GalaxySurface({
                       >
                         <span>{providerLabel(n.provider)}</span>
                         <span>{velocityLabel(safeNum(n.predicted_velocity, 0))}</span>
-                        <span>{n.current_cycle ? "active now" : n.candidate ? "candidate" : "watch"}</span>
+                        <span>{n.current_cycle ? "live now" : n.candidate ? "likely next" : "holding steady"}</span>
                       </div>
                       <div
                         style={{
@@ -3352,7 +3492,7 @@ export function GalaxySurface({
                       </div>
                     </div>
                     <div style={{ color: "rgba(236,253,245,0.58)" }}>
-                      {intelligenceScore(n, intelligenceView).toFixed(0)}
+                      {Math.round(intelligenceScore(n, intelligenceView))} signal
                     </div>
                   </div>
                 ))}
@@ -3368,19 +3508,18 @@ export function GalaxySurface({
                   color: "rgba(236,253,245,0.58)",
                 }}
               >
-                Momentum + Pair
+                Orbit State
               </div>
               <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.75 }}>
-                <div>Momentum: {engine.momentum > 0 ? `${engine.momentum} stack` : "Inactive"}</div>
-                <div>Velocity: {engine.velocity ? "Active" : "Inactive"}</div>
-                <div>Queued pair: {engine.pairTarget || "None"}</div>
-                <div>Last action: {minutesAgo(engine.lastSelectedAt)}</div>
+                <div>Momentum: {engine.momentum > 0 ? `${engine.momentum} building` : "Quiet"}</div>
+                <div>Pairing: {engine.pairTarget ? "Queued" : "None"}</div>
+                <div>Last pulse: {minutesAgo(engine.lastSelectedAt)}</div>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                 {[
-                  engine.strategy ? `Strategy ${humanizeStrategy(engine.strategy)}` : "",
-                  engine.reason ? "Reason logged" : "",
-                  engine.velocity ? "Velocity stack" : "",
+                  engine.strategy ? `${humanizeStrategy(engine.strategy)}` : "",
+                  engine.reason ? "Reason noted" : "",
+                  engine.velocity ? "Momentum live" : "",
                 ]
                   .filter(Boolean)
                   .map((label) => (
