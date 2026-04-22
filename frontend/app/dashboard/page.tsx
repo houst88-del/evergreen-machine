@@ -1096,6 +1096,9 @@ function DashboardPageClient() {
   const [blueskyAppPasswordInput, setBlueskyAppPasswordInput] = useState('')
   const [blueskyHelperOpen, setBlueskyHelperOpen] = useState(false)
   const [blueskyFormError, setBlueskyFormError] = useState('')
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window === 'undefined' ? 1440 : window.innerWidth
+  )
   const [documentVisible, setDocumentVisible] = useState(
     typeof document === 'undefined' ? true : document.visibilityState === 'visible',
   )
@@ -1172,6 +1175,14 @@ function DashboardPageClient() {
 
   useEffect(() => {
     getSessionDiagnostics()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const syncViewport = () => setViewportWidth(window.innerWidth)
+    syncViewport()
+    window.addEventListener('resize', syncViewport)
+    return () => window.removeEventListener('resize', syncViewport)
   }, [])
 
   function getActiveUserSnapshot() {
@@ -3005,6 +3016,9 @@ function DashboardPageClient() {
   const standardFriendly = resolvedAccounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   ).length <= 1
+  const isPhone = viewportWidth <= 640
+  const isTablet = viewportWidth <= 1024
+  const isCompact = viewportWidth <= 880
   const activationSteps = [
     {
       label: 'Connect X',
@@ -3102,7 +3116,7 @@ function DashboardPageClient() {
         <section
           className="card telemetry-card"
           style={{
-            padding: '10px 16px',
+            padding: isPhone ? '12px 14px' : '10px 16px',
             background: 'rgba(8, 26, 18, 0.82)',
             marginTop: 2,
             marginBottom: 4,
@@ -3114,7 +3128,7 @@ function DashboardPageClient() {
               gap: 10,
               flexWrap: 'wrap',
               alignItems: 'center',
-              fontSize: 12,
+              fontSize: isPhone ? 11 : 12,
               color: 'rgba(236,253,245,0.8)',
             }}
           >
@@ -3139,8 +3153,9 @@ function DashboardPageClient() {
             marginTop: 4,
             marginBottom: 2,
             color: 'rgba(236,253,245,0.62)',
-            fontSize: 13,
+            fontSize: isPhone ? 12 : 13,
             letterSpacing: '0.01em',
+            overflowWrap: 'anywhere',
           }}
         >
           Signed in as {user.email} · {user.handle}
@@ -3204,8 +3219,9 @@ function DashboardPageClient() {
                     onChange={(event) => setBillingEmailInput(event.target.value)}
                     placeholder="Billing email used at checkout"
                     style={{
-                      minWidth: 280,
+                      minWidth: isPhone ? 0 : 280,
                       flex: '1 1 320px',
+                      width: isPhone ? '100%' : undefined,
                       background: 'rgba(12,26,19,0.95)',
                       color: '#ecfdf5',
                       border: '1px solid rgba(110,231,183,0.18)',
@@ -3338,7 +3354,14 @@ function DashboardPageClient() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isPhone ? '1fr' : isCompact ? 'repeat(2, minmax(0, 1fr))' : undefined,
+                gap: 10,
+                width: isCompact ? '100%' : undefined,
+              }}
+            >
               <button
                 className="btn"
                 onClick={() => {
@@ -3430,7 +3453,7 @@ function DashboardPageClient() {
 	              <div
 	                style={{
 	                  display: 'grid',
-	                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+	                  gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))',
 	                  gap: 12,
 	                }}
 	              >
@@ -3531,7 +3554,14 @@ function DashboardPageClient() {
 	                </div>
 	              ) : null}
 
-	              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+	              <div
+	                style={{
+	                  display: 'grid',
+	                  gridTemplateColumns: isPhone ? '1fr' : undefined,
+	                  gap: 10,
+	                  width: isPhone ? '100%' : undefined,
+	                }}
+	              >
 	                <button
 	                  className="btn primary"
 	                  onClick={handleConnectBluesky}
@@ -3624,7 +3654,7 @@ function DashboardPageClient() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit,minmax(420px,1fr))',
+                gridTemplateColumns: isTablet ? '1fr' : 'repeat(auto-fit,minmax(420px,1fr))',
                 gap: 14,
                 marginTop: 18,
               }}
@@ -3695,10 +3725,23 @@ function DashboardPageClient() {
                         >
                           {providerLabel(account.provider)}
                         </div>
-                        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6 }}>
+                        <div
+                          style={{
+                            fontSize: isPhone ? 18 : 22,
+                            fontWeight: 700,
+                            marginTop: 6,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
                           {account.handle}
                         </div>
-                        <div style={{ color: 'rgba(236,253,245,0.7)', marginTop: 6 }}>
+                        <div
+                          style={{
+                            color: 'rgba(236,253,245,0.7)',
+                            marginTop: 6,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
                           {lane.latestHeadline}
                         </div>
                       </div>
@@ -3718,9 +3761,9 @@ function DashboardPageClient() {
 
                     <div
                       style={{
-                        display: 'flex',
+                        display: 'grid',
+                        gridTemplateColumns: isPhone ? '1fr' : 'repeat(2, minmax(0, 1fr))',
                         gap: 10,
-                        flexWrap: 'wrap',
                         marginTop: 14,
                       }}
                     >
@@ -3754,7 +3797,7 @@ function DashboardPageClient() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
+                        gridTemplateColumns: isPhone ? '1fr' : '1fr 1fr',
                         gap: 10,
                         marginTop: 12,
                         fontSize: 13,
@@ -3769,7 +3812,9 @@ function DashboardPageClient() {
                         }}
                       >
                         <div style={missionEyebrowStyle}>Selected / Resurfaced</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.latestPost}</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {lane.latestPost}
+                        </div>
                       </div>
 
                       <div
@@ -3781,7 +3826,9 @@ function DashboardPageClient() {
                         }}
                       >
                         <div style={missionEyebrowStyle}>Strategy / Why</div>
-                        <div style={{ marginTop: 8, color: '#ecfdf5' }}>{lane.strategy}</div>
+                        <div style={{ marginTop: 8, color: '#ecfdf5', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {lane.strategy}
+                        </div>
                         <div style={{ marginTop: 6, color: 'rgba(236,253,245,0.7)' }}>
                           {compactText(lane.selectionReason, 72)}
                         </div>
@@ -3809,7 +3856,13 @@ function DashboardPageClient() {
                         Refresh Window
                       </div>
 
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: isPhone ? 'repeat(2, minmax(0, 1fr))' : undefined,
+                          gap: 8,
+                        }}
+                      >
                         {(status?.pacing_options || []).map((option) => {
                           const selected = option.mode === status?.pacing_mode
                           return (
@@ -3833,9 +3886,9 @@ function DashboardPageClient() {
 
                       <div
                         style={{
-                          display: 'flex',
+                          display: 'grid',
+                          gridTemplateColumns: isPhone ? '1fr' : undefined,
                           gap: 8,
-                          flexWrap: 'wrap',
                           marginTop: 10,
                         }}
                         >
@@ -3884,9 +3937,9 @@ function DashboardPageClient() {
 
                       <div
                         style={{
-                          display: 'flex',
+                          display: 'grid',
+                          gridTemplateColumns: isPhone ? '1fr' : undefined,
                           gap: 8,
-                          flexWrap: 'wrap',
                           marginTop: 10,
                           alignItems: 'center',
                         }}
@@ -3917,6 +3970,7 @@ function DashboardPageClient() {
                           style={{
                             fontSize: 12,
                             color: 'rgba(236,253,245,0.62)',
+                            overflowWrap: 'anywhere',
                           }}
                         >
                           {breathingRoomActive
@@ -3930,7 +3984,7 @@ function DashboardPageClient() {
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(2,minmax(0,1fr))',
+                          gridTemplateColumns: isPhone ? '1fr' : 'repeat(2,minmax(0,1fr))',
                           gap: 12,
                           marginTop: 12,
                           fontSize: 13,
@@ -3954,7 +4008,7 @@ function DashboardPageClient() {
           className="card"
           style={{
             marginTop: 18,
-            padding: 18,
+            padding: isPhone ? 12 : 18,
             background: 'linear-gradient(180deg, rgba(8,26,18,0.92), rgba(3,18,15,0.88))',
           }}
         >
@@ -3997,7 +4051,7 @@ function DashboardPageClient() {
           ) : (
             <div
               style={{
-                minHeight: 720,
+                minHeight: isPhone ? 440 : 720,
                 borderRadius: 26,
                 border: '1px solid rgba(52,211,153,0.16)',
                 background:
@@ -4006,12 +4060,12 @@ function DashboardPageClient() {
                 gap: 16,
                 alignContent: 'center',
                 justifyItems: 'center',
-                padding: 28,
+                padding: isPhone ? 18 : 28,
                 textAlign: 'center',
               }}
             >
               <div style={{ ...missionEyebrowStyle, marginBottom: 4 }}>Starden</div>
-              <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
+              <div style={{ fontSize: isPhone ? 22 : 28, fontWeight: 700, letterSpacing: '-0.04em' }}>
                 This is your content as a living system
               </div>
               <div style={{ maxWidth: 620, color: 'rgba(236,253,245,0.7)', lineHeight: 1.7 }}>
@@ -4024,7 +4078,7 @@ function DashboardPageClient() {
                   gap: 10,
                   width: '100%',
                   maxWidth: 720,
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fit, minmax(180px, 1fr))',
                   textAlign: 'left',
                 }}
               >
@@ -4132,8 +4186,9 @@ function DashboardPageClient() {
                         <div
                           style={{
                             color: 'rgba(236,253,245,0.7)',
-                            fontSize: 14,
+                            fontSize: isPhone ? 13 : 14,
                             marginTop: 8,
+                            overflowWrap: 'anywhere',
                           }}
                         >
                           {provider} · @{handle} · account {job.connected_account_id ?? '—'}
@@ -4154,7 +4209,7 @@ function DashboardPageClient() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                        gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fit,minmax(180px,1fr))',
                         gap: 12,
                         marginTop: 16,
                         fontSize: 13,
@@ -4209,7 +4264,7 @@ function DashboardPageClient() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+                        gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fit,minmax(180px,1fr))',
                         gap: 12,
                         marginTop: 14,
                         fontSize: 13,
@@ -4232,6 +4287,7 @@ function DashboardPageClient() {
                           color: 'rgba(236,253,245,0.76)',
                           fontSize: 13,
                           lineHeight: 1.65,
+                          overflowWrap: 'anywhere',
                         }}
                       >
                         {payload.error || payload.message || rotationHealth.selection_reason}

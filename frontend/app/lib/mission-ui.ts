@@ -35,11 +35,18 @@ export function missionBadgeStyle(
   dense = false
 ): CSSProperties {
   return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: '100%',
     borderRadius: 999,
     padding: dense ? '5px 9px' : '6px 10px',
     fontSize: dense ? 11 : 12,
     letterSpacing: dense ? '0.08em' : undefined,
     textTransform: dense ? 'uppercase' : undefined,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
     ...toneMap[tone],
   }
 }

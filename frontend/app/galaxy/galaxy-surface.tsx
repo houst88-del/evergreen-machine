@@ -713,6 +713,9 @@ export function GalaxySurface({
   const [documentVisible, setDocumentVisible] = useState(
     typeof document === "undefined" ? true : document.visibilityState === "visible"
   );
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window === "undefined" ? 1440 : window.innerWidth
+  );
   const lastStandaloneRefreshAtRef = useRef({
     accounts: 0,
     statuses: 0,
@@ -723,6 +726,14 @@ export function GalaxySurface({
     if (embedded || typeof window === "undefined") return;
     router.replace("/dashboard#starden-panel");
   }, [embedded, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncViewport = () => setViewportWidth(window.innerWidth);
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
 
   useEffect(() => {
     if (!embedded) return;
@@ -1807,7 +1818,17 @@ export function GalaxySurface({
   const sceneTransform = `translate3d(${baseShiftX + driftX}px, ${
     baseShiftY + driftY
   }px, 0) rotate(${sceneRotateDeg}deg) scale(${sceneScale})`;
-  const paneHeight = nodeCount > 700 ? "58vh" : "calc(100vh - 340px)";
+  const isPhone = viewportWidth <= 640;
+  const isTablet = viewportWidth <= 1024;
+  const isCompact = viewportWidth <= 1180;
+  const stackedEmbeddedLayout = embedded && isTablet;
+  const paneHeight = isPhone
+    ? "320px"
+    : isTablet
+      ? "420px"
+      : nodeCount > 700
+        ? "58vh"
+        : "calc(100vh - 340px)";
 
   if (!embedded) {
     return (
@@ -1869,13 +1890,19 @@ export function GalaxySurface({
           50% { opacity: 0.5; filter: blur(1px); }
         }
       `}</style>
-      <div style={{ maxWidth: 2600, margin: "0 auto", padding: embedded ? 0 : 22 }}>
+      <div
+        style={{
+          maxWidth: 2600,
+          margin: "0 auto",
+          padding: embedded ? (isPhone ? 0 : 0) : isPhone ? 12 : 22,
+        }}
+      >
         <div
           className="starden-atlas"
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.3fr) auto",
-            gap: 16,
+            gridTemplateColumns: stackedEmbeddedLayout ? "1fr" : "minmax(0, 1.3fr) auto",
+            gap: isPhone ? 12 : 16,
             alignItems: "start",
             marginBottom: 14,
           }}
@@ -1885,7 +1912,7 @@ export function GalaxySurface({
               style={{
                 border: "1px solid rgba(110,231,183,0.14)",
                 borderRadius: 24,
-                padding: "14px 18px",
+                padding: isPhone ? "12px 14px" : "14px 18px",
                 background:
                   "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(250,228,120,0.05) 45%, rgba(125,211,252,0.04))",
                 boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
@@ -1900,7 +1927,7 @@ export function GalaxySurface({
                   marginBottom: 8,
                 }}
               >
-                <h1 style={{ fontSize: 40, lineHeight: 1, margin: 0, fontWeight: 700 }}>
+                <h1 style={{ fontSize: isPhone ? 28 : 40, lineHeight: 1, margin: 0, fontWeight: 700 }}>
                   ✦🌿 Starden
                 </h1>
                 <span style={missionBadgeStyle("gold", true)}>✦ Star field intelligence</span>
@@ -1916,7 +1943,7 @@ export function GalaxySurface({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(180px, 1fr))",
+                gridTemplateColumns: isPhone ? "1fr" : "repeat(2, minmax(180px, 1fr))",
                 gap: 8,
               }}
             >
@@ -1949,7 +1976,8 @@ export function GalaxySurface({
                       marginTop: 4,
                       fontSize: 13,
                       fontWeight: 600,
-                      whiteSpace: "nowrap",
+                      whiteSpace: isPhone ? "normal" : "nowrap",
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {value}
@@ -1963,24 +1991,27 @@ export function GalaxySurface({
             style={{
               display: "grid",
               gap: 10,
-              justifyItems: "end",
+              justifyItems: stackedEmbeddedLayout ? "stretch" : "end",
             }}
           >
             {embedded ? (
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) minmax(180px, auto)",
+                  gridTemplateColumns: stackedEmbeddedLayout
+                    ? "1fr"
+                    : "minmax(0, 1fr) minmax(180px, auto)",
                   gap: 12,
                   alignItems: "start",
                   width: "min(860px, 100%)",
+                  justifySelf: stackedEmbeddedLayout ? "stretch" : "end",
                 }}
               >
                 <div
                   style={{
                     display: "grid",
                     gap: 8,
-                    justifyItems: "end",
+                    justifyItems: stackedEmbeddedLayout ? "stretch" : "end",
                     alignContent: "start",
                   }}
                 >
@@ -1998,10 +2029,15 @@ export function GalaxySurface({
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gridTemplateColumns: isPhone
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : isCompact
+                          ? "repeat(3, minmax(0, 1fr))"
+                          : "repeat(3, minmax(0, 1fr))",
                       gap: 8,
-                      width: "min(540px, 100%)",
-                      justifySelf: "end",
+                      width: "100%",
+                      maxWidth: stackedEmbeddedLayout ? "100%" : 540,
+                      justifySelf: stackedEmbeddedLayout ? "stretch" : "end",
                     }}
                   >
                     {scopeOptions.map((option) => {
@@ -2045,13 +2081,14 @@ export function GalaxySurface({
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                <div style={{ display: "grid", gap: 10, justifyItems: stackedEmbeddedLayout ? "stretch" : "end" }}>
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(180px, auto)",
+                      gridTemplateColumns: stackedEmbeddedLayout ? "1fr" : "minmax(180px, auto)",
                       gap: 8,
-                      justifyContent: "end",
+                      justifyContent: stackedEmbeddedLayout ? "stretch" : "end",
+                      width: stackedEmbeddedLayout ? "100%" : undefined,
                     }}
                   >
                     {[["Next bloom", engine.nextRefreshAt ? fmtWhen(engine.nextRefreshAt) : "Watching"]].map(([label, value]) => (
@@ -2080,7 +2117,8 @@ export function GalaxySurface({
                             marginTop: 4,
                             fontSize: 13,
                             fontWeight: 600,
-                            whiteSpace: "nowrap",
+                            whiteSpace: isPhone ? "normal" : "nowrap",
+                            overflowWrap: "anywhere",
                           }}
                         >
                           {value}
@@ -2093,8 +2131,8 @@ export function GalaxySurface({
                     style={{
                       display: "grid",
                       gap: 6,
-                      justifyItems: "end",
-                      marginRight: 6,
+                      justifyItems: stackedEmbeddedLayout ? "start" : "end",
+                      marginRight: stackedEmbeddedLayout ? 0 : 6,
                       padding: "10px 12px",
                       borderRadius: 18,
                       border: "1px solid rgba(110,231,183,0.12)",
@@ -2108,7 +2146,14 @@ export function GalaxySurface({
                     <div style={{ fontSize: 12 }}>
                       {humanizeStrategy(engine.strategy)}
                     </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        justifyContent: stackedEmbeddedLayout ? "flex-start" : "flex-end",
+                      }}
+                    >
                       {(selectedStar
                         ? [
                             likelyNext(selectedStar) ? "High priority" : "",
@@ -2164,7 +2209,8 @@ export function GalaxySurface({
                           marginTop: 4,
                           fontSize: 13,
                           fontWeight: 600,
-                          whiteSpace: "nowrap",
+                          whiteSpace: isPhone ? "normal" : "nowrap",
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {value}
@@ -2284,7 +2330,11 @@ export function GalaxySurface({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+            gridTemplateColumns: isPhone
+              ? "repeat(2, minmax(0, 1fr))"
+              : isTablet
+                ? "repeat(4, minmax(0, 1fr))"
+                : "repeat(7, minmax(0, 1fr))",
             gap: 7,
             marginBottom: 6,
           }}
@@ -2326,13 +2376,13 @@ export function GalaxySurface({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "0.75fr 3.1fr 0.75fr",
-            gap: 16,
+            gridTemplateColumns: stackedEmbeddedLayout ? "1fr" : "0.75fr 3.1fr 0.75fr",
+            gap: isPhone ? 12 : 16,
             marginBottom: 14,
             alignItems: "start",
           }}
         >
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 12, order: stackedEmbeddedLayout ? 2 : 0 }}>
             <div style={{ ...cardStyle(), padding: 12 }}>
               <div
                 style={{
@@ -2458,14 +2508,14 @@ export function GalaxySurface({
 
           </div>
 
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 12, order: stackedEmbeddedLayout ? 1 : 0 }}>
             <div
               className="starden-stage-shell"
               style={{
                 position: "relative",
                 height: paneHeight,
                 overflow: "hidden",
-                borderRadius: 30,
+                borderRadius: isPhone ? 22 : 30,
                 border: "1px solid rgba(52,211,153,0.18)",
                 background:
                   "radial-gradient(circle at 50% 52%, rgba(253,224,71,0.12), transparent 42%), radial-gradient(circle at 16% 18%, rgba(125,211,252,0.08), transparent 28%), radial-gradient(circle at 82% 16%, rgba(187,247,208,0.08), transparent 24%), linear-gradient(180deg, #03100f 0%, #010707 100%)",
@@ -3232,7 +3282,7 @@ export function GalaxySurface({
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 12, order: stackedEmbeddedLayout ? 3 : 0 }}>
             <div style={cardStyle()}>
               <div
                 style={{
@@ -3542,12 +3592,13 @@ export function GalaxySurface({
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div
-                        style={{
-                          color: "rgba(236,253,245,0.9)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
+                      style={{
+                        color: "rgba(236,253,245,0.9)",
+                        overflow: "hidden",
+                        textOverflow: isPhone ? undefined : "ellipsis",
+                        whiteSpace: isPhone ? "normal" : "nowrap",
+                        overflowWrap: "anywhere",
+                      }}
                       >
                         {shortText(n.label || n.id, 34)}
                       </div>
