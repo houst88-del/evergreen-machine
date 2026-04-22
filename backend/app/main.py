@@ -30,7 +30,7 @@ from app.routes.bluesky_routes import router as bluesky_router
 from app.routes.galaxy import router as galaxy_router
 from app.routes.x_oauth_routes import router as x_oauth_router
 from app.services.job_queue import enqueue_job
-from app.services.pacing import normalize_mode, pacing_options_for_provider
+from app.services.pacing import choose_next_cycle, normalize_mode, pacing_options_for_provider
 from app.services.pool_service import active_rotation_count
 from app.services.scoring import seed_demo_data
 from app.services.secret_crypto import encrypt_metadata
@@ -845,12 +845,16 @@ def set_pacing_mode(
 
         metadata = dict(account.metadata_json or {})
         metadata["pacing_mode"] = normalize_mode(payload.get("mode"))
+        next_cycle_at, next_delay_minutes = choose_next_cycle(account.provider, metadata["pacing_mode"])
+        metadata["next_refresh_at"] = next_cycle_at.isoformat()
+        metadata["next_refresh_delay_minutes"] = next_delay_minutes
         account.metadata_json = metadata
 
         autopilot = get_or_create_autopilot_for_account(db, user, account)
         autopilot.provider = account.provider
         autopilot.connected = account.connection_status == "connected"
         autopilot.posts_in_rotation = posts_in_rotation_for_account(db, account)
+        autopilot.next_cycle_at = next_cycle_at
 
         db.commit()
         db.refresh(account)
