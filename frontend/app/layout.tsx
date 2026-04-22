@@ -10,7 +10,9 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const clerkPublishableKey = String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '').trim()
+  const clerkEnabled =
+    clerkPublishableKey.startsWith('pk_') && !clerkPublishableKey.includes('replace_me')
   const appOrigin =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.evergreenmachine.ai'
 

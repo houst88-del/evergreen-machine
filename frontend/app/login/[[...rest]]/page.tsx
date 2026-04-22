@@ -7,7 +7,9 @@ import { useEffect, useState } from 'react'
 import { getLastBootstrapError, getStoredUser, login, me, resetAuthState } from '../../lib/auth'
 
 export default function LoginPage() {
-  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const clerkPublishableKey = String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '').trim()
+  const clerkEnabled =
+    clerkPublishableKey.startsWith('pk_') && !clerkPublishableKey.includes('replace_me')
   const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const router = useRouter()
   const [email, setEmail] = useState('')

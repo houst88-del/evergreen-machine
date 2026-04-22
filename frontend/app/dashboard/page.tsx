@@ -1072,7 +1072,9 @@ function inferAccountsFromMissionData(
 
 function DashboardPageClient() {
   const router = useRouter()
-  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const clerkPublishableKey = String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '').trim()
+  const clerkEnabled =
+    clerkPublishableKey.startsWith('pk_') && !clerkPublishableKey.includes('replace_me')
   const { isLoaded: clerkLoaded, userId } = useAuth({ treatPendingAsSignedOut: false })
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)

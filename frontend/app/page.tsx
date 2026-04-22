@@ -28,7 +28,9 @@ const pricingTiers = [
 ] as const
 
 export default function HomePage() {
-  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const clerkPublishableKey = String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '').trim()
+  const clerkEnabled =
+    clerkPublishableKey.startsWith('pk_') && !clerkPublishableKey.includes('replace_me')
   const router = useRouter()
   const [finalizingSession, setFinalizingSession] = useState(false)
 
