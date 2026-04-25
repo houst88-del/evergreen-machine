@@ -2213,9 +2213,14 @@ function DashboardPageClient() {
     )
     const postsInRotation = postsInRotationFromStatus > 0 ? postsInRotationFromStatus : galaxyCount
 
+    const authoritativeConnectedCount = accounts.filter((account) =>
+      String(account.connection_status || '').trim().toLowerCase() === 'connected'
+    ).length
     const connectedCount =
+      authoritativeConnectedCount ||
       resolvedAccounts.filter((account) => isConnectedAccount(account, statusMap[account.id]))
-        .length || resolvedAccounts.length
+        .length ||
+      resolvedAccounts.length
 
     const nextCycleCandidates = accountStatuses
       .map((item) => item.next_cycle_at)
@@ -2242,7 +2247,7 @@ function DashboardPageClient() {
       workerState: inferredWorkerState,
       queued: heartbeat.queued ?? 0,
       processed: heartbeat.processed ?? 0,
-      syncedAccounts: heartbeat.synced_accounts ?? resolvedAccounts.length,
+      syncedAccounts: heartbeat.synced_accounts ?? authoritativeConnectedCount ?? resolvedAccounts.length,
       repairedJobs: heartbeat.repaired_jobs ?? 0,
       pollSeconds: heartbeat.poll_seconds ?? 0,
       heartbeatAt: heartbeat.timestamp ?? null,
@@ -2251,7 +2256,7 @@ function DashboardPageClient() {
       connectedCount: connectedCount || Number(missionGalaxy.meta?.account_count || 0),
       nextCycle,
     }
-  }, [jobs, missionGalaxy.meta, missionGalaxy.nodes, resolvedAccounts, system, statusMap])
+  }, [accounts, jobs, missionGalaxy.meta, missionGalaxy.nodes, resolvedAccounts, system, statusMap])
 
   const derivedUnifiedStatusMap = useMemo(() => {
     if (!Array.isArray(missionGalaxy.nodes) || missionGalaxy.nodes.length === 0) {
@@ -2653,8 +2658,14 @@ function DashboardPageClient() {
     const { canRunAutopilot } = currentSubscriptionState()
     let accessGrantedForThisAction = canRunAutopilot
     const upgradeHref =
-      resolvedAccounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
-      resolvedAccounts.length > 1
+      accounts.some(
+        (account) =>
+          String(account.connection_status || '').trim().toLowerCase() === 'connected' &&
+          String(account.provider || '').trim().toLowerCase() === 'bluesky'
+      ) ||
+      accounts.filter(
+        (account) => String(account.connection_status || '').trim().toLowerCase() === 'connected'
+      ).length > 1
         ? STRIPE_LINKS.pro
         : STRIPE_LINKS.standard
 
@@ -2729,14 +2740,21 @@ function DashboardPageClient() {
     if (!session?.user) return
     const { canRunAutopilot } = currentSubscriptionState()
     let accessGrantedForThisAction = canRunAutopilot
-    const readyAccounts = resolvedAccounts.filter((account) =>
-      isConnectedAccount(account, statusMap[account.id])
+    const connectedAccountIds = new Set(
+      accounts
+        .filter((account) => String(account.connection_status || '').trim().toLowerCase() === 'connected')
+        .map((account) => account.id)
     )
+    const readyAccounts = resolvedAccounts.filter((account) => connectedAccountIds.has(account.id))
     const runningTargets = readyAccounts.filter((account) => statusMap[account.id]?.running)
     const idleTargets = readyAccounts.filter((account) => !statusMap[account.id]?.running)
     const upgradeHref =
-      resolvedAccounts.some((account) => String(account.provider || '').trim().toLowerCase() === 'bluesky') ||
-      resolvedAccounts.length > 1
+      accounts.some(
+        (account) =>
+          String(account.connection_status || '').trim().toLowerCase() === 'connected' &&
+          String(account.provider || '').trim().toLowerCase() === 'bluesky'
+      ) ||
+      connectedAccountIds.size > 1
         ? STRIPE_LINKS.pro
         : STRIPE_LINKS.standard
 
@@ -2953,26 +2971,25 @@ function DashboardPageClient() {
   const { subscriptionStatus, trialEndsAt, canRunAutopilot } = currentSubscriptionState()
   const recentJobs = jobs.slice(0, 5)
   const accountMap = new Map(resolvedAccounts.map((account) => [account.id, account]))
+  const authoritativeConnectedAccounts = accounts.filter(
+    (account) => String(account.connection_status || '').trim().toLowerCase() === 'connected'
+  )
+  const authoritativeConnectedAccountIds = new Set(
+    authoritativeConnectedAccounts.map((account) => account.id)
+  )
   const connectedProviders = new Set(
-    resolvedAccounts
-      .filter((account) => isConnectedAccount(account, effectiveStatusMap[account.id]))
+    authoritativeConnectedAccounts
       .map((account) => String(account.provider || '').trim().toLowerCase())
       .filter(Boolean)
   )
-  const xAccount = resolvedAccounts.find(
-    (account) =>
-      String(account.provider || '').trim().toLowerCase() === 'x' &&
-      isConnectedAccount(account, effectiveStatusMap[account.id])
+  const xAccount = authoritativeConnectedAccounts.find(
+    (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   )
-  const blueskyAccount = resolvedAccounts.find(
-    (account) =>
-      String(account.provider || '').trim().toLowerCase() === 'bluesky' &&
-      isConnectedAccount(account, effectiveStatusMap[account.id])
+  const blueskyAccount = authoritativeConnectedAccounts.find(
+    (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
   )
   const anyAutopilotRunning = deploymentWindows.some((lane) => lane.effectiveRunning)
-  const connectedLaneCount = resolvedAccounts.filter((account) =>
-    isConnectedAccount(account, effectiveStatusMap[account.id])
-  ).length
+  const connectedLaneCount = authoritativeConnectedAccounts.length
   const hasMissionSignals =
     resolvedAccounts.length > 0 ||
     jobs.length > 0 ||
@@ -2986,7 +3003,7 @@ function DashboardPageClient() {
     handle: embeddedMissionUser?.handle ?? null,
   }
   const runningLaneCount = deploymentWindows.filter(
-    (lane) => isConnectedAccount(lane.account, effectiveStatusMap[lane.account.id]) && lane.effectiveRunning
+    (lane) => authoritativeConnectedAccountIds.has(lane.account.id) && lane.effectiveRunning
   ).length
   const trialCountdown = trialEndsAt ? longCountdownUntil(trialEndsAt, nowMs) : null
   const upgradeHref =
@@ -3019,7 +3036,7 @@ function DashboardPageClient() {
             body: 'Once Autopilot starts, Mission Control keeps the pool moving and Starden starts naming what is rising, quiet, and likely next.',
           }
         : null
-  const standardFriendly = resolvedAccounts.filter(
+  const standardFriendly = authoritativeConnectedAccounts.filter(
     (account) => String(account.provider || '').trim().toLowerCase() === 'x'
   ).length <= 1
   const isPhone = viewportWidth <= 640
@@ -3049,10 +3066,10 @@ function DashboardPageClient() {
     },
     {
       label: 'Monitor Starden',
-      detail: resolvedAccounts.length > 0
+      detail: authoritativeConnectedAccounts.length > 0
         ? 'Watch the field, the pattern summary, and the next likely signal below.'
         : 'Starden becomes meaningful as soon as one lane is connected.',
-      kind: resolvedAccounts.length > 0 ? 'good' : 'neutral',
+      kind: authoritativeConnectedAccounts.length > 0 ? 'good' : 'neutral',
     },
   ] as const
   const subscriptionBanner =

@@ -382,7 +382,10 @@ def _fetch_accounts_for_mode(
     if unified:
         accounts = (
             db.query(ConnectedAccount)
-            .filter(ConnectedAccount.user_id == user_id)
+            .filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.connection_status == "connected",
+            )
             .all()
         )
         return sorted(_preferred_accounts(accounts), key=lambda account: str(account.provider or "").lower())
@@ -390,7 +393,10 @@ def _fetch_accounts_for_mode(
     if connected_account_id is None:
         accounts = (
             db.query(ConnectedAccount)
-            .filter(ConnectedAccount.user_id == user_id)
+            .filter(
+                ConnectedAccount.user_id == user_id,
+                ConnectedAccount.connection_status == "connected",
+            )
             .all()
         )
         preferred = _preferred_accounts(accounts)
@@ -401,6 +407,7 @@ def _fetch_accounts_for_mode(
         .filter(
             ConnectedAccount.id == connected_account_id,
             ConnectedAccount.user_id == user_id,
+            ConnectedAccount.connection_status == "connected",
         )
         .first()
     )

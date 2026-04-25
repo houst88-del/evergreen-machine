@@ -665,7 +665,10 @@ def get_jobs(
 
         user_account_ids = [
             int(account.id)
-            for account in db.query(ConnectedAccount).filter(ConnectedAccount.user_id == user.id).all()
+            for account in db.query(ConnectedAccount).filter(
+                ConnectedAccount.user_id == user.id,
+                ConnectedAccount.connection_status == "connected",
+            ).all()
         ]
 
         if not user_account_ids:
