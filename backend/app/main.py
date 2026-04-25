@@ -727,7 +727,10 @@ def list_connected_accounts(
     try:
         accounts = (
             db.query(ConnectedAccount)
-            .filter(ConnectedAccount.user_id == user.id)
+            .filter(
+                ConnectedAccount.user_id == user.id,
+                ConnectedAccount.connection_status == "connected",
+            )
             .all()
         )
         accounts = sorted(_preferred_accounts(accounts), key=lambda account: str(account.provider or "").lower())

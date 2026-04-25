@@ -983,7 +983,7 @@ export function GalaxySurface({
             }
           }
 
-          setAccounts((current) => (next.length ? next : current));
+          setAccounts(next);
           if (
             selected !== "unified" &&
             next.length > 0 &&

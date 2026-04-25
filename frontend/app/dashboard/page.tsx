@@ -1797,14 +1797,12 @@ function DashboardPageClient() {
 
           nextAccounts = mergeConnectedAccounts(nextAccounts, discoveredAccounts)
 
+          setAccounts(nextAccounts)
           if (nextAccounts.length > 0) {
-            setAccounts(nextAccounts)
             const nextStatusMap = await fetchLaneStatusMap(userId, nextAccounts, identityHints)
-            setStatusMap((current) =>
-              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-                ? nextStatusMap
-                : current,
-            )
+            setStatusMap(nextStatusMap)
+          } else {
+            setStatusMap({})
           }
 
           if (jobsResult.status === 'fulfilled') {
@@ -1962,13 +1960,9 @@ function DashboardPageClient() {
             )
           })
         ) {
-          setAccounts((current) => mergeConnectedAccounts(current, nextAccounts))
+          setAccounts(nextAccounts)
           void fetchLaneStatusMap(activeUser.id, nextAccounts, identityHints).then((nextStatusMap) => {
-            setStatusMap((current) =>
-              Object.keys(nextStatusMap).length > 0 || Object.keys(current).length === 0
-                ? nextStatusMap
-                : current,
-            )
+            setStatusMap(nextStatusMap)
           })
           void refreshMissionControlNow({ refreshGalaxy: true, invalidateGalaxyCache: true })
           return true
@@ -2633,6 +2627,12 @@ function DashboardPageClient() {
         throw new Error(json.detail || json.message || 'Could not disconnect account')
       }
 
+      setAccounts((current) => current.filter((account) => account.id !== accountId))
+      setStatusMap((current) => {
+        const next = { ...current }
+        delete next[accountId]
+        return next
+      })
       setActionMessage(`Disconnected ${options?.label || json.account_handle || 'account'}.`)
       requestMissionControlRefresh({
         followup: true,
@@ -2960,10 +2960,14 @@ function DashboardPageClient() {
       .filter(Boolean)
   )
   const xAccount = resolvedAccounts.find(
-    (account) => String(account.provider || '').trim().toLowerCase() === 'x'
+    (account) =>
+      String(account.provider || '').trim().toLowerCase() === 'x' &&
+      isConnectedAccount(account, effectiveStatusMap[account.id])
   )
   const blueskyAccount = resolvedAccounts.find(
-    (account) => String(account.provider || '').trim().toLowerCase() === 'bluesky'
+    (account) =>
+      String(account.provider || '').trim().toLowerCase() === 'bluesky' &&
+      isConnectedAccount(account, effectiveStatusMap[account.id])
   )
   const anyAutopilotRunning = deploymentWindows.some((lane) => lane.effectiveRunning)
   const connectedLaneCount = resolvedAccounts.filter((account) =>
