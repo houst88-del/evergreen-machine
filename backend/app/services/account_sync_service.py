@@ -3,16 +3,30 @@ from __future__ import annotations
 import traceback
 from typing import Any
 
+import tweepy
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.models.models import ConnectedAccount
+from app.models.models import AutopilotStatus, ConnectedAccount
 from app.services.bluesky_import_service import import_bluesky_posts
 from app.services.x_import_service import import_x_pool_posts
 
 
 def _is_connected(account: ConnectedAccount) -> bool:
     return str(getattr(account, "connection_status", "") or "").strip().lower() == "connected"
+
+
+def _disconnect_account(db: Session, account: ConnectedAccount) -> None:
+    account.connection_status = "disconnected"
+
+    autopilot = (
+        db.query(AutopilotStatus)
+        .filter(AutopilotStatus.connected_account_id == account.id)
+        .first()
+    )
+    if autopilot:
+        autopilot.connected = False
+        autopilot.enabled = False
 
 
 def sync_connected_account(
@@ -93,6 +107,21 @@ def sync_connected_account(
     except Exception as e:
 
         msg = str(e)
+
+        if provider == "x" and isinstance(e, tweepy.errors.Unauthorized):
+            _disconnect_account(db, account)
+            print(
+                f"[evergreen][sync] X auth expired for @{handle}, "
+                "marking account disconnected until reconnected"
+            )
+            return {
+                "account_id": account.id,
+                "provider": provider,
+                "handle": handle,
+                "ok": False,
+                "skipped": True,
+                "error": "X authorization expired. Reconnect X.",
+            }
 
         # graceful bluesky rate limit handling
         if "RateLimitExceeded" in msg or "429" in msg:
