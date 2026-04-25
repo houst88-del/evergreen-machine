@@ -180,6 +180,7 @@ def update_subscription_status(
     stripe_customer_id: str | None = None,
     stripe_subscription_id: str | None = None,
     stripe_price_id: str | None = None,
+    stripe_billing_email: str | None = None,
     current_period_end: str | None = None,
 ) -> dict | None:
     email = str(email).strip().lower()
@@ -200,6 +201,8 @@ def update_subscription_status(
             user["stripe_subscription_id"] = stripe_subscription_id
         if stripe_price_id:
             user["stripe_price_id"] = stripe_price_id
+        if stripe_billing_email:
+            user["stripe_billing_email"] = stripe_billing_email
         if current_period_end:
             user["current_period_end"] = current_period_end
         changed = True
