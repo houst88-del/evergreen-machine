@@ -1132,6 +1132,19 @@ def refresh_now(
             if not account:
                 raise HTTPException(status_code=400, detail="No connected account available")
 
+        autopilot = get_or_create_autopilot_for_account(db, user, account)
+        subscription = get_user_subscription_state(db, user)
+        if (
+            account.connection_status == "connected"
+            and subscription.get("can_run_autopilot")
+        ):
+            autopilot.connected = True
+            autopilot.provider = account.provider
+            autopilot.enabled = True
+            if not autopilot.next_cycle_at:
+                autopilot.next_cycle_at = datetime.now(UTC).replace(tzinfo=None)
+            db.flush()
+
         metadata = dict(account.metadata_json or {})
         pacing_mode = normalize_mode(metadata.get("pacing_mode"))
 
