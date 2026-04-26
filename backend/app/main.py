@@ -497,16 +497,7 @@ def maybe_enable_connected_lane(db, user: User, autopilot: AutopilotStatus) -> A
     if not subscription.get("can_run_autopilot"):
         return autopilot
 
-    sibling_running = (
-        db.query(AutopilotStatus)
-        .filter(
-            AutopilotStatus.user_id == user.id,
-            AutopilotStatus.id != autopilot.id,
-            AutopilotStatus.enabled.is_(True),
-        )
-        .first()
-    )
-    if not sibling_running:
+    if not autopilot.connected:
         return autopilot
 
     autopilot.enabled = True
