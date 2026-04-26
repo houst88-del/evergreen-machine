@@ -68,6 +68,40 @@ def read_worker_heartbeat() -> dict:
         return {"status": "unreadable", "timestamp": None, "error": str(exc)}
 
 
+def infer_worker_activity_from_jobs() -> dict:
+    db = SessionLocal()
+    try:
+        latest_job = (
+            db.query(JobQueueItem)
+            .order_by(JobQueueItem.last_heartbeat_at.desc(), JobQueueItem.created_at.desc())
+            .first()
+        )
+        if not latest_job:
+            return {"ok": False, "timestamp": None}
+
+        marker = (
+            latest_job.last_heartbeat_at
+            or latest_job.finished_at
+            or latest_job.started_at
+            or latest_job.created_at
+        )
+        if not marker:
+            return {"ok": False, "timestamp": None}
+
+        age = (datetime.now(UTC).replace(tzinfo=None) - marker).total_seconds()
+        return {
+            "ok": age <= 120,
+            "timestamp": marker.isoformat(),
+            "job_id": latest_job.id,
+            "job_status": latest_job.status,
+            "job_type": latest_job.job_type,
+            "connected_account_id": latest_job.connected_account_id,
+            "age_seconds": max(0, int(age)),
+        }
+    finally:
+        db.close()
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -528,6 +562,16 @@ def system_status():
             worker_alive = age <= 60
         except Exception:
             worker_alive = False
+
+    inferred_worker = infer_worker_activity_from_jobs()
+    if not worker_alive and inferred_worker.get("ok"):
+        worker_alive = True
+        heartbeat = {
+            **heartbeat,
+            "status": heartbeat.get("status") or "inferred",
+            "inferred_from_jobs": True,
+            "job_activity": inferred_worker,
+        }
 
     return {
         "backend": {"ok": True},
