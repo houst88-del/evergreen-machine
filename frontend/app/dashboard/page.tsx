@@ -965,6 +965,36 @@ function mergeAccountStatus(
   }
 }
 
+function mergeStatusWithJobPayload(
+  status: AccountStatus | null | undefined,
+  payload: JobPayload | null | undefined,
+): AccountStatus | null {
+  if (!status && !payload) return null
+  if (!payload) return status || null
+
+  const next: AccountStatus = {
+    ...(status || {}),
+  }
+
+  if (typeof payload.last_action_at === 'string' && payload.last_action_at.trim()) {
+    next.last_action_at = payload.last_action_at
+  }
+  if (typeof payload.next_cycle_at === 'string' && payload.next_cycle_at.trim()) {
+    next.next_cycle_at = payload.next_cycle_at
+  }
+  if (typeof payload.pacing_mode === 'string' && payload.pacing_mode.trim()) {
+    next.pacing_mode = payload.pacing_mode
+  }
+  if (typeof payload.message === 'string' && payload.message.trim()) {
+    next.last_post_text = payload.message
+  }
+  if (payload.rotation_health && typeof payload.rotation_health.pool_size === 'number') {
+    next.posts_in_rotation = payload.rotation_health.pool_size
+  }
+
+  return next
+}
+
 async function fetchLaneStatusMap(
   userId: number,
   accounts: ConnectedAccount[],
@@ -2296,8 +2326,7 @@ function DashboardPageClient() {
         return a.id - b.id
       })
       .map((account) => {
-        const status = effectiveStatusMap[account.id]
-        const meta = asRecord(status?.metadata)
+        const baseStatus = effectiveStatusMap[account.id]
         const laneJobs = jobs.filter((job) => job.connected_account_id === account.id)
         const latestJob = laneJobs[0]
         const activeRefreshJob = laneJobs.find((job) => {
@@ -2315,6 +2344,8 @@ function DashboardPageClient() {
           }) || latestJob
         const activeRefreshPayload = activeRefreshJob ? parseJobPayload(activeRefreshJob) : null
         const displayPayload = latestInformativeJob ? parseJobPayload(latestInformativeJob) : null
+        const status = mergeStatusWithJobPayload(baseStatus, displayPayload) || baseStatus
+        const meta = asRecord(status?.metadata)
         const payload = activeRefreshPayload || displayPayload
         const rotationHealth =
           payload?.rotation_health || displayPayload?.rotation_health || activeRefreshPayload?.rotation_health || {}
@@ -2346,12 +2377,6 @@ function DashboardPageClient() {
           String(activeRefreshJob?.status || activeRefreshJob?.state || '')
             .trim()
             .toLowerCase() === 'queued'
-        const inferredHealthyRunning = inferHealthyLane(status)
-        const laneHasLiveCycleSignal = Boolean(
-          effectivePostsInRotation > 0 ||
-            (String(effectiveLastActionAt || '').trim() &&
-              String(effectiveNextCycleAt || '').trim()),
-        )
         const optimisticRunning = optimisticRunningMap[account.id]
         const effectiveRunning =
           typeof optimisticRunning === 'boolean'
@@ -2359,9 +2384,7 @@ function DashboardPageClient() {
             : Boolean(
                 status?.running ||
                   jobDerivedRunning ||
-                  jobDerivedQueued ||
-                  inferredHealthyRunning ||
-                  laneHasLiveCycleSignal,
+                  jobDerivedQueued,
               )
 
         const latestPost =
