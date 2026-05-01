@@ -1,9 +1,8 @@
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
+import { getPublicApiBase } from '@/app/lib/runtime'
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
-  'https://backend-fixed-production.up.railway.app'
+const API_BASE = getPublicApiBase()
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 8000) {
   const controller = new AbortController()

@@ -4,6 +4,7 @@ import React, { startTransition, useDeferredValue, useEffect, useMemo, useRef, u
 import { useRouter } from "next/navigation";
 import { apiFetch, getStoredUser, getToken, me, setStoredUser } from "../lib/auth";
 import { missionBadgeStyle, missionEyebrowStyle } from "../lib/mission-ui";
+import { getPublicApiBase } from "../lib/runtime";
 
 type ConnectedAccount = { id: number; provider: string; handle: string };
 
@@ -112,9 +113,7 @@ const FUTURE_SCOPE_PLATFORMS = [
   "Threads",
 ] as const;
 
-const BACKEND =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://backend-fixed-production.up.railway.app";
+const BACKEND = getPublicApiBase();
 
 async function evergreenApiFetch(
   path: string,

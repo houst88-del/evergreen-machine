@@ -18,6 +18,7 @@ import {
 } from '../lib/auth'
 import { STRIPE_LINKS } from '../lib/billing'
 import { missionBadgeStyle, missionEyebrowStyle } from '../lib/mission-ui'
+import { getPublicApiBase } from '../lib/runtime'
 
 const EmbeddedGalaxySurface = dynamic(
   () => import('../galaxy/galaxy-surface').then((mod) => mod.GalaxySurface),
@@ -274,9 +275,7 @@ function recordFetchDiagnosticForPath(path: string) {
   }
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
-  'https://backend-fixed-production.up.railway.app'
+const API_BASE = getPublicApiBase()
 const DEV_COST_SAVER_MODE = process.env.NODE_ENV !== 'production'
 const PROD_REFRESH_INTERVAL_MS = 15000
 const DEV_REFRESH_INTERVAL_MS = 30000

@@ -1,5 +1,7 @@
 'use client'
 
+import { getPublicApiBase, getPublicAppBase } from './runtime'
+
 declare global {
   interface Window {
     Clerk?: {
@@ -8,12 +10,8 @@ declare global {
   }
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ||
-  'https://backend-fixed-production.up.railway.app'
-const APP_BASE =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') ||
-  'https://www.evergreenmachine.ai'
+const API_BASE = getPublicApiBase()
+const APP_BASE = getPublicAppBase()
 
 const TOKEN_KEY = 'evergreen_auth_token'
 const USER_KEY = 'evergreen_auth_user'

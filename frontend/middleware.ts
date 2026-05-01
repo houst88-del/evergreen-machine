@@ -1,8 +1,8 @@
 import { clerkMiddleware } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { getPublicAppBase } from './app/lib/runtime'
 
-const APP_ORIGIN =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || 'https://www.evergreenmachine.ai'
+const APP_ORIGIN = getPublicAppBase()
 const CLERK_PUBLISHABLE_KEY = String(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '').trim()
 const CLERK_ENABLED =
   CLERK_PUBLISHABLE_KEY.startsWith('pk_') && !CLERK_PUBLISHABLE_KEY.includes('replace_me')
