@@ -975,13 +975,25 @@ function mergeStatusWithJobPayload(
     ...(status || {}),
   }
 
-  if (typeof payload.last_action_at === 'string' && payload.last_action_at.trim()) {
+  if (
+    (!next.last_action_at || !String(next.last_action_at).trim()) &&
+    typeof payload.last_action_at === 'string' &&
+    payload.last_action_at.trim()
+  ) {
     next.last_action_at = payload.last_action_at
   }
-  if (typeof payload.next_cycle_at === 'string' && payload.next_cycle_at.trim()) {
+  if (
+    (!next.next_cycle_at || !String(next.next_cycle_at).trim()) &&
+    typeof payload.next_cycle_at === 'string' &&
+    payload.next_cycle_at.trim()
+  ) {
     next.next_cycle_at = payload.next_cycle_at
   }
-  if (typeof payload.pacing_mode === 'string' && payload.pacing_mode.trim()) {
+  if (
+    (!next.pacing_mode || !String(next.pacing_mode).trim()) &&
+    typeof payload.pacing_mode === 'string' &&
+    payload.pacing_mode.trim()
+  ) {
     next.pacing_mode = payload.pacing_mode
   }
   if (typeof payload.message === 'string' && payload.message.trim()) {
