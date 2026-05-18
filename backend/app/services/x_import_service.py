@@ -141,6 +141,16 @@ def _tweet_url(handle: str, tweet_id: str) -> str:
     return f"https://x.com/{clean}/status/{tweet_id}"
 
 
+def _latest_numeric_post_id(posts: list[Post]) -> str:
+    latest = 0
+    for post in posts:
+        raw = str(getattr(post, "provider_post_id", "") or "").strip()
+        if not raw.isdigit():
+            continue
+        latest = max(latest, int(raw))
+    return str(latest) if latest else ""
+
+
 def _parse_v1_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value.replace(tzinfo=None)
@@ -154,8 +164,17 @@ def _meta_value(meta: Any, key: str) -> Any:
 
 
 def _max_import_pages() -> int:
-    configured = _safe_int(os.getenv("X_IMPORT_MAX_PAGES"), 100)
+    configured = _safe_int(os.getenv("X_IMPORT_MAX_PAGES"), 2)
     return max(1, configured)
+
+
+def _v1_fallback_enabled() -> bool:
+    return str(os.getenv("X_IMPORT_V1_FALLBACK_ENABLED", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _make_clients(
@@ -269,6 +288,7 @@ def _backfill_from_v1_timeline(
     existing_map: dict[str, Post],
     user_id: int,
     connected_account_id: int,
+    since_id: str | None = None,
 ) -> dict[str, int]:
     imported = 0
     updated = 0
@@ -287,6 +307,7 @@ def _backfill_from_v1_timeline(
             user_id=x_user_id,
             count=page_size,
             max_id=max_id,
+            since_id=since_id or None,
             include_rts=True,
             exclude_replies=True,
             tweet_mode="extended",
@@ -304,6 +325,9 @@ def _backfill_from_v1_timeline(
         for tweet in tweets:
             tweet_id = str(getattr(tweet, "id_str", "") or getattr(tweet, "id", "")).strip()
             if not tweet_id:
+                skipped += 1
+                continue
+            if tweet_id in existing_map:
                 skipped += 1
                 continue
 
@@ -382,6 +406,7 @@ def import_x_pool_posts(
         for post in existing_posts
         if str(post.provider_post_id).strip()
     }
+    since_id = _latest_numeric_post_id(existing_posts)
 
     imported = 0
     updated = 0
@@ -400,16 +425,20 @@ def import_x_pool_posts(
             break
         page_size = min(100, remaining)
 
-        response = client.get_users_tweets(
-            id=x_user_id,
-            max_results=page_size,
-            tweet_fields=["created_at", "public_metrics"],
-            expansions=["attachments.media_keys"],
-            media_fields=["type"],
-            exclude=["replies"],
-            pagination_token=next_token,
-            user_auth=True,
-        )
+        payload = {
+            "id": x_user_id,
+            "max_results": page_size,
+            "tweet_fields": ["created_at", "public_metrics"],
+            "expansions": ["attachments.media_keys"],
+            "media_fields": ["type"],
+            "exclude": ["replies"],
+            "pagination_token": next_token,
+            "user_auth": True,
+        }
+        if since_id:
+            payload["since_id"] = since_id
+
+        response = client.get_users_tweets(**payload)
 
         v2_pages += 1
         meta = getattr(response, "meta", None) or {}
@@ -433,6 +462,9 @@ def import_x_pool_posts(
         for tweet in tweets:
             tweet_id = _tweet_id(tweet)
             if not tweet_id:
+                skipped += 1
+                continue
+            if tweet_id in existing_map:
                 skipped += 1
                 continue
 
@@ -470,7 +502,7 @@ def import_x_pool_posts(
     fallback_error: str | None = None
     fallback_attempted = False
     page_cap_hit = v2_pages >= max_pages and bool(next_token)
-    if fetched < 25:
+    if fetched < 25 and _v1_fallback_enabled():
         fallback_attempted = True
         try:
             fallback = _backfill_from_v1_timeline(
@@ -482,6 +514,7 @@ def import_x_pool_posts(
                 existing_map=existing_map,
                 user_id=user_id,
                 connected_account_id=connected_account_id,
+                since_id=since_id or None,
             )
             imported += fallback["imported"]
             updated += fallback["updated"]
@@ -497,6 +530,8 @@ def import_x_pool_posts(
         except tweepy.TweepyException as exc:
             fallback_limited = True
             fallback_error = str(exc).strip() or "Unknown X fallback error"
+    elif fetched < 25:
+        debug_notes.append("v1 fallback skipped by X_IMPORT_V1_FALLBACK_ENABLED=0.")
 
     db.flush()
 
@@ -517,11 +552,13 @@ def import_x_pool_posts(
 
     page_sizes_label = ", ".join(str(size) for size in v2_page_sizes) if v2_page_sizes else "0"
     debug_notes.insert(0, "X import policy: include retweets, exclude replies, and boost video candidates.")
+    if since_id:
+        debug_notes.insert(1, f"Incremental X import: requesting posts newer than stored id {since_id}.")
     debug_notes.insert(
-        1,
+        2 if since_id else 1,
         f"v2 timeline pages {v2_pages}; page sizes [{page_sizes_label}]; final next token {'yes' if last_meta.get('has_next_token') else 'no'}.",
     )
-    debug_notes.insert(2, f"X import safety page cap: {max_pages}.")
+    debug_notes.insert(3 if since_id else 2, f"X import safety page cap: {max_pages}.")
     debug_notes.append(
         f"v2 final meta result_count {last_meta.get('result_count', 0)}; newest {last_meta.get('newest_id') or '—'}; oldest {last_meta.get('oldest_id') or '—'}."
     )

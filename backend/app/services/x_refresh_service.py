@@ -19,11 +19,23 @@ from app.services.secret_crypto import decrypt_metadata, decrypt_secret
 RETWEET_STATE_SETTLE_MIN_SECONDS = 8
 RETWEET_STATE_SETTLE_MAX_SECONDS = 14
 DELAY_BETWEEN_ACTIONS = 3
-RETWEET_RETRY_ATTEMPTS = 5
+RETWEET_RETRY_ATTEMPTS = max(1, int(os.getenv("EVERGREEN_X_RETWEET_RETRY_ATTEMPTS", "2")))
 RETWEET_RETRY_SETTLE_SECONDS = 8
 
-VERIFY_ATTEMPTS = 6
+VERIFY_ATTEMPTS = max(1, int(os.getenv("EVERGREEN_X_VERIFY_ATTEMPTS", "2")))
 VERIFY_SLEEP_SECONDS = 4
+VERIFY_RETWEET_STATE = str(os.getenv("EVERGREEN_X_VERIFY_RETWEET_STATE", "0")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+X_REFRESH_ENABLED = str(os.getenv("EVERGREEN_X_REFRESH_ENABLED", "1")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 @dataclass
@@ -323,6 +335,12 @@ def refresh_repost(tweet_id: str, handle: str | None = None) -> RefreshResult:
 
     if not tweet_id:
         return RefreshResult(ok=False, message="Missing tweet_id")
+    if not X_REFRESH_ENABLED:
+        return RefreshResult(
+            ok=False,
+            message=f"X refresh disabled by EVERGREEN_X_REFRESH_ENABLED for @{handle_slug}",
+            tweet_id=tweet_id,
+        )
 
     try:
         client, config, cfg_path = make_client(handle)
@@ -449,7 +467,7 @@ def refresh_repost(tweet_id: str, handle: str | None = None) -> RefreshResult:
                 did_retweet=did_retweet,
             )
 
-        if not _verify_final_retweeted_state(client, tweet_id, user_id):
+        if VERIFY_RETWEET_STATE and not _verify_final_retweeted_state(client, tweet_id, user_id):
             return RefreshResult(
                 ok=False,
                 message=f"Retweet write call succeeded but final X state did not verify for @{handle_slug}: {tweet_id}",

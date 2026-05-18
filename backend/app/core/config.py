@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./evergreen.db"
     frontend_origin: str = "http://localhost:3000"
-    worker_poll_seconds: int = 10
+    worker_poll_seconds: int = 60
     x_client_id: str = ""
     x_client_secret: str = ""
     x_redirect_uri: str = "https://evergreen-machine-production.up.railway.app/api/providers/x/callback"

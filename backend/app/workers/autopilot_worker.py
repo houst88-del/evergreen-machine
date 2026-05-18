@@ -13,8 +13,8 @@ from app.services.job_queue import repair_stale_running_jobs
 from app.services.job_runner import enqueue_due_autopilot_jobs, process_pending_jobs
 
 
-POLL_SECONDS = max(5, int(os.getenv("EVERGREEN_WORKER_POLL_SECONDS", settings.worker_poll_seconds)))
-STARTUP_BURST_X_LIMIT = max(25, int(os.getenv("EVERGREEN_WORKER_STARTUP_X_LIMIT", "200")))
+POLL_SECONDS = max(30, int(os.getenv("EVERGREEN_WORKER_POLL_SECONDS", settings.worker_poll_seconds)))
+STARTUP_BURST_X_LIMIT = max(0, int(os.getenv("EVERGREEN_WORKER_STARTUP_X_LIMIT", "25")))
 STARTUP_BURST_BLUESKY_LIMIT = max(
     25, int(os.getenv("EVERGREEN_WORKER_STARTUP_BLUESKY_LIMIT", "150"))
 )

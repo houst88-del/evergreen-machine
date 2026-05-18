@@ -72,6 +72,17 @@ def _extract_created_at(feed_item) -> datetime | None:
         return None
 
 
+def _latest_existing_created_at(posts: list[Post]) -> datetime | None:
+    latest: datetime | None = None
+    for post in posts:
+        created_at = getattr(post, "created_at", None)
+        if not created_at:
+            continue
+        if latest is None or created_at > latest:
+            latest = created_at
+    return latest
+
+
 def _embed_payload(feed_item):
     try:
         return getattr(feed_item.post, "embed", None)
@@ -155,11 +166,23 @@ def import_bluesky_posts(
     updated = 0
     skipped = 0
     now = _utc_now_naive()
+    existing_posts = (
+        db.query(Post)
+        .filter(Post.connected_account_id == connected_account_id)
+        .all()
+    )
+    existing_ids = {
+        str(post.provider_post_id).strip()
+        for post in existing_posts
+        if str(post.provider_post_id).strip()
+    }
+    latest_existing_created_at = _latest_existing_created_at(existing_posts)
 
     fetched = 0
     cursor = None
+    reached_existing_pool = False
 
-    while fetched < limit:
+    while fetched < limit and not reached_existing_pool:
         payload = {
             "actor": handle,
             "limit": min(limit - fetched, 100),
@@ -178,25 +201,16 @@ def import_bluesky_posts(
                 skipped += 1
                 continue
 
+            created_at = _extract_created_at(item) or now
+            if provider_post_id in existing_ids or (
+                latest_existing_created_at and created_at <= latest_existing_created_at
+            ):
+                skipped += 1
+                reached_existing_pool = True
+                break
+
             text = _extract_post_text(item)
             score = _score_post(item)
-
-            created_at = _extract_created_at(item) or now
-
-            existing = (
-                db.query(Post)
-                .filter(
-                    Post.connected_account_id == connected_account_id,
-                    Post.provider_post_id == provider_post_id,
-                )
-                .first()
-            )
-
-            if existing:
-                existing.text = text or existing.text
-                existing.score = score
-                updated += 1
-                continue
 
             db.add(
                 Post(
@@ -211,6 +225,7 @@ def import_bluesky_posts(
             )
 
             imported += 1
+            existing_ids.add(provider_post_id)
 
         fetched += len(feed)
         cursor = getattr(response, "cursor", None)
