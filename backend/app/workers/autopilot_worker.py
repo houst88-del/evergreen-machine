@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.services.account_sync_service import sync_all_connected_accounts
 from app.services.job_queue import repair_stale_running_jobs
 from app.services.job_runner import enqueue_due_autopilot_jobs, process_pending_jobs
+from app.services.system_heartbeat import write_worker_heartbeat as write_db_worker_heartbeat
 
 
 POLL_SECONDS = max(30, int(os.getenv("EVERGREEN_WORKER_POLL_SECONDS", settings.worker_poll_seconds)))
@@ -43,6 +44,10 @@ def write_heartbeat(
         "poll_seconds": POLL_SECONDS,
     }
     HEARTBEAT_PATH.write_text(json.dumps(payload, indent=2))
+    try:
+        write_db_worker_heartbeat(payload)
+    except Exception as exc:
+        print(f"[evergreen][autopilot] database heartbeat failed: {exc}")
 
 
 def run_startup_burst() -> dict:

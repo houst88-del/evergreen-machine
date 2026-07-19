@@ -34,6 +34,7 @@ from app.services.pacing import choose_next_cycle, normalize_mode, pacing_option
 from app.services.pool_service import active_rotation_count
 from app.services.scoring import seed_demo_data
 from app.services.secret_crypto import encrypt_metadata
+from app.services.system_heartbeat import read_worker_heartbeat as read_db_worker_heartbeat
 from app.services.welcome_email import maybe_send_welcome_email, welcome_email_configured
 
 app = FastAPI(title="Evergreen API")
@@ -66,6 +67,29 @@ def read_worker_heartbeat() -> dict:
         return json.loads(WORKER_HEARTBEAT_PATH.read_text())
     except Exception as exc:
         return {"status": "unreadable", "timestamp": None, "error": str(exc)}
+
+
+def parse_worker_heartbeat_timestamp(heartbeat: dict | None) -> datetime | None:
+    if not heartbeat:
+        return None
+    timestamp = heartbeat.get("timestamp")
+    if not timestamp:
+        return None
+    try:
+        return datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).astimezone(UTC)
+    except Exception:
+        return None
+
+
+def freshest_worker_heartbeat(*heartbeats: dict | None) -> dict:
+    candidates = [heartbeat for heartbeat in heartbeats if heartbeat]
+    if not candidates:
+        return {"status": "missing", "timestamp": None}
+
+    def sort_key(heartbeat: dict) -> datetime:
+        return parse_worker_heartbeat_timestamp(heartbeat) or datetime.min.replace(tzinfo=UTC)
+
+    return max(candidates, key=sort_key)
 
 
 def infer_worker_activity_from_jobs() -> dict:
@@ -543,16 +567,14 @@ def health():
 
 @app.get("/api/system-status")
 def system_status():
-    heartbeat = read_worker_heartbeat()
-    timestamp = heartbeat.get("timestamp")
+    file_heartbeat = read_worker_heartbeat()
+    db_heartbeat = read_db_worker_heartbeat()
+    heartbeat = freshest_worker_heartbeat(file_heartbeat, db_heartbeat)
     worker_alive = False
-    if timestamp:
-        try:
-            worker_seen = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-            age = (datetime.now(UTC) - worker_seen.astimezone(UTC)).total_seconds()
-            worker_alive = age <= 60
-        except Exception:
-            worker_alive = False
+    worker_seen = parse_worker_heartbeat_timestamp(heartbeat)
+    if worker_seen:
+        age = (datetime.now(UTC) - worker_seen).total_seconds()
+        worker_alive = age <= 60
 
     inferred_worker = infer_worker_activity_from_jobs()
     if not worker_alive and inferred_worker.get("ok"):
