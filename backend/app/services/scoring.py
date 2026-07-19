@@ -266,6 +266,15 @@ def _bluesky_post_is_original(post: Post) -> bool:
     if not provider_post_id.startswith("at://"):
         return False
 
+    text = str(getattr(post, "text", "") or "").strip()
+    if not text:
+        return False
+
+    # Most imported replies begin with an @mention. The live Bluesky guard is
+    # authoritative, but this keeps old reply-like rows out of normal rotation.
+    if text.startswith("@"):
+        return False
+
     if getattr(post, "reply", None):
         return False
 
@@ -517,15 +526,20 @@ def _select_next_bluesky_post(
     if not valid_posts:
         return None
 
+    percentile_map = _score_percentile_map(
+        [_safe_score(getattr(post, "score", 0)) for post in valid_posts]
+    )
     fresh_posts: list[dict] = []
     cooled_posts: list[dict] = []
 
     for post in valid_posts:
         score = _safe_score(getattr(post, "score", 0))
-        tier = _score_tier(score)
+        percentile = percentile_map.get(score, 0.0)
+        tier = _db_score_tier(score, percentile)
         item = {
             "obj": post,
             "score": score,
+            "percentile": percentile,
             "tier": tier,
             "reason": f"tier_{tier.lower()}",
         }
@@ -545,14 +559,22 @@ def _select_next_bluesky_post(
 
     post = chosen_item["obj"]
     score = chosen_item["score"]
+    percentile = chosen_item.get("percentile", 0.0)
     tier = chosen_item["tier"]
 
     return SimpleNamespace(
         provider_post_id=str(post.provider_post_id).strip(),
         text=str(post.text or post.provider_post_id).strip(),
         strategy=f"bluesky_tier_{tier.lower()}",
-        reason=f"tier_rotation score={int(score)} cooldown={COOLDOWN_DAYS}d",
-        raw={"source": "bluesky_db", "post_id": getattr(post, "id", None)},
+        reason=(
+            f"tier_rotation p{int(percentile * 100)} "
+            f"score={int(score)} cooldown={COOLDOWN_DAYS}d"
+        ),
+        raw={
+            "source": "bluesky_db",
+            "post_id": getattr(post, "id", None),
+            "score_percentile": round(percentile, 4),
+        },
     )
 
 

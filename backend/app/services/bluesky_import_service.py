@@ -62,6 +62,13 @@ def _extract_reply_count(feed_item) -> int:
         return 0
 
 
+def _extract_quote_count(feed_item) -> int:
+    try:
+        return _safe_int(getattr(feed_item.post, "quote_count", 0), 0)
+    except Exception:
+        return 0
+
+
 def _extract_created_at(feed_item) -> datetime | None:
     try:
         raw = getattr(feed_item.post, "indexed_at", None) or getattr(feed_item.post, "created_at", None)
@@ -115,10 +122,75 @@ def _feed_item_has_video(feed_item) -> bool:
     return False
 
 
+def _post_record(feed_item):
+    try:
+        return getattr(feed_item.post, "record", None)
+    except Exception:
+        return None
+
+
+def _post_author(feed_item):
+    try:
+        return getattr(feed_item.post, "author", None)
+    except Exception:
+        return None
+
+
+def _normalize_handle(value: object) -> str:
+    return str(value or "").strip().lower().lstrip("@")
+
+
+def _feed_item_is_reply(feed_item) -> bool:
+    record = _post_record(feed_item)
+    if getattr(record, "reply", None):
+        return True
+    if getattr(feed_item, "reply", None):
+        return True
+    return False
+
+
+def _feed_item_is_repost(feed_item) -> bool:
+    return bool(getattr(feed_item, "reason", None))
+
+
+def _feed_item_author_matches(feed_item, account: ConnectedAccount, handle: str) -> bool:
+    author = _post_author(feed_item)
+    if author is None:
+        return True
+
+    account_did = str(getattr(account, "provider_account_id", "") or "").strip()
+    author_did = str(getattr(author, "did", "") or "").strip()
+    if account_did.startswith("did:") and author_did:
+        return account_did == author_did
+
+    author_handle = _normalize_handle(getattr(author, "handle", ""))
+    expected_handle = _normalize_handle(handle or account.handle)
+    if author_handle and expected_handle:
+        return author_handle == expected_handle
+
+    return True
+
+
+def _feed_item_ineligible_reason(feed_item, account: ConnectedAccount, handle: str) -> str:
+    if _feed_item_is_reply(feed_item):
+        return "reply"
+    if _feed_item_is_repost(feed_item):
+        return "repost"
+    if not _feed_item_author_matches(feed_item, account, handle):
+        return "not_author"
+    return ""
+
+
 def _score_post(feed_item) -> int:
-    score = 50 + _extract_like_count(feed_item) * 3 + _extract_repost_count(feed_item) * 4
+    score = (
+        45
+        + _extract_like_count(feed_item) * 3
+        + _extract_repost_count(feed_item) * 5
+        + _extract_reply_count(feed_item) * 4
+        + _extract_quote_count(feed_item) * 6
+    )
     if _feed_item_has_video(feed_item):
-        score = int(round(score * 1.28 + 14))
+        score = int(round(score * 1.25 + 18))
     return score
 
 
@@ -171,8 +243,8 @@ def import_bluesky_posts(
         .filter(Post.connected_account_id == connected_account_id)
         .all()
     )
-    existing_ids = {
-        str(post.provider_post_id).strip()
+    existing_map = {
+        str(post.provider_post_id).strip(): post
         for post in existing_posts
         if str(post.provider_post_id).strip()
     }
@@ -186,6 +258,7 @@ def import_bluesky_posts(
         payload = {
             "actor": handle,
             "limit": min(limit - fetched, 100),
+            "filter": "posts_no_replies",
         }
         if cursor:
             payload["cursor"] = cursor
@@ -202,15 +275,34 @@ def import_bluesky_posts(
                 continue
 
             created_at = _extract_created_at(item) or now
-            if provider_post_id in existing_ids or (
-                latest_existing_created_at and created_at <= latest_existing_created_at
-            ):
+            existing = existing_map.get(provider_post_id)
+            ineligible_reason = _feed_item_ineligible_reason(item, account, handle)
+            if ineligible_reason:
                 skipped += 1
-                reached_existing_pool = True
-                break
+                if existing and str(existing.state or "").lower() != "retired":
+                    existing.state = "retired"
+                    updated += 1
+                if latest_existing_created_at and created_at <= latest_existing_created_at:
+                    reached_existing_pool = True
+                    break
+                continue
 
             text = _extract_post_text(item)
             score = _score_post(item)
+
+            if existing:
+                existing.text = text or provider_post_id
+                existing.score = score
+                existing.state = "active"
+                existing.created_at = created_at
+                updated += 1
+                reached_existing_pool = True
+                break
+
+            if latest_existing_created_at and created_at <= latest_existing_created_at:
+                skipped += 1
+                reached_existing_pool = True
+                break
 
             db.add(
                 Post(
@@ -225,7 +317,6 @@ def import_bluesky_posts(
             )
 
             imported += 1
-            existing_ids.add(provider_post_id)
 
         fetched += len(feed)
         cursor = getattr(response, "cursor", None)
@@ -236,7 +327,10 @@ def import_bluesky_posts(
 
     total_posts = (
         db.query(Post)
-        .filter(Post.connected_account_id == connected_account_id)
+        .filter(
+            Post.connected_account_id == connected_account_id,
+            Post.state == "active",
+        )
         .count()
     )
 

@@ -9,7 +9,7 @@ from atproto import Client
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.models.models import ConnectedAccount
+from app.models.models import ConnectedAccount, Post
 from app.services.secret_crypto import get_secret_from_metadata
 
 
@@ -77,6 +77,70 @@ def _get_post_view(client: Client, post_uri: str):
     return posts[0]
 
 
+def _normalize_handle(value: object) -> str:
+    return str(value or "").strip().lower().lstrip("@")
+
+
+def _post_record(post_view):
+    try:
+        return getattr(post_view, "record", None)
+    except Exception:
+        return None
+
+
+def _post_author(post_view):
+    try:
+        return getattr(post_view, "author", None)
+    except Exception:
+        return None
+
+
+def _post_view_ineligible_reason(post_view, account: ConnectedAccount) -> str:
+    record = _post_record(post_view)
+    if getattr(record, "reply", None):
+        return "reply"
+
+    author = _post_author(post_view)
+    if author is None:
+        return ""
+
+    account_did = str(getattr(account, "provider_account_id", "") or "").strip()
+    author_did = str(getattr(author, "did", "") or "").strip()
+    if account_did.startswith("did:") and author_did and account_did != author_did:
+        return "not_author"
+
+    author_handle = _normalize_handle(getattr(author, "handle", ""))
+    account_handle = _normalize_handle(getattr(account, "handle", ""))
+    if author_handle and account_handle and author_handle != account_handle:
+        return "not_author"
+
+    return ""
+
+
+def _retire_ineligible_post(
+    db: Session,
+    account: ConnectedAccount,
+    provider_post_id: str,
+    *,
+    reason: str,
+) -> None:
+    post = (
+        db.query(Post)
+        .filter(
+            Post.connected_account_id == account.id,
+            Post.provider_post_id == provider_post_id,
+        )
+        .first()
+    )
+    if post:
+        post.state = "retired"
+    db.commit()
+    print(
+        f"[evergreen][bluesky-debug] retired ineligible post "
+        f"uri={provider_post_id} handle={account.handle} reason={reason}"
+    )
+
+
 def _get_repost_map(account: ConnectedAccount) -> dict[str, dict[str, Any]]:
     metadata = dict(account.metadata_json or {})
     repost_records = metadata.get("repost_records")
@@ -89,6 +153,21 @@ def _save_repost_map(account: ConnectedAccount, repost_records: dict[str, dict[s
     metadata = dict(account.metadata_json or {})
     metadata["repost_records"] = repost_records
     account.metadata_json = metadata
+
+
+def _delete_repost_record(client: Client, account: ConnectedAccount, repost_uri: str) -> None:
+    if not repost_uri:
+        return
+    try:
+        client.com.atproto.repo.delete_record(
+            {
+                "repo": account.provider_account_id,
+                "collection": "app.bsky.feed.repost",
+                "rkey": repost_uri.split("/")[-1],
+            }
+        )
+    except Exception:
+        pass
 
 
 def _extract_viewer_repost_uri(post_view) -> str:
@@ -130,22 +209,31 @@ def refresh_repost(provider_post_id: str, handle: str) -> RefreshResult:
         client = _get_client_for_account(account)
         repost_records = _get_repost_map(account)
 
+        post_view = _get_post_view(client, provider_post_id)
+        ineligible_reason = _post_view_ineligible_reason(post_view, account)
+        if ineligible_reason:
+            existing = repost_records.get(provider_post_id) or {}
+            existing_repost_uri = str(existing.get("repost_uri", "") or "").strip()
+            if existing_repost_uri:
+                _delete_repost_record(client, account, existing_repost_uri)
+                repost_records.pop(provider_post_id, None)
+                _save_repost_map(account, repost_records)
+            _retire_ineligible_post(
+                db,
+                account,
+                provider_post_id,
+                reason=ineligible_reason,
+            )
+            return RefreshResult(
+                False,
+                f"Bluesky ineligible post retired: {ineligible_reason} ({provider_post_id})",
+            )
+
         existing = repost_records.get(provider_post_id) or {}
         existing_repost_uri = str(existing.get("repost_uri", "") or "").strip()
-
         if existing_repost_uri:
-            try:
-                client.com.atproto.repo.delete_record(
-                    {
-                        "repo": account.provider_account_id,
-                        "collection": "app.bsky.feed.repost",
-                        "rkey": existing_repost_uri.split("/")[-1],
-                    }
-                )
-            except Exception:
-                pass
+            _delete_repost_record(client, account, existing_repost_uri)
 
-        post_view = _get_post_view(client, provider_post_id)
         cid = str(getattr(post_view, "cid", "") or "").strip()
         if not cid:
             return RefreshResult(False, f"Missing CID for Bluesky post: {provider_post_id}")

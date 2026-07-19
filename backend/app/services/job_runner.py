@@ -610,6 +610,9 @@ def _is_retryable_refresh_skip(message: str, provider: str) -> bool:
     lowered = str(message or "").strip().lower()
     provider_key = str(provider or "").strip().lower()
 
+    if provider_key == "bluesky":
+        return "bluesky ineligible post retired" in lowered
+
     if provider_key != "x":
         return False
 
