@@ -7,3 +7,4 @@ node_modules/
 .next/
 *.tsbuildinfo
 backend/worker_heartbeat.json
+backend/evergreen.db

@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 
-ROOT="$HOME/Downloads/evergreen_scaffold"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
 
