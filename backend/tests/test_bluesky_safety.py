@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
@@ -27,6 +28,7 @@ def feed_item(
     repost_count=0,
     reply_count=0,
     quote_count=0,
+    indexed_at=None,
 ):
     record = ns(text="hello", reply=reply)
     post = ns(
@@ -38,6 +40,7 @@ def feed_item(
         repost_count=repost_count,
         reply_count=reply_count,
         quote_count=quote_count,
+        indexed_at=indexed_at,
     )
     return ns(post=post, reply=feed_reply, reason=reason)
 
@@ -81,6 +84,17 @@ class BlueskySafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(_score_post(item), 110)
+
+    def test_score_adds_bounded_age_aware_momentum(self):
+        item = feed_item(
+            like_count=120,
+            repost_count=20,
+            reply_count=12,
+            quote_count=8,
+            indexed_at="2026-07-17T12:00:00Z",
+        )
+
+        self.assertEqual(_score_post(item, now=datetime(2026, 7, 19, 12, 0, 0)), 631)
 
     def test_selector_rejects_reply_like_legacy_rows(self):
         legacy_reply = ns(

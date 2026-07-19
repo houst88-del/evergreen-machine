@@ -6,6 +6,7 @@ from typing import Any
 from atproto import Client
 
 from app.models.models import ConnectedAccount, Post
+from app.services.engagement_scoring import evergreen_momentum_bonus
 from app.services.secret_crypto import decrypt_metadata
 
 
@@ -181,14 +182,21 @@ def _feed_item_ineligible_reason(feed_item, account: ConnectedAccount, handle: s
     return ""
 
 
-def _score_post(feed_item) -> int:
+def _score_post(feed_item, *, now: datetime | None = None) -> int:
+    metrics = {
+        "like_count": _extract_like_count(feed_item),
+        "repost_count": _extract_repost_count(feed_item),
+        "reply_count": _extract_reply_count(feed_item),
+        "quote_count": _extract_quote_count(feed_item),
+    }
     score = (
         45
-        + _extract_like_count(feed_item) * 3
-        + _extract_repost_count(feed_item) * 5
-        + _extract_reply_count(feed_item) * 4
-        + _extract_quote_count(feed_item) * 6
+        + metrics["like_count"] * 3
+        + metrics["repost_count"] * 5
+        + metrics["reply_count"] * 4
+        + metrics["quote_count"] * 6
     )
+    score += evergreen_momentum_bonus(metrics, created_at=_extract_created_at(feed_item), now=now)
     if _feed_item_has_video(feed_item):
         score = int(round(score * 1.25 + 18))
     return score

@@ -8,6 +8,7 @@ import tweepy
 from sqlalchemy.orm import Session
 
 from app.models.models import ConnectedAccount, Post
+from app.services.engagement_scoring import evergreen_momentum_bonus
 from app.services.secret_crypto import decrypt_metadata, decrypt_secret
 
 
@@ -122,7 +123,13 @@ def _v1_tweet_has_video(tweet: Any) -> bool:
     return False
 
 
-def _score_from_metrics(metrics: dict[str, int], *, has_video: bool = False) -> int:
+def _score_from_metrics(
+    metrics: dict[str, int],
+    *,
+    has_video: bool = False,
+    created_at: datetime | None = None,
+    now: datetime | None = None,
+) -> int:
     score = (
         50
         + metrics["like_count"] * 3
@@ -131,6 +138,7 @@ def _score_from_metrics(metrics: dict[str, int], *, has_video: bool = False) -> 
         + metrics["quote_count"] * 3
         + min(100, int(metrics["impression_count"] / 250))
     )
+    score += evergreen_momentum_bonus(metrics, created_at=created_at, now=now)
     if has_video:
         score = int(round(score * 1.35 + 18))
     return max(10, int(score))
@@ -340,6 +348,7 @@ def _backfill_from_v1_timeline(
             retweet_count = _safe_int(getattr(tweet, "retweet_count", 0), 0)
             reply_count = _safe_int(getattr(tweet, "reply_count", 0), 0)
             quote_count = _safe_int(getattr(tweet, "quote_count", 0), 0)
+            created_at = _parse_v1_datetime(getattr(tweet, "created_at", None))
             score = _score_from_metrics(
                 {
                     "like_count": favorite_count,
@@ -350,8 +359,8 @@ def _backfill_from_v1_timeline(
                     "impression_count": 0,
                 },
                 has_video=_v1_tweet_has_video(tweet),
+                created_at=created_at,
             )
-            created_at = _parse_v1_datetime(getattr(tweet, "created_at", None))
 
             result = _upsert_post(
                 db,
@@ -470,8 +479,12 @@ def import_x_pool_posts(
 
             metrics = _tweet_metrics(tweet)
             text = _tweet_text(tweet)
-            score = _score_from_metrics(metrics, has_video=_tweet_has_video(tweet, media_lookup))
             created_at = _tweet_created_at(tweet)
+            score = _score_from_metrics(
+                metrics,
+                has_video=_tweet_has_video(tweet, media_lookup),
+                created_at=created_at,
+            )
 
             result = _upsert_post(
                 db,
