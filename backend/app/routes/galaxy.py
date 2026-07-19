@@ -15,7 +15,66 @@ from app.models.models import AutopilotStatus, ConnectedAccount, Post, User
 
 router = APIRouter(prefix="/api/galaxy", tags=["galaxy"])
 
-EMBEDDED_LIMIT = 360
+EMBEDDED_LIMIT = 1500
+
+
+def _active_post_query(db: Session, account_ids: list[int]):
+    query = db.query(Post).filter(Post.state == "active")
+    if account_ids:
+        query = query.filter(Post.connected_account_id.in_(account_ids))
+    return query
+
+
+def _select_galaxy_posts(
+    db: Session,
+    account_ids: list[int],
+    effective_limit: int,
+    embedded_view: bool,
+    unified: bool,
+) -> list[Post]:
+    if not account_ids:
+        return []
+
+    if embedded_view and unified and len(account_ids) > 1:
+        quota = max(1, effective_limit // len(account_ids))
+        selected: list[Post] = []
+        selected_ids: set[int] = set()
+
+        for account_id in account_ids:
+            account_posts = (
+                db.query(Post)
+                .filter(
+                    Post.connected_account_id == account_id,
+                    Post.state == "active",
+                )
+                .order_by(Post.score.desc(), Post.id.asc())
+                .limit(quota)
+                .all()
+            )
+            for post in account_posts:
+                selected.append(post)
+                selected_ids.add(int(post.id))
+
+        remaining = max(0, effective_limit - len(selected))
+        if remaining > 0:
+            fill_query = _active_post_query(db, account_ids)
+            if selected_ids:
+                fill_query = fill_query.filter(Post.id.notin_(selected_ids))
+            selected.extend(
+                fill_query.order_by(Post.score.desc(), Post.id.asc()).limit(remaining).all()
+            )
+
+        return sorted(
+            selected,
+            key=lambda post: (-_safe_float(getattr(post, "score", 0), 0.0), int(post.id or 0)),
+        )
+
+    return (
+        _active_post_query(db, account_ids)
+        .order_by(Post.score.desc(), Post.id.asc())
+        .limit(effective_limit)
+        .all()
+    )
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -514,11 +573,8 @@ def get_galaxy(
         account_map = {account.id: account for account in accounts if account is not None}
         account_ids = list(account_map.keys())
 
-        query = db.query(Post)
-        if account_ids:
-            query = query.filter(Post.connected_account_id.in_(account_ids))
-
-        posts = query.order_by(Post.score.desc(), Post.id.asc()).limit(effective_limit).all()
+        available_count = _active_post_query(db, account_ids).count()
+        posts = _select_galaxy_posts(db, account_ids, effective_limit, embedded_view, unified)
         percentile_map = _score_percentile_map(
             [_safe_float(getattr(post, "score", 0), 0.0) for post in posts]
         )
@@ -711,6 +767,10 @@ def get_galaxy(
                 "user_id": resolved_user_id,
                 "connected_account_id": connected_account_id,
                 "count": len(nodes),
+                "available_count": available_count,
+                "visible_count": len(nodes),
+                "limit": effective_limit,
+                "sampled": available_count > len(nodes),
                 "running": any_running,
                 "connected": any_connected,
                 "last_action_at": last_action_at.isoformat() if last_action_at else None,
